@@ -41,7 +41,7 @@ public class User implements UserDetails {
     @Column (name = "active")
     private boolean isActive;
 
-    @Column (name = "verified", nullable = false)
+    @Column (name = "verified", nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
     private boolean isVerified = false;
 
     @Column (name = "city")
@@ -310,7 +310,7 @@ public class User implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        // Usuário só pode logar se estiver ativo
+        // Usuário só pode conectar se estiver ativo
         return this.isActive;
     }
 }

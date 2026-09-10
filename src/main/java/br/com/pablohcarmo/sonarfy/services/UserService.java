@@ -15,7 +15,6 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import javax.swing.*;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -98,8 +97,8 @@ public class UserService implements UserDetailsService {
 
     public void sendWelcomeEmail(User user, UUID uuidToken) {
         String activationLink = baseUrl + "/verify?token=" + uuidToken.toString();
-        String subject = "Bem vindo ao Sonarfy!";
-        String body = "Olá " + user.getName() + "\n\nSua conta foi criada com sucesso!" +
+        String subject = "Bem-vindo ao Sonarfy!";
+        String body = "Olá " + user.getName() + "\n\nSua conta foi criada com sucesso! " +
                 "Obrigado por se registrar no Sonarfy! Estamos felizes em tê-lo conosco." +
                 "\n\nPara ativar sua conta, por favor clique no link abaixo:\n" +
                 "\nSe o link não funcionar, copie e cole o seguinte URL no seu navegador:\n" +
@@ -113,7 +112,7 @@ public class UserService implements UserDetailsService {
     }
 
     @Transactional
-    public String resentEmailConfirmation(String email){
+    public String resendEmailConfirmation(String email){
         // Validação de input
         if(email == null || email.isBlank()) {
             return "Informe um e-mail válido para reenviar a confirmação.";
@@ -143,12 +142,17 @@ public class UserService implements UserDetailsService {
             sendWelcomeEmail(user, token.getUuid());
             return "E-mail de confirmação reenviado com sucesso! Verifique sua caixa de entrada.";
         } catch (Exception e) {
-            return "Falha ao enviar o e-mail de confirmação: " + e.getMessage();
+            // Se houver algum erro ao enviar o e-mail, lança uma exceção para cancelar o .save() do UUID,
+            // ou seja, não salva o token no banco de dados
+            throw new RuntimeException("Falha ao enviar o e-mail de confirmação: " + e.getMessage());
         }
     }
 
     @Transactional
     public String verifyToken(String uuidConverted) {
+        if(uuidConverted == null || uuidConverted.isBlank()) {
+            return "Token não fornecido.";
+        }
         try {
             // Conversão e busca do UUID no banco de dados
             UUID uuid = UUID.fromString(uuidConverted);

@@ -22,7 +22,7 @@ public class UserTokenConfirmation {
     @Column (name = "uuid", nullable = false, unique = true)
     private UUID uuid;
 
-    @Column (name = "is_used", nullable = true)
+    @Column (name = "is_used", nullable = false)
     private Boolean isUsed;
 
     @Column (name = "sent_at", nullable = false, insertable = false, updatable = false)
