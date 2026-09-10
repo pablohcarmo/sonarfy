@@ -16,6 +16,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -51,6 +52,7 @@ public class UserService implements UserDetailsService {
                 .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
     }
 
+    @Transactional
     public void newUser(NewUserDto newUserDto) {
         // Limpar o handle, caso o usuário tenha digitado com "@"
         String cleanHandle = newUserDto.getHandle().startsWith("@")
@@ -154,13 +156,13 @@ public class UserService implements UserDetailsService {
         try {
             // Conversão e busca do UUID no banco de dados
             UUID uuid = UUID.fromString(uuidConverted);
-            Optional<UserTokenConfirmation> optToken = userTokenConfirmationRepository.findByUuid(uuid);
+            List<UserTokenConfirmation> optToken = userTokenConfirmationRepository.findByUuid(uuid);
 
             if (optToken.isEmpty()) {
                 return "Token inválido";
             }
 
-            UserTokenConfirmation token = optToken.get();
+            UserTokenConfirmation token = optToken.getLast();
 
             // Verifica se o token já foi utilizado
             if (token.getUsed()) {
