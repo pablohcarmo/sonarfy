@@ -22,9 +22,9 @@ public class EmailService {
             message.setSubject(subject);
             message.setText(body);
             javaMailSender.send(message);
-            return "Email sent successfully to " + to;
+            return "Email enviado para " + to;
         } catch (Exception e) {
-            return "Error sending email: " + e.getLocalizedMessage();
+            throw new IllegalStateException("Falha no transporte do e-mail", e);
         }
     }
 }

@@ -25,7 +25,7 @@ public class UserTokenConfirmation {
     @Column (name = "is_used", nullable = false)
     private Boolean isUsed;
 
-    @Column (name = "sent_at", nullable = false, insertable = false, updatable = false)
+    @Column (name = "sent_at", nullable = false)
     private Instant sentAt;
 
     @Column (name = "expires_at", nullable = false)
@@ -40,6 +40,7 @@ public class UserTokenConfirmation {
             this.uuid = UUID.randomUUID();
         }
             this.isUsed = false;
+        this.sentAt = Instant.now();
     }
 
     public Long getId() {

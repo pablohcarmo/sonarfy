@@ -310,7 +310,7 @@ public class User implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        // Usuário só pode conectar se estiver ativo
-        return this.isActive;
+        // Usuário só pode conectar se estiver ativo e com o e-mail verificado
+        return this.isActive && this.isVerified;
     }
 }

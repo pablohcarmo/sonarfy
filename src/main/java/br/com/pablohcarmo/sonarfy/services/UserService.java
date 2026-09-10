@@ -88,7 +88,7 @@ public class UserService implements UserDetailsService {
         verificationToken.setUuid(UUID.randomUUID());
 
         // Token expira em 15 minutos
-        verificationToken.setExpiresAt(verificationToken.getSentAt().plusSeconds(900));
+        verificationToken.setExpiresAt(Instant.now().plusSeconds(900));
         userTokenConfirmationRepository.save(verificationToken);
 
         // Enviar email de boas-vindas para o usuário
@@ -127,23 +127,21 @@ public class UserService implements UserDetailsService {
             return "O seu e-mail já foi confirmado. Você já pode fazer login.";
         }
 
-        // Verifica se já existe um token de confirmação para o usuário
-        UserTokenConfirmation token = userTokenConfirmationRepository.findByUser(user)
-                .orElseGet(UserTokenConfirmation::new);
+        // Cria um novo token de confirmação
+        UserTokenConfirmation newToken = new UserTokenConfirmation();
+        newToken.setUser(user);
 
-        // Atualiza o token com um novo UUID e a data de expiração
-        token.setUser(user);
-        token.setUuid(UUID.randomUUID());
-        token.setExpiresAt(Instant.now().plusSeconds(900)); // 15 minutos
-        userTokenConfirmationRepository.save(token);
+        // UUID e setAt gerado automaticamente pelo @PrePersist da entidade UserTokenConfirmation
+        newToken.setExpiresAt(Instant.now().plusSeconds(900)); // 15 minutos
+        userTokenConfirmationRepository.save(newToken);
 
         // Envia o e-mail de confirmação
         try {
-            sendWelcomeEmail(user, token.getUuid());
+            sendWelcomeEmail(user, newToken.getUuid());
             return "E-mail de confirmação reenviado com sucesso! Verifique sua caixa de entrada.";
         } catch (Exception e) {
             // Se houver algum erro ao enviar o e-mail, lança uma exceção para cancelar o .save() do UUID,
-            // ou seja, não salva o token no banco de dados
+            // ou seja, não salva o newToken no banco de dados
             throw new RuntimeException("Falha ao enviar o e-mail de confirmação: " + e.getMessage());
         }
     }
