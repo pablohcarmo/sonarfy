@@ -41,6 +41,9 @@ public class User implements UserDetails {
     @Column (name = "active")
     private boolean isActive;
 
+    @Column (name = "verified", nullable = false, columnDefinition = "BOOLEAN DEFAULT FALSE")
+    private boolean isVerified = false;
+
     @Column (name = "city")
     private String city;
 
@@ -79,6 +82,7 @@ public class User implements UserDetails {
                 String email,
                 String passwordHashed,
                 boolean isActive,
+                boolean isVerified,
                 String city,
                 String country,
                 String avatar,
@@ -98,6 +102,7 @@ public class User implements UserDetails {
         this.email = email;
         this.password = passwordHashed;
         this.isActive = isActive;
+        this.isVerified = isVerified;
         this.city = city;
         this.country = country;
         this.avatar = avatar;
@@ -175,6 +180,15 @@ public class User implements UserDetails {
 
     public void setActive(boolean active) {
         isActive = active;
+    }
+
+    public boolean isVerified() {
+        // Permite o login apenas se o usuário estiver verificado
+        return this.isVerified;
+    }
+
+    public void setVerified(boolean verified) {
+        isVerified = verified;
     }
 
     public String getCity() {
@@ -292,5 +306,11 @@ public class User implements UserDetails {
     @Override
     public String getUsername() {
         return this.email;
+    }
+
+    @Override
+    public boolean isEnabled() {
+        // Usuário só pode conectar se estiver ativo e com o e-mail verificado
+        return this.isActive && this.isVerified;
     }
 }
