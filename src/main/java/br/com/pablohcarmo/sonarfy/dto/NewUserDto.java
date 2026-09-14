@@ -10,6 +10,8 @@ public class NewUserDto {
     private String handle;
     private String email;
     private String password;
+    private String city;
+    private String country;
     private LocalDate birthDate;
     public NewUserDto() {
     }
@@ -19,6 +21,8 @@ public class NewUserDto {
                       String handle,
                       String email,
                       String password,
+                      String city,
+                        String country,
                       LocalDate birthDate
     ) {
         this.name = name;
@@ -26,6 +30,8 @@ public class NewUserDto {
         this.handle = handle;
         this.email = email;
         this.password = password;
+        this.city = city;
+        this.country = country;
         this.birthDate = birthDate;
     }
 
@@ -67,6 +73,22 @@ public class NewUserDto {
 
     public void setPassword(String password) {
         this.password = password;
+    }
+
+    public String getCity() {
+        return city;
+    }
+
+    public void setCity(String city) {
+        this.city = city;
+    }
+
+    public String getCountry() {
+        return country;
+    }
+
+    public void setCountry(String country) {
+        this.country = country;
     }
 
     public LocalDate getBirthDate() {
