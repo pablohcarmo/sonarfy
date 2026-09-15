@@ -74,6 +74,8 @@ public class UserService implements UserDetailsService {
         user.setHandle((cleanHandle));
         user.setEmail(newUserDto.getEmail());
         user.setPassword(passwordEncoder.encode(newUserDto.getPassword()));
+        user.setCity(newUserDto.getCity());
+        user.setCountry(newUserDto.getCountry());
         user.setBirthDate(newUserDto.getBirthDate());
 
         // Define a permissão do usuário como "ROLE_USER" por padrão
