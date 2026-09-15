@@ -1,6 +1,9 @@
 package br.com.pablohcarmo.sonarfy.services;
 
 import br.com.pablohcarmo.sonarfy.dto.NewUserDto;
+import br.com.pablohcarmo.sonarfy.dto.UpdateProfileDto;
+import br.com.pablohcarmo.sonarfy.dto.UpdateUserDto;
+import br.com.pablohcarmo.sonarfy.dto.UserDto;
 import br.com.pablohcarmo.sonarfy.entities.Permission;
 import br.com.pablohcarmo.sonarfy.entities.User;
 import br.com.pablohcarmo.sonarfy.entities.UserTokenConfirmation;
@@ -17,7 +20,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -189,7 +191,41 @@ public class UserService implements UserDetailsService {
         }
     }
 
-    public void updateProfile() {
+    public UserDto getUserRegister(String email) {
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+
+        return new UserDto(user.getId(), user.getName(), user.getSurname(), user.getHandle(), user.getEmail(),
+                user.isActive(), user.getCity(), user.getCountry(), user.getAvatar(), user.getWallpaper(),
+                user.getBiography(), user.getBirthDate(), user.getCreationDate().toLocalDateTime(),
+                user.getLastLoginDate().toLocalDateTime(), user.getLastUpdateDate().toLocalDateTime());
+    }
+
+    public UserDto updateRegister(String email, UpdateUserDto updateUserDto) {
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+
+        // Atualiza os campos do usuário com os dados do DTO
+        user.setName( updateUserDto.getName());
+        user.setSurname(updateUserDto.getSurname());
+        user.setBirthDate(updateUserDto.getBirthDate());
+        user.setCity(updateUserDto.getCity());
+        user.setCity(updateUserDto.getCountry());
+
+        userRepository.save(user);
+        return getUserRegister(email);
+    }
+
+    public UserDto updateProfile(String email, UpdateProfileDto updateProfileDto) {
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+
+        user.setAvatar(updateProfileDto.getAvatar());
+        user.setWallpaper(updateProfileDto.getWallpaper());
+        user.setBiography(updateProfileDto.getBiography());
+
+        userRepository.save(user);
+        return getUserRegister(email);
     }
 
     public String sendPasswordResetEmail() {
