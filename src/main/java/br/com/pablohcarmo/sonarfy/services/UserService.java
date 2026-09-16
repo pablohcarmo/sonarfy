@@ -16,10 +16,6 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
-
 @Service
 public class UserService implements UserDetailsService {
 
@@ -30,17 +26,16 @@ public class UserService implements UserDetailsService {
     private final PermissionRepository permissionRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
+    private final JwtService jwtService;
 
-    public UserService (UserRepository userRepository, PermissionRepository permissionRepository, PasswordEncoder passwordEncoder, EmailService emailService) {
+    public UserService (UserRepository userRepository, PermissionRepository permissionRepository, PasswordEncoder passwordEncoder, EmailService emailService, JwtService jwtService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
         this.permissionRepository = permissionRepository;
+        this.jwtService = jwtService;
     }
 
-    // TODO - Login do usuário, podendo ser feito tanto pelo email quanto pelo handle
-    // Se quiser deixar explícito que é um processo de login,
-    // criar uma classe separada chamada AuthService com um método login(), mas o loadUserByUsername precisará continuar existindo intacto aqui no UserService para alimentar o sistema.
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         // Caso o usuário acesse com o handle, remove o "@" do início
@@ -82,12 +77,15 @@ public class UserService implements UserDetailsService {
                 .orElseThrow(() -> new RuntimeException("Default permission not found!"));
         user.setPermissionId(defaultPermission);
 
-        // Persiste usuário para que o token aponte para uma entidade gerenciada
         user = userRepository.save(user);
+
+        String jwtToken = jwtService.generateEmailConfirmationToken(user.getEmail());
+        sendWelcomeEmail(user, jwtToken);
     }
 
-    public void sendWelcomeEmail(User user, UUID uuidToken) {
-        String activationLink = baseUrl + "/verify?token=" + uuidToken.toString();
+    public void sendWelcomeEmail(User user, String jwtToken) {
+        String activationLink = baseUrl + "/verify?token=" + jwtToken;
+
         String subject = "Bem-vindo ao Sonarfy!";
         String body = "Olá " + user.getName() + "\n\nSua conta foi criada com sucesso! " +
                 "Obrigado por se registrar no Sonarfy! Estamos felizes em tê-lo conosco." +
@@ -102,45 +100,62 @@ public class UserService implements UserDetailsService {
         }
     }
 
+
     @Transactional
     public String resendEmailConfirmation(String email){
         // Validação de input
         if(email == null || email.isBlank()) {
-            return "Informe um e-mail válido para reenviar a confirmação.";
+            return "Invalid e-mail provided for resending confirmation.";
         }
 
         // Busca o usuário no banco de dados
         User user = userRepository.findByEmailIgnoreCase(email)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado!"));
+                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
 
         // Verifica se o usuário já foi verificado
         if(user.isVerified()) {
-            return "O seu e-mail já foi confirmado. Você já pode fazer login.";
+            return "User already verified. You can log in.";
         }
+
+        // Gera um novo token JWT para o e-mail do usuário
+        String jwtToken = jwtService.generateEmailConfirmationToken(user.getEmail());
 
         // Envia o e-mail de confirmação
         try {
-            return "E-mail de confirmação reenviado com sucesso! Verifique sua caixa de entrada.";
+            return "E-mail confirmation email resent successfully! Please check your inbox.";
         } catch (Exception e) {
-            // Se houver algum erro ao enviar o e-mail, lança uma exceção para cancelar o .save() do UUID,
-            // ou seja, não salva o newToken no banco de dados
-            throw new RuntimeException("Falha ao enviar o e-mail de confirmação: " + e.getMessage());
+            // O Rollback cancela qualquer transação pendente se o e-mail falhar
+            throw new RuntimeException("Failed to resend email confirmation: " + e.getMessage());
         }
     }
 
     @Transactional
-    public String verifyToken(String uuidConverted) {
-        if(uuidConverted == null || uuidConverted.isBlank()) {
-            return "Token não fornecido.";
+    public String verifyToken(String jwtToken) {
+        if(jwtToken == null ||jwtToken.isBlank()) {
+            return "Invalid token provided for verification.";
         }
-        try {
-            // Conversão e busca do UUID no banco de dados
-            UUID uuid = UUID.fromString(uuidConverted);
 
-            return "E-mail confirmado com sucesso! Sua conta está ativada.";
-        } catch (IllegalArgumentException e) {
-            return "Formato do token inválido";
+        // Valida a assinatura, a expiração e o emissor do token JWT, e extrai o email do usuário
+        String email = jwtService.validateTokenAndGetEmail(jwtToken);
+
+        // Verifica se o email extraído do token é válido
+        if(email == null || email.isBlank()) {
+            return "Invalid email extracted from token. Please, request a new confirmation email.";
         }
+
+        // Verifica se o usuário existe
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+
+        // Verifica se o usuário já foi verificado
+        if(user.isVerified()) {
+            return "User already verified. You can log in.";
+        }
+
+        // Ativa o usuário e salva no banco de dados
+        user.setVerified(true);
+        userRepository.save(user);
+        return "E-mail verified successfully! You can now log in.";
     }
 
     public UserDto getUserRegister(String email) {
@@ -180,10 +195,6 @@ public class UserService implements UserDetailsService {
         return getUserRegister(email);
     }
 
-    public String sendPasswordResetEmail() {
-        return null;
-    }
-
     @Transactional
     public String sendPasswordChangeRequest(String email) {
         User user = userRepository.findByEmailIgnoreCase(email)
@@ -202,6 +213,10 @@ public class UserService implements UserDetailsService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to send reset password email: " + e.getMessage());
         }
+    }
+
+    public String sendPasswordResetEmail() {
+        return null;
     }
 
     @Transactional
