@@ -6,10 +6,8 @@ import br.com.pablohcarmo.sonarfy.dto.UpdateUserDto;
 import br.com.pablohcarmo.sonarfy.dto.UserDto;
 import br.com.pablohcarmo.sonarfy.entities.Permission;
 import br.com.pablohcarmo.sonarfy.entities.User;
-import br.com.pablohcarmo.sonarfy.entities.UserTokenConfirmation;
 import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
-import br.com.pablohcarmo.sonarfy.repositories.UserTokenConfirmationRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -32,14 +30,12 @@ public class UserService implements UserDetailsService {
     private final PermissionRepository permissionRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
-    private final UserTokenConfirmationRepository userTokenConfirmationRepository;
 
-    public UserService (UserRepository userRepository, PermissionRepository permissionRepository, PasswordEncoder passwordEncoder, EmailService emailService, UserTokenConfirmationRepository userTokenConfirmationRepository) {
+    public UserService (UserRepository userRepository, PermissionRepository permissionRepository, PasswordEncoder passwordEncoder, EmailService emailService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
         this.permissionRepository = permissionRepository;
-        this.userTokenConfirmationRepository = userTokenConfirmationRepository;
     }
 
     // TODO - Login do usuário, podendo ser feito tanto pelo email quanto pelo handle
@@ -88,17 +84,6 @@ public class UserService implements UserDetailsService {
 
         // Persiste usuário para que o token aponte para uma entidade gerenciada
         user = userRepository.save(user);
-        
-        UserTokenConfirmation verificationToken = new UserTokenConfirmation();
-        verificationToken.setUser(user);
-        verificationToken.setUuid(UUID.randomUUID());
-
-        // Token expira em 15 minutos
-        verificationToken.setExpiresAt(Instant.now().plusSeconds(900));
-        userTokenConfirmationRepository.save(verificationToken);
-
-        // Enviar email de boas-vindas para o usuário
-        sendWelcomeEmail(user, verificationToken.getUuid());
     }
 
     public void sendWelcomeEmail(User user, UUID uuidToken) {
@@ -133,17 +118,8 @@ public class UserService implements UserDetailsService {
             return "O seu e-mail já foi confirmado. Você já pode fazer login.";
         }
 
-        // Cria um novo token de confirmação
-        UserTokenConfirmation newToken = new UserTokenConfirmation();
-        newToken.setUser(user);
-
-        // UUID e setAt gerado automaticamente pelo @PrePersist da entidade UserTokenConfirmation
-        newToken.setExpiresAt(Instant.now().plusSeconds(900)); // 15 minutos
-        userTokenConfirmationRepository.save(newToken);
-
         // Envia o e-mail de confirmação
         try {
-            sendWelcomeEmail(user, newToken.getUuid());
             return "E-mail de confirmação reenviado com sucesso! Verifique sua caixa de entrada.";
         } catch (Exception e) {
             // Se houver algum erro ao enviar o e-mail, lança uma exceção para cancelar o .save() do UUID,
@@ -160,30 +136,6 @@ public class UserService implements UserDetailsService {
         try {
             // Conversão e busca do UUID no banco de dados
             UUID uuid = UUID.fromString(uuidConverted);
-            List<UserTokenConfirmation> optToken = userTokenConfirmationRepository.findByUuid(uuid);
-
-            if (optToken.isEmpty()) {
-                return "Token inválido";
-            }
-
-            UserTokenConfirmation token = optToken.getLast();
-
-            // Verifica se o token já foi utilizado
-            if (token.getUsed()) {
-                return "Este link já foi utilizado. Sua conta já está ativa.";
-            }
-
-            // Verifica se o token expirou
-            if (Instant.now().isAfter(token.getExpiresAt())) {
-                return "Token expirado. Por favor, solicite um novo e-mail de confirmação.";
-            }
-
-            User user = token.getUser();
-            user.setVerified(true);
-            userRepository.save(user);
-
-            token.setUsed(true);
-            userTokenConfirmationRepository.save(token);
 
             return "E-mail confirmado com sucesso! Sua conta está ativada.";
         } catch (IllegalArgumentException e) {
@@ -229,6 +181,31 @@ public class UserService implements UserDetailsService {
     }
 
     public String sendPasswordResetEmail() {
+        return null;
+    }
+
+    @Transactional
+    public String sendPasswordChangeRequest(String email) {
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+
+    String subject = "Redefinição de senha - Sonarfy";
+    String body = "Olá, " + user.getName() + " " + user.getSurname() +
+            "\n\nRecebemos uma solicitação para redefinir sua senha. " +
+            "\nPara redefinir sua senha, clique no link abaixo:\n" +
+            "Este link é válido por 15 minutos. Se você não solicitou essa alteração, ignore este e-mail." +
+            "\n\nAtenciosamente,\nEquipe Sonarfy";
+
+        try {
+            emailService.sendEmail(user.getEmail(), subject, body);
+            return "Reset password email sent successfully! Please check your inbox.";
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to send reset password email: " + e.getMessage());
+        }
+    }
+
+    @Transactional
+    public String sendEmailChangeRequest() {
         return null;
     }
 

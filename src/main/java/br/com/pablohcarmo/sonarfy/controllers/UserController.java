@@ -14,6 +14,7 @@ import java.security.Principal;
 @RequestMapping("/api/users")
 public class UserController {
 
+
     private final UserService userService;
 
     public UserController(UserService userService) {
@@ -30,5 +31,19 @@ public class UserController {
     public ResponseEntity<UserDto>updateRegister(@RequestBody @Valid UpdateUserDto updateUserDto, Principal principal) {
         // Envia os dados limpos para a camada de serviço, que vai atualizar o usuário logado e devolver o DTO correspondente
         return ResponseEntity.ok(userService.updateRegister(principal.getName(), updateUserDto));
+    }
+
+    /*@PostMapping("/me/email-change")
+    public ResponseEntity<String> requestEmailChange(Principal principal) {
+        String userEmail = principal.getName();
+        String result = userService.sendEmailChangeRequest(userEmail);
+        return ResponseEntity.ok(result);
+    }*/
+
+    @PostMapping("/me/password-change")
+    public ResponseEntity<String> requestPasswordChange(Principal principal) {
+        String userEmail = principal.getName();
+        String result = userService.sendPasswordChangeRequest(userEmail);
+        return ResponseEntity.ok(result);
     }
 }

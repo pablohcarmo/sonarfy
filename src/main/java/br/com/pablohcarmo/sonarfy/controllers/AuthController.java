@@ -20,4 +20,23 @@ public class AuthController {
         userService.newUser(newUserDto);
         return ResponseEntity.ok("User registered successfully");
     }
+
+    @PostMapping("/verify")
+    public ResponseEntity<String> verifyEmail(@RequestParam("token") String token) {
+        String result = userService.verifyToken(token);
+
+        if(result.contains("success")) {
+            return ResponseEntity.ok(result);
+        } else {
+            // Retorna 400 Bad Request com a mensagem de erro se o token for inválido ou expirado
+            return ResponseEntity.badRequest().body(result);
+        }
+    }
+
+    @PostMapping("/password-reset")
+    public ResponseEntity<String> requestPasswordReset(@RequestParam("email") String email) {
+        String result = userService.sendPasswordResetEmail();
+        return ResponseEntity.ok(result);
+    }
+
 }
