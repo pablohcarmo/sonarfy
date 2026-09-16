@@ -3,6 +3,7 @@ package br.com.pablohcarmo.sonarfy.services;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.interfaces.DecodedJWT;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -10,7 +11,8 @@ import java.time.Instant;
 @Service
 public class JwtService {
 
-    private final String SECRET_KEY = "your-secret-key";
+    @Value("{api.security.token.secret:my_secret_key}")
+    private String SECRET_KEY;
 
     public String generateEmailConfirmationToken(String email) {
         Algorithm algorithm = Algorithm.HMAC256(SECRET_KEY);
@@ -31,6 +33,7 @@ public class JwtService {
             // que o emissor é sonarfy-api e se o token não expirou
             DecodedJWT decodedJWT = JWT.require(algorithm)
                     .withIssuer("sonarfy-api")
+                    .withClaim("purpose", "email_confirmation")
                     .build()
                     .verify(token);
 

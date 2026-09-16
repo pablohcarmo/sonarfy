@@ -102,7 +102,7 @@ public class UserService implements UserDetailsService {
 
 
     @Transactional
-    public String resendEmailConfirmation(String email){
+    public String sendConfirmationEmail(String email){
         // Validação de input
         if(email == null || email.isBlank()) {
             return "Invalid e-mail provided for resending confirmation.";
