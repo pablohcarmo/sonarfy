@@ -122,6 +122,7 @@ public class UserService implements UserDetailsService {
 
         // Envia o e-mail de confirmação
         try {
+            sendWelcomeEmail(user, jwtToken);
             return "E-mail confirmation email resent successfully! Please check your inbox.";
         } catch (Exception e) {
             // O Rollback cancela qualquer transação pendente se o e-mail falhar
@@ -140,7 +141,7 @@ public class UserService implements UserDetailsService {
 
         // Verifica se o email extraído do token é válido
         if(email == null || email.isBlank()) {
-            return "Invalid email extracted from token. Please, request a new confirmation email.";
+            return "Invalid or expired token. Please, request a new confirmation email.";
         }
 
         // Verifica se o usuário existe

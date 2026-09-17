@@ -11,7 +11,7 @@ import java.time.Instant;
 @Service
 public class JwtService {
 
-    @Value("{api.security.token.secret:my_secret_key}")
+    @Value("${api.security.token.secret}")
     private String SECRET_KEY;
 
     public String generateEmailConfirmationToken(String email) {
