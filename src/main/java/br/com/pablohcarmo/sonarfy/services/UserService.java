@@ -16,6 +16,8 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.Optional;
+
 @Service
 public class UserService implements UserDetailsService {
 
@@ -80,26 +82,8 @@ public class UserService implements UserDetailsService {
         user = userRepository.save(user);
 
         String jwtToken = jwtService.generateEmailConfirmationToken(user.getEmail());
-        sendWelcomeEmail(user, jwtToken);
+        sendActivationEmail(user, jwtToken);
     }
-
-    public void sendWelcomeEmail(User user, String jwtToken) {
-        String activationLink = baseUrl + "/verify?token=" + jwtToken;
-
-        String subject = "Bem-vindo ao Sonarfy!";
-        String body = "Olá " + user.getName() + "\n\nSua conta foi criada com sucesso! " +
-                "Obrigado por se registrar no Sonarfy! Estamos felizes em tê-lo conosco." +
-                "\n\nPara ativar sua conta, por favor clique no link abaixo:\n" +
-                "\nSe o link não funcionar, copie e cole o seguinte URL no seu navegador:\n" +
-                activationLink + "\n\n" +
-                "Atenciosamente,\nEquipe Sonarfy";
-        try {
-            this.emailService.sendEmail(user.getEmail(), subject, body);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to send welcome email: " + e.getMessage());
-        }
-    }
-
 
     @Transactional
     public String sendConfirmationEmail(String email){
@@ -122,8 +106,8 @@ public class UserService implements UserDetailsService {
 
         // Envia o e-mail de confirmação
         try {
-            sendWelcomeEmail(user, jwtToken);
-            return "E-mail confirmation email resent successfully! Please check your inbox.";
+            sendActivationEmail(user, jwtToken);
+            return "Confirmation email resent successfully! Please check your inbox.";
         } catch (Exception e) {
             // O Rollback cancela qualquer transação pendente se o e-mail falhar
             throw new RuntimeException("Failed to resend email confirmation: " + e.getMessage());
@@ -145,8 +129,13 @@ public class UserService implements UserDetailsService {
         }
 
         // Verifica se o usuário existe
-        User user = userRepository.findByEmailIgnoreCase(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+        Optional<User> optionalUser = userRepository.findByEmailIgnoreCase(email);
+        if(optionalUser.isEmpty()) {
+            return "User not found or account was deleted.";
+        }
+
+        // Caso encontre o usuário, instancia o objeto User e busca se ele já foi verificado
+        User user = optionalUser.get();
 
         // Verifica se o usuário já foi verificado
         if(user.isVerified()) {
@@ -156,6 +145,7 @@ public class UserService implements UserDetailsService {
         // Ativa o usuário e salva no banco de dados
         user.setVerified(true);
         userRepository.save(user);
+        sendWelcomeEmail(user);
         return "E-mail verified successfully! You can now log in.";
     }
 
@@ -178,7 +168,7 @@ public class UserService implements UserDetailsService {
         user.setSurname(updateUserDto.getSurname());
         user.setBirthDate(updateUserDto.getBirthDate());
         user.setCity(updateUserDto.getCity());
-        user.setCity(updateUserDto.getCountry());
+        user.setCountry(updateUserDto.getCountry());
 
         userRepository.save(user);
         return getUserRegister(email);
@@ -196,27 +186,7 @@ public class UserService implements UserDetailsService {
         return getUserRegister(email);
     }
 
-    @Transactional
-    public String sendPasswordChangeRequest(String email) {
-        User user = userRepository.findByEmailIgnoreCase(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
-
-    String subject = "Redefinição de senha - Sonarfy";
-    String body = "Olá, " + user.getName() + " " + user.getSurname() +
-            "\n\nRecebemos uma solicitação para redefinir sua senha. " +
-            "\nPara redefinir sua senha, clique no link abaixo:\n" +
-            "Este link é válido por 15 minutos. Se você não solicitou essa alteração, ignore este e-mail." +
-            "\n\nAtenciosamente,\nEquipe Sonarfy";
-
-        try {
-            emailService.sendEmail(user.getEmail(), subject, body);
-            return "Reset password email sent successfully! Please check your inbox.";
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to send reset password email: " + e.getMessage());
-        }
-    }
-
-    public String sendPasswordResetEmail() {
+      public String sendPasswordResetEmail() {
         return null;
     }
 
@@ -279,5 +249,56 @@ public class UserService implements UserDetailsService {
 
     public String viewFollowing() {
         return null;
+    }
+
+    public void sendWelcomeEmail(User user) {
+        String subject = "Bem-vindo ao Sonarfy!";
+        String body = "Olá " + user.getName() + " " + user.getSurname() +
+                ".\n\nSua conta foi ativada com sucesso!\nEstamos felizes em tê-lo conosco." +
+                "\nVocê já pode fazer login no Sonarfy e começar a avaliar seus álbuns favoritos!\n\n" +
+                "Atenciosamente,\nEquipe Sonarfy";
+        try {
+            this.emailService.sendEmail(user.getEmail(), subject, body);
+        } catch (Exception e) {
+            System.err.println("Failed to send welcome email: " + e.getMessage());
+        }
+    }
+
+    public void sendActivationEmail(User user, String jwtToken) {
+        String activationLink = baseUrl + "/verify?token=" + jwtToken;
+
+        String subject = "Ative sua conta no Sonarfy!";
+        String body = "Olá " + user.getName() + " " + user.getSurname() +
+                ".\n\nPara concluir o seu cadastro e ativar a sua conta, por favor clique no link abaixo:\n" +
+                activationLink + "\n\n" +
+                "\nSe o link não funcionar, copie e cole o seguinte URL no seu navegador:\n\n" +
+                "Atenciosamente,\nEquipe Sonarfy";
+        try {
+            this.emailService.sendEmail(user.getEmail(), subject, body);
+        } catch (Exception e) {
+            // Exceção para dar Rollback no cadastro se o link falhar
+            throw new RuntimeException("Failed to send activation token email: " + e.getMessage());
+        }
+    }
+
+    @Transactional
+    public String sendPasswordChangeRequest(String email) {
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+
+        String subject = "Redefinição de senha - Sonarfy";
+        String body = "Olá, " + user.getName() + " " + user.getSurname() +
+                "\n\nRecebemos uma solicitação para redefinir sua senha. " +
+                "\nPara redefinir sua senha, clique no link abaixo:\n" +
+                "[INSERIR O LINK AQUI" + //TODO: Gerar o link de redefinição de senha com token JWT
+                "Este link é válido por 15 minutos. Se você não solicitou essa alteração, ignore este e-mail." +
+                "\n\nAtenciosamente,\nEquipe Sonarfy";
+
+        try {
+            emailService.sendEmail(user.getEmail(), subject, body);
+            return "Reset password email sent successfully! Please check your inbox.";
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to send reset password email: " + e.getMessage());
+        }
     }
 }

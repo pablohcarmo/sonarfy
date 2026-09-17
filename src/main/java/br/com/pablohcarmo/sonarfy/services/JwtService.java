@@ -2,6 +2,7 @@ package br.com.pablohcarmo.sonarfy.services;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -12,10 +13,10 @@ import java.time.Instant;
 public class JwtService {
 
     @Value("${api.security.token.secret}")
-    private String SECRET_KEY;
+    private String secretKey;
 
     public String generateEmailConfirmationToken(String email) {
-        Algorithm algorithm = Algorithm.HMAC256(SECRET_KEY);
+        Algorithm algorithm = Algorithm.HMAC256(secretKey);
 
         return JWT.create()
                 .withIssuer("sonarfy-api")
@@ -27,7 +28,7 @@ public class JwtService {
 
     public String validateTokenAndGetEmail(String token) {
         try {
-            Algorithm algorithm = Algorithm.HMAC256(SECRET_KEY);
+            Algorithm algorithm = Algorithm.HMAC256(secretKey);
 
             // Verifica se a assinatura do token é autêntica,
             // que o emissor é sonarfy-api e se o token não expirou
@@ -39,8 +40,9 @@ public class JwtService {
 
             // Se as verificações passarem, retorna o email do usuário
             return decodedJWT.getSubject();
-        } catch (Exception e) {
-            // Deve retornar nulo para que o UserService saiba que o token é inválido ou expirou
+        } catch (JWTVerificationException e) {
+            // Se a chave for falsa ou o token estiver expirado, retorna null
+            // Outros tipos de erros da aplicação não devem ser tratados aqui, apenas erros de verificação do token
             return null;
         }
     }
