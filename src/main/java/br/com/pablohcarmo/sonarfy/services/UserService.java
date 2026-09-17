@@ -9,6 +9,7 @@ import br.com.pablohcarmo.sonarfy.entities.User;
 import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import jakarta.transaction.Transactional;
+import org.slf4j.Logger;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -17,6 +18,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class UserService implements UserDetailsService {
@@ -29,6 +31,7 @@ public class UserService implements UserDetailsService {
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
     private final JwtService jwtService;
+    private static final Logger logger = LoggerFactory.getLogger(UserService.class);
 
     public UserService (UserRepository userRepository, PermissionRepository permissionRepository, PasswordEncoder passwordEncoder, EmailService emailService, JwtService jwtService) {
         this.userRepository = userRepository;
@@ -186,10 +189,6 @@ public class UserService implements UserDetailsService {
         return getUserRegister(email);
     }
 
-      public String sendPasswordResetEmail() {
-        return null;
-    }
-
     @Transactional
     public String sendEmailChangeRequest() {
         return null;
@@ -260,7 +259,7 @@ public class UserService implements UserDetailsService {
         try {
             this.emailService.sendEmail(user.getEmail(), subject, body);
         } catch (Exception e) {
-            System.err.println("Failed to send welcome email: " + e.getMessage());
+            logger.error("Failed to send welcome email: ", e);
         }
     }
 
@@ -271,7 +270,7 @@ public class UserService implements UserDetailsService {
         String body = "Olá " + user.getName() + " " + user.getSurname() +
                 ".\n\nPara concluir o seu cadastro e ativar a sua conta, por favor clique no link abaixo:\n" +
                 activationLink + "\n\n" +
-                "\nSe o link não funcionar, copie e cole o seguinte URL no seu navegador:\n\n" +
+                "\nSe o link não funcionar, copie e cole no seu navegador.\n\n" +
                 "Atenciosamente,\nEquipe Sonarfy";
         try {
             this.emailService.sendEmail(user.getEmail(), subject, body);
@@ -286,11 +285,14 @@ public class UserService implements UserDetailsService {
         User user = userRepository.findByEmailIgnoreCase(email)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
 
+        // TODO: Gerar o link de redefinição de senha com token JWT
+        String mockResetLink = baseUrl + "/reset-password?token=simulacao-temporaria";
+
         String subject = "Redefinição de senha - Sonarfy";
         String body = "Olá, " + user.getName() + " " + user.getSurname() +
                 "\n\nRecebemos uma solicitação para redefinir sua senha. " +
                 "\nPara redefinir sua senha, clique no link abaixo:\n" +
-                "[INSERIR O LINK AQUI" + //TODO: Gerar o link de redefinição de senha com token JWT
+                mockResetLink +
                 "Este link é válido por 15 minutos. Se você não solicitou essa alteração, ignore este e-mail." +
                 "\n\nAtenciosamente,\nEquipe Sonarfy";
 
@@ -300,5 +302,9 @@ public class UserService implements UserDetailsService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to send reset password email: " + e.getMessage());
         }
+    }
+
+    public String sendPasswordResetEmail() {
+        return "Password reset functionality is currently under construction.";
     }
 }

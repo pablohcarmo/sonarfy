@@ -16,6 +16,9 @@ public class JwtService {
     private String secretKey;
 
     public String generateEmailConfirmationToken(String email) {
+        if(email == null || email.isEmpty()) {
+            throw new IllegalArgumentException("Cannot generate token for a null or blank email.");
+        }
         Algorithm algorithm = Algorithm.HMAC256(secretKey);
 
         return JWT.create()
