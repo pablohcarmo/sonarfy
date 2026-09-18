@@ -21,7 +21,13 @@ public class AuthController {
         return ResponseEntity.ok("User registered successfully");
     }
 
-    @PostMapping("/verify")
+    @PostMapping("/resend-activation-email")
+    public ResponseEntity<String> resendActivationEmail(@RequestParam("email") String email) {
+        String result = userService.resendActivationEmail(email);
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/verify")
     public ResponseEntity<String> verifyEmail(@RequestParam("token") String token) {
         String result = userService.verifyToken(token);
 
@@ -35,8 +41,7 @@ public class AuthController {
 
     @PostMapping("/password-reset")
     public ResponseEntity<String> requestPasswordReset(@RequestParam("email") String email) {
-        String result = userService.sendPasswordResetEmail();
+        String result = userService.sendPasswordChangeRequest(email);
         return ResponseEntity.ok(result);
     }
-
 }
