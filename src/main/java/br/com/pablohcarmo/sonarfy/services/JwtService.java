@@ -15,15 +15,16 @@ public class JwtService {
     @Value("${api.security.token.secret}")
     private String secretKey;
 
-    public String generateEmailConfirmationToken(String email) {
-        if(email == null || email.isEmpty()) {
-            throw new IllegalArgumentException("Cannot generate token for a null or blank email.");
+    public String generateEmailConfirmationToken(String userId) {
+        if(userId == null || userId.isBlank()) {
+            throw new IllegalArgumentException("Cannot generate token for a null or blank user ID.");
         }
         Algorithm algorithm = Algorithm.HMAC256(secretKey);
 
+        // Gera um token JWT com o ID do usuário como assunto, um propósito específico e uma expiração de 15 minutos
         return JWT.create()
                 .withIssuer("sonarfy-api")
-                .withSubject(email)
+                .withSubject(userId)
                 .withClaim("purpose", "email_confirmation")
                 .withExpiresAt(Instant.now().plusSeconds(900)) // 15 minutes
                 .sign(algorithm);
