@@ -9,6 +9,8 @@ import br.com.pablohcarmo.sonarfy.entities.User;
 import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import jakarta.transaction.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -16,9 +18,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
-import java.util.List;
-import java.util.UUID;
+import java.util.Optional;
 
 @Service
 public class UserService implements UserDetailsService {
@@ -30,17 +30,17 @@ public class UserService implements UserDetailsService {
     private final PermissionRepository permissionRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
+    private final JwtService jwtService;
+    private static final Logger logger = LoggerFactory.getLogger(UserService.class);
 
-    public UserService (UserRepository userRepository, PermissionRepository permissionRepository, PasswordEncoder passwordEncoder, EmailService emailService) {
+    public UserService (UserRepository userRepository, PermissionRepository permissionRepository, PasswordEncoder passwordEncoder, EmailService emailService, JwtService jwtService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
         this.permissionRepository = permissionRepository;
+        this.jwtService = jwtService;
     }
 
-    // TODO - Login do usuário, podendo ser feito tanto pelo email quanto pelo handle
-    // Se quiser deixar explícito que é um processo de login,
-    // criar uma classe separada chamada AuthService com um método login(), mas o loadUserByUsername precisará continuar existindo intacto aqui no UserService para alimentar o sistema.
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         // Caso o usuário acesse com o handle, remove o "@" do início
@@ -82,65 +82,52 @@ public class UserService implements UserDetailsService {
                 .orElseThrow(() -> new RuntimeException("Default permission not found!"));
         user.setPermissionId(defaultPermission);
 
-        // Persiste usuário para que o token aponte para uma entidade gerenciada
         user = userRepository.save(user);
-    }
 
-    public void sendWelcomeEmail(User user, UUID uuidToken) {
-        String activationLink = baseUrl + "/verify?token=" + uuidToken.toString();
-        String subject = "Bem-vindo ao Sonarfy!";
-        String body = "Olá " + user.getName() + "\n\nSua conta foi criada com sucesso! " +
-                "Obrigado por se registrar no Sonarfy! Estamos felizes em tê-lo conosco." +
-                "\n\nPara ativar sua conta, por favor clique no link abaixo:\n" +
-                "\nSe o link não funcionar, copie e cole o seguinte URL no seu navegador:\n" +
-                activationLink + "\n\n" +
-                "Atenciosamente,\nEquipe Sonarfy";
-        try {
-            this.emailService.sendEmail(user.getEmail(), subject, body);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to send welcome email: " + e.getMessage());
-        }
+        String jwtToken = jwtService.generateEmailConfirmationToken(user.getId().toString());
+        sendActivationEmail(user, jwtToken);
     }
 
     @Transactional
-    public String resendEmailConfirmation(String email){
-        // Validação de input
-        if(email == null || email.isBlank()) {
-            return "Informe um e-mail válido para reenviar a confirmação.";
+    public String verifyToken(String jwtToken) {
+        if(jwtToken == null ||jwtToken.isBlank()) {
+            return "Invalid token provided for verification.";
         }
 
-        // Busca o usuário no banco de dados
-        User user = userRepository.findByEmailIgnoreCase(email)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado!"));
+        // Valida o token JWT extraindo o ID do usuário
+        String userIdFromJwt = jwtService.validateTokenAndGetEmail(jwtToken);
+
+        // Verifica se o ID do usuário foi extraído corretamente do token
+        if(userIdFromJwt == null || userIdFromJwt.isBlank()) {
+            return "Invalid or expired token. Please, request a new confirmation email.";
+        }
+
+        long userId;
+        try {
+            userId = Long.parseLong(userIdFromJwt);
+        } catch (NumberFormatException e) {
+            return "Invalid token format. Please, request a new confirmation email.";
+        }
+
+        // Verifica se o usuário existe pelo ID extraído do token
+        Optional<User> optionalUser = userRepository.findById(userId);
+        if(optionalUser.isEmpty()) {
+            return "User not found or account was deleted.";
+        }
+
+        // Caso encontre o usuário, instancia o objeto User e busca se ele já foi verificado
+        User user = optionalUser.get();
 
         // Verifica se o usuário já foi verificado
         if(user.isVerified()) {
-            return "O seu e-mail já foi confirmado. Você já pode fazer login.";
+            return "User already verified. You can log in.";
         }
 
-        // Envia o e-mail de confirmação
-        try {
-            return "E-mail de confirmação reenviado com sucesso! Verifique sua caixa de entrada.";
-        } catch (Exception e) {
-            // Se houver algum erro ao enviar o e-mail, lança uma exceção para cancelar o .save() do UUID,
-            // ou seja, não salva o newToken no banco de dados
-            throw new RuntimeException("Falha ao enviar o e-mail de confirmação: " + e.getMessage());
-        }
-    }
-
-    @Transactional
-    public String verifyToken(String uuidConverted) {
-        if(uuidConverted == null || uuidConverted.isBlank()) {
-            return "Token não fornecido.";
-        }
-        try {
-            // Conversão e busca do UUID no banco de dados
-            UUID uuid = UUID.fromString(uuidConverted);
-
-            return "E-mail confirmado com sucesso! Sua conta está ativada.";
-        } catch (IllegalArgumentException e) {
-            return "Formato do token inválido";
-        }
+        // Ativa o usuário e salva no banco de dados
+        user.setVerified(true);
+        userRepository.save(user);
+        sendWelcomeEmail(user);
+        return "E-mail verified successfully! You can now log in.";
     }
 
     public UserDto getUserRegister(String email) {
@@ -162,7 +149,7 @@ public class UserService implements UserDetailsService {
         user.setSurname(updateUserDto.getSurname());
         user.setBirthDate(updateUserDto.getBirthDate());
         user.setCity(updateUserDto.getCity());
-        user.setCity(updateUserDto.getCountry());
+        user.setCountry(updateUserDto.getCountry());
 
         userRepository.save(user);
         return getUserRegister(email);
@@ -180,8 +167,63 @@ public class UserService implements UserDetailsService {
         return getUserRegister(email);
     }
 
-    public String sendPasswordResetEmail() {
-        return null;
+    public void sendWelcomeEmail(User user) {
+        String subject = "Bem-vindo ao Sonarfy!";
+        String body = "Olá " + user.getName() + " " + user.getSurname() +
+                ".\n\nSua conta foi ativada com sucesso!\nEstamos felizes em tê-lo conosco." +
+                "\nVocê já pode fazer login no Sonarfy e começar a avaliar seus álbuns favoritos!\n\n" +
+                "Atenciosamente,\nEquipe Sonarfy";
+        try {
+            this.emailService.sendEmail(user.getEmail(), subject, body);
+        } catch (Exception e) {
+            logger.error("Failed to send welcome email: ", e);
+        }
+    }
+
+    public void sendActivationEmail(User user, String jwtToken) {
+        String activationLink = baseUrl + "/verify?token=" + jwtToken;
+
+        String subject = "Ative sua conta no Sonarfy!";
+        String body = "Olá " + user.getName() + " " + user.getSurname() +
+                ".\n\nPara concluir o seu cadastro e ativar a sua conta, por favor clique no link abaixo:\n" +
+                activationLink + "\n\n" +
+                "\nSe o link não funcionar, copie e cole no seu navegador.\n\n" +
+                "Atenciosamente,\nEquipe Sonarfy";
+        try {
+            this.emailService.sendEmail(user.getEmail(), subject, body);
+        } catch (Exception e) {
+            // Exceção para dar Rollback no cadastro se o link falhar
+            throw new RuntimeException("Failed to send activation token email: " + e.getMessage());
+        }
+    }
+
+    @Transactional
+    public String resendActivationEmail(String email){
+        // Validação de input
+        if(email == null || email.isBlank()) {
+            return "Invalid e-mail provided for resending confirmation.";
+        }
+
+        // Busca o usuário no banco de dados
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+
+        // Verifica se o usuário já foi verificado
+        if(user.isVerified()) {
+            return "User already verified. You can log in.";
+        }
+
+        // Gera um novo token JWT para o e-mail do usuário
+        String jwtToken = jwtService.generateEmailConfirmationToken(user.getId().toString());
+
+        // Envia o e-mail de confirmação
+        try {
+            sendActivationEmail(user, jwtToken);
+            return "Confirmation email resent successfully! Please check your inbox.";
+        } catch (Exception e) {
+            // O Rollback cancela qualquer transação pendente se o e-mail falhar
+            throw new RuntimeException("Failed to resend email confirmation: " + e.getMessage());
+        }
     }
 
     @Transactional
@@ -189,12 +231,16 @@ public class UserService implements UserDetailsService {
         User user = userRepository.findByEmailIgnoreCase(email)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
 
-    String subject = "Redefinição de senha - Sonarfy";
-    String body = "Olá, " + user.getName() + " " + user.getSurname() +
-            "\n\nRecebemos uma solicitação para redefinir sua senha. " +
-            "\nPara redefinir sua senha, clique no link abaixo:\n" +
-            "Este link é válido por 15 minutos. Se você não solicitou essa alteração, ignore este e-mail." +
-            "\n\nAtenciosamente,\nEquipe Sonarfy";
+        // TODO: Gerar o link de redefinição de senha com token JWT
+        String mockResetLink = baseUrl + "/reset-password?token=simulacao-temporaria";
+
+        String subject = "Redefinição de senha - Sonarfy";
+        String body = "Olá, " + user.getName() + " " + user.getSurname() +
+                "\n\nRecebemos uma solicitação para redefinir sua senha. " +
+                "\nPara redefinir sua senha, clique no link abaixo:\n" +
+                mockResetLink +
+                "\n\nEste link é válido por 15 minutos. Se você não solicitou essa alteração, ignore este e-mail." +
+                "\n\nAtenciosamente,\nEquipe Sonarfy";
 
         try {
             emailService.sendEmail(user.getEmail(), subject, body);
@@ -202,66 +248,5 @@ public class UserService implements UserDetailsService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to send reset password email: " + e.getMessage());
         }
-    }
-
-    @Transactional
-    public String sendEmailChangeRequest() {
-        return null;
-    }
-
-    public String resetPassword() {
-        return null;
-    }
-
-    public String updatePassword() {
-        return null;
-    }
-
-    public String validatePasswordResetToken() {
-        return null;
-    }
-
-    public String deleteAccount() {
-        return null;
-    }
-    public String deactivateAccount() {
-        return null;
-    }
-
-    // Verificar, pois o usuário pode reativar a conta logando novamente
-
-    public String reactivateAccount() {
-        return null;
-    }
-
-    public String changeAvatar() {
-        return null;
-    }
-
-    public String changeBiography() {
-        return null;
-    }
-
-    public String changeWallpaper() {
-        return null;
-    }
-
-    public String findUserByHandle() {
-        return null;
-    }
-
-    // TODO - verificar a necessidade de uma classe SocialService para lidar com as redes sociais,
-    //  ou se isso deve ser feito aqui mesmo no UserService
-
-    public String viewProfile() {
-        return null;
-    }
-
-    public String viewFollowers() {
-        return null;
-    }
-
-    public String viewFollowing() {
-        return null;
     }
 }
