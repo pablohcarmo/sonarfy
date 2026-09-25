@@ -4,6 +4,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -19,7 +20,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
                 // Desabilta o CSRF, pois APIs REST baseadas em tokens náo precisam dele
-                .csrf(csrf -> csrf.disable())
+                .csrf(AbstractHttpConfigurer::disable)
 
                 // Transforma a API em Stateless (náo guarda a sessão do usuário)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -27,15 +28,13 @@ public class SecurityConfig {
                 // Configuração de rotas
                 .authorizeHttpRequests(req -> {
                     req.requestMatchers(
-                            "/api/auth/**",
-                            "/verifiy-email/",
-                            "/reset-password/**"
+                            "/api/auth/**" // Libera todos os endpoints de autenticação (registro e login)
                     ).permitAll();
 
+                    // Qualquer outra rota do sistema exigirá um JWT válido para acesso
                     req.anyRequest().authenticated();
                 })
                 .build();
-
     }
 
     @Bean
