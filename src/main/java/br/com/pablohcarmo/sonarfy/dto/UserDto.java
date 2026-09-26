@@ -16,7 +16,6 @@ public class UserDto {
     private String biography;
     private LocalDate birthDate;
     private LocalDateTime creationDate;
-    private LocalDateTime lastLoginDate;
     private LocalDateTime lastUpdateDate;
 
     public UserDto(){
@@ -35,7 +34,6 @@ public class UserDto {
                    String biography,
                    LocalDate birthDate,
                    LocalDateTime creationDate,
-                   LocalDateTime lastLoginDate,
                    LocalDateTime lastUpdateDate
     ) {
         this.id = id;
@@ -51,7 +49,6 @@ public class UserDto {
         this.biography = biography;
         this.birthDate = birthDate;
         this.creationDate = creationDate;
-        this.lastLoginDate = lastLoginDate;
         this.lastUpdateDate = lastUpdateDate;
     }
 
@@ -153,14 +150,6 @@ public class UserDto {
 
     public void setCreationDate(LocalDateTime creationDate) {
         this.creationDate = creationDate;
-    }
-
-    public LocalDateTime getLastLoginDate() {
-        return lastLoginDate;
-    }
-
-    public void setLastLoginDate(LocalDateTime lastLoginDate) {
-        this.lastLoginDate = lastLoginDate;
     }
 
     public LocalDateTime getLastUpdateDate() {
