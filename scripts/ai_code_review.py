@@ -7,7 +7,7 @@ from google.antigravity import Agent, LocalAgentConfig
 
 DIFF_CHAR_LIMIT = 30000
 
-def run_git_command(args: list[str]) -> str:
+def run_git_command(args: list[str], strip: bool = True) -> str:
     """Executa comando git de forma segura com encoding resiliente. Lança exceção em caso de falha."""
     try:
         result = subprocess.run(
@@ -19,17 +19,30 @@ def run_git_command(args: list[str]) -> str:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
-        return result.stdout.strip()
+        return result.stdout.strip() if strip else result.stdout
     except subprocess.CalledProcessError as e:
         error_msg = e.stderr.strip() if e.stderr else str(e)
         print(f"Erro ao executar {' '.join(args)}: {error_msg}", file=sys.stderr)
         raise RuntimeError(f"Falha ao executar comando Git: {' '.join(args)}") from e
 
 def get_git_diff(base_ref: str) -> tuple[str, str]:
-    """Obtém o diff e as estatísticas dos arquivos modificados."""
+    """Obtém o diff e as estatísticas dos arquivos modificados em uma única execução Git."""
     target_ref = f"origin/{base_ref}...HEAD"
-    diff_stat = run_git_command(["git", "diff", "--stat", target_ref])
-    diff_text = run_git_command(["git", "diff", target_ref])
+    raw_output = run_git_command(["git", "diff", "--stat", "-p", target_ref], strip=False)
+
+    if not raw_output.strip():
+        return "", ""
+
+    patch_marker = "diff --git "
+    marker_idx = raw_output.find(patch_marker)
+
+    if marker_idx != -1:
+        diff_stat = raw_output[:marker_idx].strip()
+        diff_text = raw_output[marker_idx:]
+    else:
+        diff_stat = raw_output.strip()
+        diff_text = ""
+
     return diff_stat, diff_text
 
 def load_system_instructions() -> str:
