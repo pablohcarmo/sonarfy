@@ -8,7 +8,6 @@ permissions:
   contents: read
   pull-requests: write
 
-# Cancela execuções anteriores se novos commits forem enviados
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -38,7 +37,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          git fetch origin "$BASE_REF" --depth=1
+          git fetch origin "$BASE_REF"
 
       - name: Executar Agente Antigravity
         env:
