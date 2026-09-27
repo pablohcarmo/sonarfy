@@ -8,18 +8,20 @@ permissions:
   contents: read
   pull-requests: write
 
+# Cancela execuções anteriores se novos commits forem enviados
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   code-review:
     runs-on: ubuntu-latest
-
-    # Evita rodar em PRs abertos pelo próprio bot se aplicável
     if: github.actor != 'dependabot[bot]'
 
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
         with:
-          # fetch-depth: 0 é fundamental para que o git encontre o branch base e gere o diff
           fetch-depth: 0
 
       - name: Configurar Python
@@ -33,8 +35,10 @@ jobs:
           pip install google-antigravity
 
       - name: Garantir sincronização do branch base
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          git fetch origin ${{ github.base_ref }} --depth=1
+          git fetch origin "$BASE_REF" --depth=1
 
       - name: Executar Agente Antigravity
         env:
@@ -49,7 +53,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          if [ -f review_output.md ] && [ -s review_output.md ]; then
+          if [ -s review_output.md ]; then
             gh pr comment "$PR_NUMBER" --body-file review_output.md
           else
             echo "Nenhum arquivo review_output.md gerado ou arquivo vazio."

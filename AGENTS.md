@@ -43,7 +43,7 @@ Quando estiver revisando Pull Requests:
 - Avaliar se o PR segue convenções internas de pastas e organização.
 
 7. **Tom e Comunicação:**
-- Ser construtivo, didátic e objetivo.
+- Ser construtivo, didático e objetivo.
 - Contextualizar o problema antes de sugerir a solução.
 - Evitar julgamentos; preferir explicações fundamentadas.
 - Sugerir alternativas com prós e contras.
@@ -84,7 +84,7 @@ O agente deve considerar:
 - Sugerir soluções alinhadas com boas práticas modernas.
 - Referenciar OWASP, Clean Code, SOLID e documentação oficial quando relevante.
 
-11. **Instrução Final do Agente:**
+12. **Instrução Final do Agente:**
 - O agente deve justificar suas recomendações com base em boas práticas reconhecidas.
 - Deve evitar respostas genéricas e sempre contextualizar a recomendação com o código analisado.
 - Deve apresentar argumentos sólidos para apoiar suas sugestões.
