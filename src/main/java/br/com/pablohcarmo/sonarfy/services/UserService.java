@@ -1,6 +1,8 @@
 package br.com.pablohcarmo.sonarfy.services;
 
 import br.com.pablohcarmo.sonarfy.dto.NewUserDto;
+import br.com.pablohcarmo.sonarfy.dto.UpdateProfileDto;
+import br.com.pablohcarmo.sonarfy.dto.UpdateUserDto;
 import br.com.pablohcarmo.sonarfy.dto.UserDto;
 import br.com.pablohcarmo.sonarfy.entities.Permission;
 import br.com.pablohcarmo.sonarfy.entities.User;
@@ -135,7 +137,34 @@ public class UserService implements UserDetailsService {
         return new UserDto(user.getId(), user.getName(), user.getSurname(), user.getHandle(), user.getEmail(),
                 user.isActive(), user.getCity(), user.getCountry(), user.getAvatar(), user.getWallpaper(),
                 user.getBiography(), user.getBirthDate(), user.getCreationDate().toLocalDateTime(),
-                user.getLastUpdateDate().toLocalDateTime());
+                user.getLastUpdateDate().toLocalDateTime()); // lastLoginDate removido com sucesso
+    }
+
+    public UserDto updateRegister(String email, UpdateUserDto updateUserDto) {
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+
+        // Atualiza os campos do usuário com os dados do DTO
+        user.setName( updateUserDto.getName());
+        user.setSurname(updateUserDto.getSurname());
+        user.setBirthDate(updateUserDto.getBirthDate());
+        user.setCity(updateUserDto.getCity());
+        user.setCountry(updateUserDto.getCountry());
+
+        userRepository.save(user);
+        return getUserRegister(email);
+    }
+
+    public UserDto updateProfile(String email, UpdateProfileDto updateProfileDto) {
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+
+        user.setAvatar(updateProfileDto.getAvatar());
+        user.setWallpaper(updateProfileDto.getWallpaper());
+        user.setBiography(updateProfileDto.getBiography());
+
+        userRepository.save(user);
+        return getUserRegister(email);
     }
 
 
