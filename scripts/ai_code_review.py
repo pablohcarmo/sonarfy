@@ -8,12 +8,20 @@ from google.antigravity import Agent, LocalAgentConfig
 DIFF_CHAR_LIMIT = 30000
 
 def run_git_command(args: list[str]) -> str:
-    """Executa comando git de forma segura."""
+    """Executa comando git de forma segura. Lança exceção em caso de falha."""
     try:
-        return subprocess.check_output(args, text=True, stderr=subprocess.PIPE).strip()
+        result = subprocess.run(
+            args,
+            text=True,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        return result.stdout.strip()
     except subprocess.CalledProcessError as e:
-        print(f"Erro ao executar {' '.join(args)}: {e.stderr.strip()}", file=sys.stderr)
-        return ""
+        error_msg = e.stderr.strip() if e.stderr else str(e)
+        print(f"Erro ao executar {' '.join(args)}: {error_msg}", file=sys.stderr)
+        raise RuntimeError(f"Falha ao executar comando Git: {' '.join(args)}") from e
 
 def get_git_diff(base_ref: str) -> tuple[str, str]:
     """Obtém o diff e as estatísticas dos arquivos modificados."""
@@ -60,7 +68,13 @@ async def run_review():
         return
 
     base_ref = os.getenv("GITHUB_BASE_REF", "main")
-    diff_stat, diff_output = get_git_diff(base_ref)
+
+    # Captura falha no Git e falha o CI explicitamente
+    try:
+        diff_stat, diff_output = get_git_diff(base_ref)
+    except Exception as e:
+        print(f"Falha na extração do diff: {e}", file=sys.stderr)
+        sys.exit(1)
 
     if not diff_output.strip():
         print("Nenhuma alteração de código encontrada para revisar.")
