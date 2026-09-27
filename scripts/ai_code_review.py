@@ -8,11 +8,13 @@ from google.antigravity import Agent, LocalAgentConfig
 DIFF_CHAR_LIMIT = 30000
 
 def run_git_command(args: list[str]) -> str:
-    """Executa comando git de forma segura. Lança exceção em caso de falha."""
+    """Executa comando git de forma segura com encoding resiliente. Lança exceção em caso de falha."""
     try:
         result = subprocess.run(
             args,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
@@ -69,7 +71,6 @@ async def run_review():
 
     base_ref = os.getenv("GITHUB_BASE_REF", "main")
 
-    # Captura falha no Git e falha o CI explicitamente
     try:
         diff_stat, diff_output = get_git_diff(base_ref)
     except Exception as e:
@@ -82,31 +83,38 @@ async def run_review():
 
     system_instructions = load_system_instructions()
     config = LocalAgentConfig(system_instructions=system_instructions)
+    prompt = prepare_diff_prompt(diff_stat, diff_output)
 
-    async with Agent(config) as agent:
-        prompt = prepare_diff_prompt(diff_stat, diff_output)
+    final_review = ""
+    max_attempts = 3
+    base_delay = 3
 
-        final_review = ""
-        max_attempts = 3
-        for attempt in range(max_attempts):
-            try:
+    for attempt in range(max_attempts):
+        try:
+            # Instancia o agente a cada tentativa para garantir sessão 100% limpa
+            async with Agent(config) as agent:
                 response = await agent.chat(prompt)
                 review_body = []
                 async for token in response:
                     review_body.append(token)
-                final_review = "".join(review_body)
-                break
-            except Exception as e:
-                wait_time = 2 ** (attempt + 1)
-                if attempt < max_attempts - 1:
-                    print(f"Tentativa {attempt + 1} falhou ({e}). Tentando novamente em {wait_time}s...")
-                    await asyncio.sleep(wait_time)
-                else:
-                    raise e
 
-        if final_review.strip():
-            Path("review_output.md").write_text(final_review, encoding="utf-8")
-            print("Revisão gerada com sucesso em review_output.md.")
+                candidate_text = "".join(review_body).strip()
+                if not candidate_text:
+                    raise RuntimeError("O modelo retornou uma resposta vazia.")
+
+                final_review = candidate_text
+                break
+        except Exception as e:
+            wait_time = base_delay * (2 ** attempt)
+            if attempt < max_attempts - 1:
+                print(f"Tentativa {attempt + 1} falhou ({e}). Tentando novamente em {wait_time}s...", file=sys.stderr)
+                await asyncio.sleep(wait_time)
+            else:
+                print(f"Todas as {max_attempts} tentativas falharam: {e}", file=sys.stderr)
+                raise e
+
+    Path("review_output.md").write_text(final_review, encoding="utf-8")
+    print("Revisão gerada com sucesso em review_output.md.")
 
 if __name__ == "__main__":
     asyncio.run(run_review())
