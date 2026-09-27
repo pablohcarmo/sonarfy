@@ -1,11 +1,13 @@
 import os
 import sys
+import re
 import asyncio
 import subprocess
 from pathlib import Path
 from google.antigravity import Agent, LocalAgentConfig
 
 DIFF_CHAR_LIMIT = 30000
+MAX_WAIT_TIME_SECONDS = 60.0  # Limite máximo de espera para não travar o runner de CI
 
 def run_git_command(args: list[str], strip: bool = True) -> str:
     """Executa comando git de forma segura com encoding resiliente. Lança exceção em caso de falha."""
@@ -26,22 +28,12 @@ def run_git_command(args: list[str], strip: bool = True) -> str:
         raise RuntimeError(f"Falha ao executar comando Git: {' '.join(args)}") from e
 
 def get_git_diff(base_ref: str) -> tuple[str, str]:
-    """Obtém o diff e as estatísticas dos arquivos modificados em uma única execução Git."""
+    """Obtém as estatísticas e o diff dos arquivos modificados de forma robusta e independente."""
     target_ref = f"origin/{base_ref}...HEAD"
-    raw_output = run_git_command(["git", "diff", "--stat", "-p", target_ref], strip=False)
-
-    if not raw_output.strip():
-        return "", ""
-
-    patch_marker = "diff --git "
-    marker_idx = raw_output.find(patch_marker)
-
-    if marker_idx != -1:
-        diff_stat = raw_output[:marker_idx].strip()
-        diff_text = raw_output[marker_idx:]
-    else:
-        diff_stat = raw_output.strip()
-        diff_text = ""
+    
+    # Executa comandos dedicados para evitar parsing frágil de strings combinadas
+    diff_stat = run_git_command(["git", "diff", "--stat", target_ref])
+    diff_text = run_git_command(["git", "diff", "-p", target_ref], strip=False)
 
     return diff_stat, diff_text
 
@@ -121,14 +113,19 @@ async def run_review():
             error_str = str(e)
             is_quota_error = "429" in error_str or "RESOURCE_EXHAUSTED" in error_str
 
-            # Calcula o tempo de espera respeitando o retryDelay solicitado pela API do Gemini
             wait_time = base_delay * (2 ** attempt)
             if is_quota_error:
-                import re
                 match = re.search(r"retry in (\d+(?:\.\d+)?)s", error_str, re.IGNORECASE)
                 if match:
-                    # Aguarda o tempo solicitado pela API + 1s de margem
-                    wait_time = max(wait_time, float(match.group(1)) + 1.0)
+                    requested_delay = float(match.group(1)) + 1.0
+                    if requested_delay > MAX_WAIT_TIME_SECONDS:
+                        print(
+                            f"[Aviso] Limite de cota atingido com tempo de espera excessivo ({requested_delay:.1f}s). "
+                            "Ignorando review para não prender o runner do CI.",
+                            file=sys.stderr
+                        )
+                        return
+                    wait_time = max(wait_time, requested_delay)
 
             if attempt < max_attempts - 1:
                 print(f"Tentativa {attempt + 1} falhou ({e}). Tentando novamente em {wait_time:.1f}s...", file=sys.stderr)
