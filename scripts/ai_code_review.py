@@ -118,11 +118,29 @@ async def run_review():
                 final_review = candidate_text
                 break
         except Exception as e:
+            error_str = str(e)
+            is_quota_error = "429" in error_str or "RESOURCE_EXHAUSTED" in error_str
+
+            # Calcula o tempo de espera respeitando o retryDelay solicitado pela API do Gemini
             wait_time = base_delay * (2 ** attempt)
+            if is_quota_error:
+                import re
+                match = re.search(r"retry in (\d+(?:\.\d+)?)s", error_str, re.IGNORECASE)
+                if match:
+                    # Aguarda o tempo solicitado pela API + 1s de margem
+                    wait_time = max(wait_time, float(match.group(1)) + 1.0)
+
             if attempt < max_attempts - 1:
-                print(f"Tentativa {attempt + 1} falhou ({e}). Tentando novamente em {wait_time}s...", file=sys.stderr)
+                print(f"Tentativa {attempt + 1} falhou ({e}). Tentando novamente em {wait_time:.1f}s...", file=sys.stderr)
                 await asyncio.sleep(wait_time)
             else:
+                if is_quota_error:
+                    print(
+                        "[Aviso] Limite de cota da API Gemini atingido (HTTP 429). "
+                        "Ignorando review nesta execução para não bloquear o pipeline de CI.",
+                        file=sys.stderr
+                    )
+                    return
                 print(f"Todas as {max_attempts} tentativas falharam: {e}", file=sys.stderr)
                 raise e
 
