@@ -1,0 +1,57 @@
+name: Antigravity Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  code-review:
+    runs-on: ubuntu-latest
+
+    # Evita rodar em PRs abertos pelo próprio bot se aplicável
+    if: github.actor != 'dependabot[bot]'
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+        with:
+          # fetch-depth: 0 é fundamental para que o git encontre o branch base e gere o diff
+          fetch-depth: 0
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-antigravity
+
+      - name: Garantir sincronização do branch base
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+
+      - name: Executar Agente Antigravity
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+        run: |
+          python src/main/infra/scripts/ai_code_review.py
+
+      - name: Publicar Comentário no PR
+        if: success()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -f review_output.md ] && [ -s review_output.md ]; then
+            gh pr comment "$PR_NUMBER" --body-file review_output.md
+          else
+            echo "Nenhum arquivo review_output.md gerado ou arquivo vazio."
+          fi
