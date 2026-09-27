@@ -41,7 +41,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: |
-          python src/main/infra/scripts/ai_code_review.py
+          python scripts/ai_code_review.py
 
       - name: Publicar Comentário no PR
         if: success()
