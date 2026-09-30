@@ -28,7 +28,8 @@ public class SecurityConfig {
                 // Configuração de rotas
                 .authorizeHttpRequests(req -> {
                     req.requestMatchers(
-                            "/api/auth/**" // Libera todos os endpoints de autenticação (registro e login)
+                            "/api/auth/**", // Libera todos os endpoints de autenticação (registro e login)
+                            "/error/**" // Libera todos os endpoints de erro (para exibir mensagens de erro)
                     ).permitAll();
 
                     // Qualquer outra rota do sistema exigirá um JWT válido para acesso

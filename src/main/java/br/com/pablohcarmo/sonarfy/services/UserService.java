@@ -12,12 +12,16 @@ import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.Optional;
 
 @Service
@@ -41,17 +45,27 @@ public class UserService implements UserDetailsService {
         this.jwtService = jwtService;
     }
 
-    @Override
-    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        // Caso o usuário acesse com o handle, remove o "@" do início
-        String cleanUsername = username.startsWith("@") ? username.substring(1) : username;
-
-        return userRepository.findByEmailIgnoreCaseOrHandleIgnoreCase(cleanUsername, cleanUsername)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
-    }
-
     @Transactional
     public void newUser(NewUserDto newUserDto) {
+        // Validação de idade mínima (13 anos)
+        LocalDate birthDate = newUserDto.getBirthDate();
+
+        if(birthDate == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Birth date is required."
+            );
+        }
+
+        int minimumAge = Period.between(birthDate, LocalDate.now()).getYears();
+
+        if(minimumAge < 13) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "User must be at least 13 years old to register."
+            );
+        }
+
         // Limpar o handle, caso o usuário tenha digitado com "@"
         String cleanHandle = newUserDto.getHandle().startsWith("@")
                 ? newUserDto.getHandle().substring(1)
@@ -63,7 +77,10 @@ public class UserService implements UserDetailsService {
         ).isPresent();
 
         if (userExists) {
-            throw new RuntimeException("User with this email or handle already exists!");
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "User with this email or handle already exists!"
+            );
         }
 
         User user = new User();
@@ -86,6 +103,15 @@ public class UserService implements UserDetailsService {
 
         String jwtToken = jwtService.generateEmailConfirmationToken(user.getId().toString());
         sendActivationEmail(user, jwtToken);
+    }
+
+    @Override
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        // Caso o usuário acesse com o handle, remove o "@" do início
+        String cleanUsername = username.startsWith("@") ? username.substring(1) : username;
+
+        return userRepository.findByEmailIgnoreCaseOrHandleIgnoreCase(cleanUsername, cleanUsername)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
     }
 
     @Transactional
