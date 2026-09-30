@@ -3,6 +3,7 @@ package br.com.pablohcarmo.sonarfy.controllers;
 import br.com.pablohcarmo.sonarfy.dto.LoginDto;
 import br.com.pablohcarmo.sonarfy.dto.NewUserDto;
 import br.com.pablohcarmo.sonarfy.services.UserService;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,7 +17,7 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<?> registerUser(@RequestBody NewUserDto newUserDto) {
+    public ResponseEntity<?> registerUser(@Valid @RequestBody NewUserDto newUserDto) {
         userService.newUser(newUserDto);
         return ResponseEntity.ok("User registered successfully");
     }
