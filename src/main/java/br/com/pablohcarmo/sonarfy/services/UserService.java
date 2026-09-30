@@ -30,6 +30,9 @@ public class UserService implements UserDetailsService {
     @Value("${app.base-url}")
     private String baseUrl;
 
+    @Value("${app.frontend-url}")
+    private String frontendUrl;
+
     private final UserRepository userRepository;
     private final PermissionRepository permissionRepository;
     private final PasswordEncoder passwordEncoder;
@@ -114,6 +117,90 @@ public class UserService implements UserDetailsService {
                 .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
     }
 
+    public UserDto getUserRegister(String email) {
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+
+        return new UserDto(user.getId(), user.getName(), user.getSurname(), user.getHandle(), user.getEmail(),
+                user.isActive(), user.getCity(), user.getCountry(), user.getAvatar(), user.getWallpaper(),
+                user.getBiography(), user.getBirthDate(), user.getCreationDate().toLocalDateTime(),
+                user.getLastUpdateDate().toLocalDateTime()); // lastLoginDate removido com sucesso
+    }
+
+    public UserDto updateRegister(String email, UpdateUserDto updateUserDto) {
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+
+        // Atualiza os campos do usuário com os dados do DTO
+        user.setName( updateUserDto.getName());
+        user.setSurname(updateUserDto.getSurname());
+        user.setBirthDate(updateUserDto.getBirthDate());
+        user.setCity(updateUserDto.getCity());
+        user.setCountry(updateUserDto.getCountry());
+
+        userRepository.save(user);
+        return getUserRegister(email);
+    }
+
+    public UserDto updateProfile(String email, UpdateProfileDto updateProfileDto) {
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+
+        user.setAvatar(updateProfileDto.getAvatar());
+        user.setWallpaper(updateProfileDto.getWallpaper());
+        user.setBiography(updateProfileDto.getBiography());
+
+        userRepository.save(user);
+        return getUserRegister(email);
+    }
+
+
+    public void sendActivationEmail(User user, String jwtToken) {
+        String activationLink = frontendUrl + "/verify.html?token=" + jwtToken;
+
+        String subject = "Ative sua conta no Sonarfy!";
+        String body = "Olá " + user.getName() + " " + user.getSurname() +
+                ".\n\nPara concluir o seu cadastro e ativar a sua conta, por favor clique no link abaixo:\n" +
+                activationLink + "\n\n" +
+                "\nSe o link não funcionar, copie e cole no seu navegador.\n\n" +
+                "Atenciosamente,\nEquipe Sonarfy";
+        try {
+            this.emailService.sendEmail(user.getEmail(), subject, body);
+        } catch (Exception e) {
+            // Exceção para dar Rollback no cadastro se o link falhar
+            throw new RuntimeException("Failed to send activation token email: " + e.getMessage());
+        }
+    }
+
+    @Transactional
+    public String resendActivationEmail(String email){
+        // Validação de input
+        if(email == null || email.isBlank()) {
+            return "Invalid e-mail provided for resending confirmation.";
+        }
+
+        // Busca o usuário no banco de dados
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+
+        // Verifica se o usuário já foi verificado
+        if(user.isVerified()) {
+            return "User already verified. You can log in.";
+        }
+
+        // Gera um novo token JWT para o e-mail do usuário
+        String jwtToken = jwtService.generateEmailConfirmationToken(user.getId().toString());
+
+        // Envia o e-mail de confirmação
+        try {
+            sendActivationEmail(user, jwtToken);
+            return "Confirmation email resent successfully! Please check your inbox.";
+        } catch (Exception e) {
+            // O Rollback cancela qualquer transação pendente se o e-mail falhar
+            throw new RuntimeException("Failed to resend email confirmation: " + e.getMessage());
+        }
+    }
+
     @Transactional
     public String verifyToken(String jwtToken) {
         if(jwtToken == null ||jwtToken.isBlank()) {
@@ -156,44 +243,6 @@ public class UserService implements UserDetailsService {
         return "E-mail verified successfully! You can now log in.";
     }
 
-    public UserDto getUserRegister(String email) {
-        User user = userRepository.findByEmailIgnoreCase(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
-
-        return new UserDto(user.getId(), user.getName(), user.getSurname(), user.getHandle(), user.getEmail(),
-                user.isActive(), user.getCity(), user.getCountry(), user.getAvatar(), user.getWallpaper(),
-                user.getBiography(), user.getBirthDate(), user.getCreationDate().toLocalDateTime(),
-                user.getLastUpdateDate().toLocalDateTime()); // lastLoginDate removido com sucesso
-    }
-
-    public UserDto updateRegister(String email, UpdateUserDto updateUserDto) {
-        User user = userRepository.findByEmailIgnoreCase(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
-
-        // Atualiza os campos do usuário com os dados do DTO
-        user.setName( updateUserDto.getName());
-        user.setSurname(updateUserDto.getSurname());
-        user.setBirthDate(updateUserDto.getBirthDate());
-        user.setCity(updateUserDto.getCity());
-        user.setCountry(updateUserDto.getCountry());
-
-        userRepository.save(user);
-        return getUserRegister(email);
-    }
-
-    public UserDto updateProfile(String email, UpdateProfileDto updateProfileDto) {
-        User user = userRepository.findByEmailIgnoreCase(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
-
-        user.setAvatar(updateProfileDto.getAvatar());
-        user.setWallpaper(updateProfileDto.getWallpaper());
-        user.setBiography(updateProfileDto.getBiography());
-
-        userRepository.save(user);
-        return getUserRegister(email);
-    }
-
-
     public void sendWelcomeEmail(User user) {
         String subject = "Bem-vindo ao Sonarfy!";
         String body = "Olá " + user.getName() + " " + user.getSurname() +
@@ -204,52 +253,6 @@ public class UserService implements UserDetailsService {
             this.emailService.sendEmail(user.getEmail(), subject, body);
         } catch (Exception e) {
             logger.error("Failed to send welcome email: ", e);
-        }
-    }
-
-    public void sendActivationEmail(User user, String jwtToken) {
-        String activationLink = baseUrl + "/verify?token=" + jwtToken;
-
-        String subject = "Ative sua conta no Sonarfy!";
-        String body = "Olá " + user.getName() + " " + user.getSurname() +
-                ".\n\nPara concluir o seu cadastro e ativar a sua conta, por favor clique no link abaixo:\n" +
-                activationLink + "\n\n" +
-                "\nSe o link não funcionar, copie e cole no seu navegador.\n\n" +
-                "Atenciosamente,\nEquipe Sonarfy";
-        try {
-            this.emailService.sendEmail(user.getEmail(), subject, body);
-        } catch (Exception e) {
-            // Exceção para dar Rollback no cadastro se o link falhar
-            throw new RuntimeException("Failed to send activation token email: " + e.getMessage());
-        }
-    }
-
-    @Transactional
-    public String resendActivationEmail(String email){
-        // Validação de input
-        if(email == null || email.isBlank()) {
-            return "Invalid e-mail provided for resending confirmation.";
-        }
-
-        // Busca o usuário no banco de dados
-        User user = userRepository.findByEmailIgnoreCase(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
-
-        // Verifica se o usuário já foi verificado
-        if(user.isVerified()) {
-            return "User already verified. You can log in.";
-        }
-
-        // Gera um novo token JWT para o e-mail do usuário
-        String jwtToken = jwtService.generateEmailConfirmationToken(user.getId().toString());
-
-        // Envia o e-mail de confirmação
-        try {
-            sendActivationEmail(user, jwtToken);
-            return "Confirmation email resent successfully! Please check your inbox.";
-        } catch (Exception e) {
-            // O Rollback cancela qualquer transação pendente se o e-mail falhar
-            throw new RuntimeException("Failed to resend email confirmation: " + e.getMessage());
         }
     }
 
