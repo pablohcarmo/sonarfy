@@ -32,10 +32,10 @@ public class AuthController {
     public ResponseEntity<String> verifyEmail(@RequestParam("token") String token) {
         String result = userService.verifyToken(token);
 
-        if(result.contains("success")) {
+        if(result.contains("success") || result.contains("already verified")) {
             return ResponseEntity.ok(result);
         } else {
-            // Retorna 400 Bad Request com a mensagem de erro se o token for inválido ou expirado
+            // Retorna 400 Bad Request apenas se o o token for inválido, corrompido ou expirado
             return ResponseEntity.badRequest().body(result);
         }
     }
