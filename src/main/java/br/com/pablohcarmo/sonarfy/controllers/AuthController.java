@@ -2,6 +2,7 @@ package br.com.pablohcarmo.sonarfy.controllers;
 
 import br.com.pablohcarmo.sonarfy.dto.LoginDto;
 import br.com.pablohcarmo.sonarfy.dto.NewUserDto;
+import br.com.pablohcarmo.sonarfy.dto.UpdatePendingEmailDto;
 import br.com.pablohcarmo.sonarfy.services.UserService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -38,6 +39,12 @@ public class AuthController {
             // Retorna 400 Bad Request apenas se o o token for inválido, corrompido ou expirado
             return ResponseEntity.badRequest().body(result);
         }
+    }
+
+    @PatchMapping("/update-pending-email")
+    public ResponseEntity<String> updatePendingEmail(@Valid @RequestBody UpdatePendingEmailDto dto) {
+        String result = userService.updatePendingEmail(dto.getHandle(), dto.getNewEmail());
+        return ResponseEntity.ok(result);
     }
 
     @PostMapping("/password-reset")
