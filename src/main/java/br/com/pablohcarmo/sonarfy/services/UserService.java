@@ -9,6 +9,7 @@ import br.com.pablohcarmo.sonarfy.entities.User;
 import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import jakarta.transaction.Transactional;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -70,9 +71,7 @@ public class UserService implements UserDetailsService {
         }
 
         // Limpar o handle, caso o usuário tenha digitado com "@"
-        String cleanHandle = newUserDto.getHandle().startsWith("@")
-                ? newUserDto.getHandle().substring(1)
-                : newUserDto.getHandle();
+        String cleanHandle = cleanHandle(newUserDto.getHandle());
 
         // Verificar se já existe um usuário com o mesmo email ou handle
         boolean userExists = userRepository.findByEmailIgnoreCaseOrHandleIgnoreCase(
@@ -89,7 +88,7 @@ public class UserService implements UserDetailsService {
         User user = new User();
         user.setName(newUserDto.getName());
         user.setSurname(newUserDto.getSurname());
-        user.setHandle((cleanHandle));
+        user.setHandle(cleanHandle);
         user.setEmail(newUserDto.getEmail());
         user.setPassword(passwordEncoder.encode(newUserDto.getPassword()));
         user.setCity(newUserDto.getCity());
@@ -109,11 +108,9 @@ public class UserService implements UserDetailsService {
     }
 
     @Override
-    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        // Caso o usuário acesse com o handle, remove o "@" do início
-        String cleanUsername = username.startsWith("@") ? username.substring(1) : username;
-
-        return userRepository.findByEmailIgnoreCaseOrHandleIgnoreCase(cleanUsername, cleanUsername)
+    public UserDetails loadUserByUsername(@NonNull String login) throws UsernameNotFoundException {
+        String cleanLogin = cleanHandle(login);
+        return userRepository.findByEmailIgnoreCaseOrHandleIgnoreCase(cleanLogin, cleanLogin)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
     }
 
@@ -202,6 +199,42 @@ public class UserService implements UserDetailsService {
     }
 
     @Transactional
+    public String updatePendingEmail(String handle, String newEmail) {
+        // Sanitização do handle
+        String cleanHandle = cleanHandle(handle);
+
+        // Validação de input
+        if(cleanHandle == null || cleanHandle.isBlank() || newEmail == null || newEmail.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Handle and new email are required.");
+        }
+
+        // Busca o usuário no banco de dados
+        User user = userRepository.findByHandleIgnoreCase(cleanHandle)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found!"));
+
+        // Verifica se o usuário já foi verificado
+        if(user.isVerified()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User already verified. You can log in.");
+        }
+
+        // Verifica se o novo e-mail está vinculado a outro usuário
+        if(userRepository.findByEmailIgnoreCase(newEmail).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "E-mail is already in use by another account.");
+        }
+
+        // Atualiza o e-mail pendente do usuário
+        user.setEmail(newEmail);
+        userRepository.save(user);
+
+        // Gera um novo token JWT para o novo e-mail do usuário
+        String jwtToken = jwtService.generateEmailConfirmationToken(user.getId().toString());
+
+        // Envia o e-mail de confirmação para o novo e-mail
+        sendActivationEmail(user, jwtToken);
+        return "Pending email updated successfully!";
+    }
+
+    @Transactional
     public String verifyToken(String jwtToken) {
         if(jwtToken == null ||jwtToken.isBlank()) {
             return "Invalid token provided for verification.";
@@ -278,5 +311,15 @@ public class UserService implements UserDetailsService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to send reset password email: " + e.getMessage());
         }
+    }
+
+    private String cleanHandle(String handle) {
+        if (handle == null) {
+            return  null;
+        }
+
+        // Limpa espaços antes e depois do handle e remove o "@" do início, se houver
+        String trimmed = handle.trim();
+        return trimmed.startsWith("@") ? trimmed.substring(1) : trimmed;
     }
 }
