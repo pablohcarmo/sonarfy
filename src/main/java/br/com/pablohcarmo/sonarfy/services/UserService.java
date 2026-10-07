@@ -1,9 +1,6 @@
 package br.com.pablohcarmo.sonarfy.services;
 
-import br.com.pablohcarmo.sonarfy.dto.NewUserDto;
-import br.com.pablohcarmo.sonarfy.dto.UpdateProfileDto;
-import br.com.pablohcarmo.sonarfy.dto.UpdateUserDto;
-import br.com.pablohcarmo.sonarfy.dto.UserDto;
+import br.com.pablohcarmo.sonarfy.dto.*;
 import br.com.pablohcarmo.sonarfy.entities.Permission;
 import br.com.pablohcarmo.sonarfy.entities.User;
 import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
@@ -21,7 +18,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Duration;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.Period;
 import java.util.Optional;
 
@@ -41,6 +40,11 @@ public class UserService implements UserDetailsService {
     private final JwtService jwtService;
     private static final Logger logger = LoggerFactory.getLogger(UserService.class);
 
+    @Value("${app.email.cooldown-seconds:30}")
+    private static final long emailCooldownSeconds = 30;
+
+
+
     public UserService (UserRepository userRepository, PermissionRepository permissionRepository, PasswordEncoder passwordEncoder, EmailService emailService, JwtService jwtService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
@@ -50,7 +54,7 @@ public class UserService implements UserDetailsService {
     }
 
     @Transactional
-    public void newUser(NewUserDto newUserDto) {
+    public RegisterResponseDto newUser(NewUserDto newUserDto) {
         // Validação de idade mínima (13 anos)
         LocalDate birthDate = newUserDto.getBirthDate();
 
@@ -103,8 +107,19 @@ public class UserService implements UserDetailsService {
 
         user = userRepository.save(user);
 
-        String jwtToken = jwtService.generateEmailConfirmationToken(user.getId().toString());
-        sendActivationEmail(user, jwtToken);
+        String userId = user.getId().toString();
+        String confirmationToken = jwtService.generateEmailConfirmationToken(userId);
+        sendActivationEmail(user, confirmationToken);
+
+        // Gera o token de posse do cadastro para autorizar retificação segura pelo frontend
+        String registrationToken = jwtService.generateRegistrationToken(userId);
+
+        return new RegisterResponseDto(
+                "User registered successfully! Please check your inbox.",
+                user.getEmail(),
+                registrationToken,
+                JwtService.PENDING_REGISTRATION_TTL_SECONDS
+        );
     }
 
     @Override
@@ -161,8 +176,17 @@ public class UserService implements UserDetailsService {
                 activationLink + "\n\n" +
                 "\nSe o link não funcionar, copie e cole no seu navegador.\n\n" +
                 "Atenciosamente,\nEquipe Sonarfy";
+
+        // Checa o cooldown antes de enviar o e-mail
+        checkEmailCooldown(user);
+
         try {
+            // Dispara o e-mail de ativação
             this.emailService.sendEmail(user.getEmail(), subject, body);
+
+            // Atualiza a timestamp no banco de dados
+            user.setLastEmailSentAt(OffsetDateTime.now());
+            userRepository.save(user);
         } catch (Exception e) {
             // Exceção para dar Rollback no cadastro se o link falhar
             throw new RuntimeException("Failed to send activation token email: " + e.getMessage());
@@ -188,6 +212,9 @@ public class UserService implements UserDetailsService {
         // Gera um novo token JWT para o e-mail do usuário
         String jwtToken = jwtService.generateEmailConfirmationToken(user.getId().toString());
 
+        // Checa o cooldown antes de enviar o e-mail
+        checkEmailCooldown(user);
+
         // Envia o e-mail de confirmação
         try {
             sendActivationEmail(user, jwtToken);
@@ -199,37 +226,32 @@ public class UserService implements UserDetailsService {
     }
 
     @Transactional
-    public String updatePendingEmail(String handle, String newEmail) {
-        // Sanitização do handle
-        String cleanHandle = cleanHandle(handle);
-
+    public String updatePendingEmail(Long userId, String newEmail) {
         // Validação de input
-        if(cleanHandle == null || cleanHandle.isBlank() || newEmail == null || newEmail.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Handle and new email are required.");
+        if(userId == null || newEmail == null || newEmail.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User ID and new email are required.");
         }
 
-        // Busca o usuário no banco de dados
-        User user = userRepository.findByHandleIgnoreCase(cleanHandle)
+        // 1. Busca o usuário pelo ID verificado no token
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found!"));
 
-        // Verifica se o usuário já foi verificado
+        // 2. Verifica se o usuário já foi verificado
         if(user.isVerified()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User already verified. You can log in.");
         }
 
-        // Verifica se o novo e-mail está vinculado a outro usuário
+        // 3. Verifica se o novo e-mail está vinculado a outro usuário
         if(userRepository.findByEmailIgnoreCase(newEmail).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "E-mail is already in use by another account.");
         }
 
-        // Atualiza o e-mail pendente do usuário
+        // 4. Atualiza o e-mail e persiste a alteração no banco de dados
         user.setEmail(newEmail);
         userRepository.save(user);
 
-        // Gera um novo token JWT para o novo e-mail do usuário
+        // 5. Gera um novo token JWT e envia a confirmação
         String jwtToken = jwtService.generateEmailConfirmationToken(user.getId().toString());
-
-        // Envia o e-mail de confirmação para o novo e-mail
         sendActivationEmail(user, jwtToken);
         return "Pending email updated successfully!";
     }
@@ -321,5 +343,18 @@ public class UserService implements UserDetailsService {
         // Limpa espaços antes e depois do handle e remove o "@" do início, se houver
         String trimmed = handle.trim();
         return trimmed.startsWith("@") ? trimmed.substring(1) : trimmed;
+    }
+
+    private void checkEmailCooldown(User user){
+        if (user.getLastEmailSentAt() != null) {
+            long secondsSinceLastEmail = Duration.between(user.getLastEmailSentAt(), OffsetDateTime.now()).toSeconds();
+            if(secondsSinceLastEmail < emailCooldownSeconds) {
+               long remainingSeconds = emailCooldownSeconds - secondsSinceLastEmail;
+               throw new ResponseStatusException(
+                       HttpStatus.TOO_MANY_REQUESTS,
+                       "Please wait " + remainingSeconds + " seconds before requesting another email."
+               );
+           }
+        }
     }
 }
