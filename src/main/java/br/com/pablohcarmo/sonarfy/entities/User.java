@@ -71,6 +71,9 @@ public class User implements UserDetails {
     @Column (name = "password_updated_at")
     private OffsetDateTime passwordLastUpdateDate;
 
+    @Column (name = "last_email_sent_at")
+    private OffsetDateTime lastEmailSentAt;
+
     public User(Long id,
                 Permission permission,
                 String name,
@@ -88,7 +91,8 @@ public class User implements UserDetails {
                 LocalDate birthDate,
                 OffsetDateTime creationDate,
                 OffsetDateTime lastUpdateDate,
-                OffsetDateTime passwordLastUpdateDate
+                OffsetDateTime passwordLastUpdateDate,
+                OffsetDateTime lastEmailSentAt
     ) {
         this.id = id;
         this.permission = permission;
@@ -108,6 +112,7 @@ public class User implements UserDetails {
         this.creationDate = creationDate;
         this.lastUpdateDate = lastUpdateDate;
         this.passwordLastUpdateDate = passwordLastUpdateDate;
+        this.lastEmailSentAt = lastEmailSentAt;
     }
 
     public User() {
@@ -256,6 +261,14 @@ public class User implements UserDetails {
 
     public void setPasswordLastUpdateDate(OffsetDateTime passwordLastUpdateDate) {
         this.passwordLastUpdateDate = passwordLastUpdateDate;
+    }
+
+    public OffsetDateTime getLastEmailSentAt() {
+        return lastEmailSentAt;
+    }
+
+    public void setLastEmailSentAt(OffsetDateTime lastEmailSentAt) {
+        this.lastEmailSentAt = lastEmailSentAt;
     }
 
     @PrePersist

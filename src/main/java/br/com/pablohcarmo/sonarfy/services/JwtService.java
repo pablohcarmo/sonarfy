@@ -12,42 +12,73 @@ import java.time.Instant;
 @Service
 public class JwtService {
 
+
+    private static final String ISSUER = "sonarfy-api";
+    private static final String PURPOSE_EMAIL_CONFIRMATION = "email_confirmation";
+    private static final String PURPOSE_PENDING_REGISTRATION = "pending_registration";
+
+    public static final long EMAIL_CONFIRMATION_TTL_SECONDS = 900; // 15 minutes
+    public static final long PENDING_REGISTRATION_TTL_SECONDS = 900; // 15 minutes
+
     @Value("${api.security.token.secret}")
     private String secretKey;
 
     public String generateEmailConfirmationToken(String userId) {
-        if(userId == null || userId.isBlank()) {
-            throw new IllegalArgumentException("Cannot generate token for a null or blank user ID.");
-        }
-        Algorithm algorithm = Algorithm.HMAC256(secretKey);
+        requireNotBlank(userId, "user ID");
 
-        // Gera um token JWT com o ID do usuário como assunto, um propósito específico e uma expiração de 15 minutos
         return JWT.create()
-                .withIssuer("sonarfy-api")
+                .withIssuer(ISSUER)
                 .withSubject(userId)
-                .withClaim("purpose", "email_confirmation")
-                .withExpiresAt(Instant.now().plusSeconds(900)) // 15 minutes
-                .sign(algorithm);
+                .withClaim("purpose",PURPOSE_EMAIL_CONFIRMATION)
+                .withExpiresAt(Instant.now().plusSeconds(EMAIL_CONFIRMATION_TTL_SECONDS))
+                .sign(algorithm());
+    }
+
+    public String generateRegistrationToken(String userId) {
+        requireNotBlank(userId, "user ID");
+
+        return JWT.create()
+                .withIssuer(ISSUER)
+                .withSubject(userId)
+                .withClaim("purpose",PURPOSE_PENDING_REGISTRATION)
+                .withExpiresAt(Instant.now().plusSeconds(PENDING_REGISTRATION_TTL_SECONDS))
+                .sign(algorithm());
     }
 
     public String validateTokenAndGetEmail(String token) {
-        try {
-            Algorithm algorithm = Algorithm.HMAC256(secretKey);
+        DecodedJWT jwt = verify( token, PURPOSE_EMAIL_CONFIRMATION);
+        return jwt == null ? null : jwt.getSubject();
+    }
 
-            // Verifica se a assinatura do token é autêntica,
-            // que o emissor é sonarfy-api e se o token não expirou
-            DecodedJWT decodedJWT = JWT.require(algorithm)
-                    .withIssuer("sonarfy-api")
-                    .withClaim("purpose", "email_confirmation")
+    public String validateRegistrationTokenAndGetUserId(String token) {
+        DecodedJWT jwt = verify(token, PURPOSE_PENDING_REGISTRATION);
+        return jwt == null ? null : jwt.getSubject();
+    }
+
+    private DecodedJWT verify(String token, String expectedPurpose) {
+        if (token == null || token.isBlank()) {
+            return  null;
+        }
+        try {
+            return JWT.require(algorithm())
+                    .withIssuer(ISSUER)
+                    .withClaim("purpose", expectedPurpose)
                     .build()
                     .verify(token);
-
-            // Se as verificações passarem, retorna o email do usuário
-            return decodedJWT.getSubject();
         } catch (JWTVerificationException e) {
-            // Se a chave for falsa ou o token estiver expirado, retorna null
-            // Outros tipos de erros da aplicação não devem ser tratados aqui, apenas erros de verificação do token
             return null;
         }
     }
+
+
+    private Algorithm algorithm() {
+        return Algorithm.HMAC256(secretKey);
+    }
+
+    private static void requireNotBlank(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("Cannot generate token for a null or blank " + fieldName + ".");
+        }
+    }
+
 }
