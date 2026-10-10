@@ -2,6 +2,7 @@ package br.com.pablohcarmo.sonarfy.controllers;
 
 import br.com.pablohcarmo.sonarfy.dto.UpdateUserDto;
 import br.com.pablohcarmo.sonarfy.dto.UserDto;
+import br.com.pablohcarmo.sonarfy.services.AuthEmailService;
 import br.com.pablohcarmo.sonarfy.services.UserService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,11 +15,12 @@ import java.security.Principal;
 @RequestMapping("/api/users")
 public class UserController {
 
-
+    private final AuthEmailService authEmailService;
     private final UserService userService;
 
-    public UserController(UserService userService) {
+    public UserController(UserService userService, AuthEmailService authEmailService) {
         this.userService = userService;
+        this.authEmailService = authEmailService;
     }
 
     @GetMapping("/me")
@@ -43,7 +45,7 @@ public class UserController {
     @PostMapping("/me/password-change")
     public ResponseEntity<String> requestPasswordChange(Principal principal) {
         String userEmail = principal.getName();
-        String result = userService.sendPasswordChangeRequest(userEmail);
+        String result = authEmailService.sendPasswordChangeRequest(userEmail);
         return ResponseEntity.ok(result);
     }
 }

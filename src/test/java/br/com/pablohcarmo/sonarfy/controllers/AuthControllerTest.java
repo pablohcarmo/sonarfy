@@ -3,6 +3,7 @@ package br.com.pablohcarmo.sonarfy.controllers;
 import br.com.pablohcarmo.sonarfy.dto.NewUserDto;
 import br.com.pablohcarmo.sonarfy.dto.RegisterResponseDto;
 import br.com.pablohcarmo.sonarfy.dto.UpdatePendingEmailDto;
+import br.com.pablohcarmo.sonarfy.services.AuthEmailService;
 import br.com.pablohcarmo.sonarfy.services.JwtService;
 import br.com.pablohcarmo.sonarfy.services.UserService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -39,6 +40,9 @@ class AuthControllerTest {
 
     @Mock
     private JwtService jwtService;
+
+    @Mock
+    private AuthEmailService authEmailService;
 
     @InjectMocks
     private AuthController authController;
@@ -256,5 +260,33 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(dto)))
                 .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/resend-activation-email deve retornar 200 OK com mensagem de sucesso")
+    void shouldResendActivationEmailSuccessfully() throws Exception {
+        when(authEmailService.resendActivationEmail("pablo@sonarfy.com"))
+                .thenReturn("Confirmation email resent successfully! Please check your inbox.");
+
+        mockMvc.perform(post("/api/auth/resend-activation-email")
+                        .param("email", "pablo@sonarfy.com"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("Confirmation email resent successfully! Please check your inbox."));
+
+        verify(authEmailService).resendActivationEmail("pablo@sonarfy.com");
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/password-reset deve retornar 200 OK com mensagem de sucesso")
+    void shouldRequestPasswordResetSuccessfully() throws Exception {
+        when(authEmailService.sendPasswordChangeRequest("pablo@sonarfy.com"))
+                .thenReturn("Reset password email sent successfully! Please check your inbox.");
+
+        mockMvc.perform(post("/api/auth/password-reset")
+                        .param("email", "pablo@sonarfy.com"))
+                .andExpect(status().isOk())
+                .andExpect(content().string("Reset password email sent successfully! Please check your inbox."));
+
+        verify(authEmailService).sendPasswordChangeRequest("pablo@sonarfy.com");
     }
 }
