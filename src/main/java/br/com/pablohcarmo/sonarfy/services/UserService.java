@@ -9,7 +9,6 @@ import jakarta.transaction.Transactional;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -18,39 +17,24 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.Duration;
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
 import java.time.Period;
 import java.util.Optional;
 
 @Service
 public class UserService implements UserDetailsService {
-
-    @Value("${app.base-url}")
-    private String baseUrl;
-
-    @Value("${app.frontend-url}")
-    private String frontendUrl;
-
     private final UserRepository userRepository;
     private final PermissionRepository permissionRepository;
     private final PasswordEncoder passwordEncoder;
-    private final EmailService emailService;
     private final JwtService jwtService;
-    private static final Logger logger = LoggerFactory.getLogger(UserService.class);
+    private final AuthEmailService authEmailService;
 
-    @Value("${app.email.cooldown-seconds:30}")
-    private static final long emailCooldownSeconds = 30;
-
-
-
-    public UserService (UserRepository userRepository, PermissionRepository permissionRepository, PasswordEncoder passwordEncoder, EmailService emailService, JwtService jwtService) {
+    public UserService (UserRepository userRepository, PermissionRepository permissionRepository, PasswordEncoder passwordEncoder, JwtService jwtService, AuthEmailService authEmailService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
-        this.emailService = emailService;
         this.permissionRepository = permissionRepository;
         this.jwtService = jwtService;
+        this.authEmailService = authEmailService;
     }
 
     @Transactional
@@ -100,8 +84,7 @@ public class UserService implements UserDetailsService {
         user.setBirthDate(newUserDto.getBirthDate());
 
         // Define a permissão do usuário como "ROLE_USER" por padrão
-        Permission defaultPermission = new Permission();
-        defaultPermission = permissionRepository.findByName("ROLE_USER")
+        Permission defaultPermission = permissionRepository.findByName("ROLE_USER")
                 .orElseThrow(() -> new RuntimeException("Default permission not found!"));
         user.setPermissionId(defaultPermission);
 
@@ -109,7 +92,7 @@ public class UserService implements UserDetailsService {
 
         String userId = user.getId().toString();
         String confirmationToken = jwtService.generateEmailConfirmationToken(userId);
-        sendActivationEmail(user, confirmationToken);
+        authEmailService.sendActivationEmail(user, confirmationToken);
 
         // Gera o token de posse do cadastro para autorizar retificação segura pelo frontend
         String registrationToken = jwtService.generateRegistrationToken(userId);
@@ -166,65 +149,6 @@ public class UserService implements UserDetailsService {
         return getUserRegister(email);
     }
 
-
-    public void sendActivationEmail(User user, String jwtToken) {
-        String activationLink = frontendUrl + "/verify.html?token=" + jwtToken;
-
-        String subject = "Ative sua conta no Sonarfy!";
-        String body = "Olá " + user.getName() + " " + user.getSurname() +
-                ".\n\nPara concluir o seu cadastro e ativar a sua conta, por favor clique no link abaixo:\n" +
-                activationLink + "\n\n" +
-                "\nSe o link não funcionar, copie e cole no seu navegador.\n\n" +
-                "Atenciosamente,\nEquipe Sonarfy";
-
-        // Checa o cooldown antes de enviar o e-mail
-        checkEmailCooldown(user);
-
-        try {
-            // Dispara o e-mail de ativação
-            this.emailService.sendEmail(user.getEmail(), subject, body);
-
-            // Atualiza a timestamp no banco de dados
-            user.setLastEmailSentAt(OffsetDateTime.now());
-            userRepository.save(user);
-        } catch (Exception e) {
-            // Exceção para dar Rollback no cadastro se o link falhar
-            throw new RuntimeException("Failed to send activation token email: " + e.getMessage());
-        }
-    }
-
-    @Transactional
-    public String resendActivationEmail(String email){
-        // Validação de input
-        if(email == null || email.isBlank()) {
-            return "Invalid e-mail provided for resending confirmation.";
-        }
-
-        // Busca o usuário no banco de dados
-        User user = userRepository.findByEmailIgnoreCase(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
-
-        // Verifica se o usuário já foi verificado
-        if(user.isVerified()) {
-            return "User already verified. You can log in.";
-        }
-
-        // Gera um novo token JWT para o e-mail do usuário
-        String jwtToken = jwtService.generateEmailConfirmationToken(user.getId().toString());
-
-        // Checa o cooldown antes de enviar o e-mail
-        checkEmailCooldown(user);
-
-        // Envia o e-mail de confirmação
-        try {
-            sendActivationEmail(user, jwtToken);
-            return "Confirmation email resent successfully! Please check your inbox.";
-        } catch (Exception e) {
-            // O Rollback cancela qualquer transação pendente se o e-mail falhar
-            throw new RuntimeException("Failed to resend email confirmation: " + e.getMessage());
-        }
-    }
-
     @Transactional
     public String updatePendingEmail(Long userId, String newEmail) {
         // Validação de input
@@ -252,7 +176,7 @@ public class UserService implements UserDetailsService {
 
         // 5. Gera um novo token JWT e envia a confirmação
         String jwtToken = jwtService.generateEmailConfirmationToken(user.getId().toString());
-        sendActivationEmail(user, jwtToken);
+        authEmailService.sendActivationEmail(user, jwtToken);
         return "Pending email updated successfully!";
     }
 
@@ -294,45 +218,9 @@ public class UserService implements UserDetailsService {
         // Ativa o usuário e salva no banco de dados
         user.setVerified(true);
         userRepository.save(user);
-        sendWelcomeEmail(user);
+
+        authEmailService.sendWelcomeEmail(user);
         return "E-mail verified successfully! You can now log in.";
-    }
-
-    public void sendWelcomeEmail(User user) {
-        String subject = "Bem-vindo ao Sonarfy!";
-        String body = "Olá " + user.getName() + " " + user.getSurname() +
-                ".\n\nSua conta foi ativada com sucesso!\nEstamos felizes em tê-lo conosco." +
-                "\nVocê já pode fazer login no Sonarfy e começar a avaliar seus álbuns favoritos!\n\n" +
-                "Atenciosamente,\nEquipe Sonarfy";
-        try {
-            this.emailService.sendEmail(user.getEmail(), subject, body);
-        } catch (Exception e) {
-            logger.error("Failed to send welcome email: ", e);
-        }
-    }
-
-    @Transactional
-    public String sendPasswordChangeRequest(String email) {
-        User user = userRepository.findByEmailIgnoreCase(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
-
-        // TODO: Gerar o link de redefinição de senha com token JWT
-        String mockResetLink = baseUrl + "/reset-password?token=simulacao-temporaria";
-
-        String subject = "Redefinição de senha - Sonarfy";
-        String body = "Olá, " + user.getName() + " " + user.getSurname() +
-                "\n\nRecebemos uma solicitação para redefinir sua senha. " +
-                "\nPara redefinir sua senha, clique no link abaixo:\n" +
-                mockResetLink +
-                "\n\nEste link é válido por 15 minutos. Se você não solicitou essa alteração, ignore este e-mail." +
-                "\n\nAtenciosamente,\nEquipe Sonarfy";
-
-        try {
-            emailService.sendEmail(user.getEmail(), subject, body);
-            return "Reset password email sent successfully! Please check your inbox.";
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to send reset password email: " + e.getMessage());
-        }
     }
 
     private String cleanHandle(String handle) {
@@ -343,18 +231,5 @@ public class UserService implements UserDetailsService {
         // Limpa espaços antes e depois do handle e remove o "@" do início, se houver
         String trimmed = handle.trim();
         return trimmed.startsWith("@") ? trimmed.substring(1) : trimmed;
-    }
-
-    private void checkEmailCooldown(User user){
-        if (user.getLastEmailSentAt() != null) {
-            long secondsSinceLastEmail = Duration.between(user.getLastEmailSentAt(), OffsetDateTime.now()).toSeconds();
-            if(secondsSinceLastEmail < emailCooldownSeconds) {
-               long remainingSeconds = emailCooldownSeconds - secondsSinceLastEmail;
-               throw new ResponseStatusException(
-                       HttpStatus.TOO_MANY_REQUESTS,
-                       "Please wait " + remainingSeconds + " seconds before requesting another email."
-               );
-           }
-        }
     }
 }
