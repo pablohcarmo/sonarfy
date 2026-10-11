@@ -4,6 +4,7 @@ import br.com.pablohcarmo.sonarfy.dto.LoginDto;
 import br.com.pablohcarmo.sonarfy.dto.NewUserDto;
 import br.com.pablohcarmo.sonarfy.dto.RegisterResponseDto;
 import br.com.pablohcarmo.sonarfy.dto.UpdatePendingEmailDto;
+import br.com.pablohcarmo.sonarfy.services.AuthEmailService;
 import br.com.pablohcarmo.sonarfy.services.JwtService;
 import br.com.pablohcarmo.sonarfy.services.UserService;
 import jakarta.validation.Valid;
@@ -17,10 +18,12 @@ import org.springframework.web.server.ResponseStatusException;
 public class AuthController {
     private final UserService userService;
     private final JwtService jwtService;
+    private final AuthEmailService authEmailService;
 
-    public AuthController(UserService userService, JwtService jwtService) {
+    public AuthController(UserService userService, JwtService jwtService, AuthEmailService authEmailService) {
         this.userService = userService;
         this.jwtService = jwtService;
+        this.authEmailService = authEmailService;
     }
 
     @PostMapping("/register")
@@ -31,7 +34,7 @@ public class AuthController {
 
     @PostMapping("/resend-activation-email")
     public ResponseEntity<String> resendActivationEmail(@RequestParam("email") String email) {
-        String result = userService.resendActivationEmail(email);
+        String result = authEmailService.resendActivationEmail(email);
         return ResponseEntity.ok(result);
     }
 
@@ -76,7 +79,7 @@ public class AuthController {
 
     @PostMapping("/password-reset")
     public ResponseEntity<String> requestPasswordReset(@RequestParam("email") String email) {
-        String result = userService.sendPasswordChangeRequest(email);
+        String result = authEmailService.sendPasswordChangeRequest(email);
         return ResponseEntity.ok(result);
     }
 }

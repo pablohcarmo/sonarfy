@@ -38,7 +38,7 @@ class UserServiceTest {
     private PasswordEncoder passwordEncoder;
 
     @Mock
-    private EmailService emailService;
+    private AuthEmailService authEmailService;
 
     @Mock
     private JwtService jwtService;
@@ -84,7 +84,7 @@ class UserServiceTest {
         assertEquals("token-retificacao-pendente", response.registrationToken());
         assertEquals(JwtService.PENDING_REGISTRATION_TTL_SECONDS, response.expiresInSeconds());
 
-        verify(emailService, times(1)).sendEmail(eq("pablo@sonarfy.com"), any(), any());
+        verify(authEmailService, times(1)).sendActivationEmail(any(User.class), eq("token-email-confirmacao"));
         verify(jwtService, times(1)).generateEmailConfirmationToken("10");
         verify(jwtService, times(1)).generateRegistrationToken("10");
     }
@@ -143,7 +143,7 @@ class UserServiceTest {
         assertEquals("correto@gmail.com", user.getEmail());
         assertEquals("Pending email updated successfully!", result);
         verify(userRepository, atLeastOnce()).save(user);
-        verify(emailService, times(1)).sendEmail(eq("correto@gmail.com"), any(), any());
+        verify(authEmailService, times(1)).sendActivationEmail(eq(user), eq("mocked-jwt-token"));
     }
 
     @Test
@@ -165,7 +165,7 @@ class UserServiceTest {
 
         assertEquals("novo@gmail.com", user.getEmail());
         assertEquals("Pending email updated successfully!", result);
-        verify(emailService, times(1)).sendEmail(eq("novo@gmail.com"), any(), any());
+        verify(authEmailService, times(1)).sendActivationEmail(eq(user), eq("token-123"));
     }
 
     @Test
@@ -181,6 +181,9 @@ class UserServiceTest {
 
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(userRepository.findByEmailIgnoreCase("novo@gmail.com")).thenReturn(Optional.empty());
+        when(jwtService.generateEmailConfirmationToken("1")).thenReturn("cooldown-token");
+        doThrow(new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Please wait 20 seconds before requesting another email."))
+                .when(authEmailService).sendActivationEmail(user, "cooldown-token");
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
                 userService.updatePendingEmail(1L, "novo@gmail.com")
@@ -188,7 +191,7 @@ class UserServiceTest {
 
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, ex.getStatusCode());
         assertTrue(ex.getReason().contains("seconds before requesting another email"));
-        verify(emailService, never()).sendEmail(any(), any(), any());
+        verify(authEmailService, times(1)).sendActivationEmail(user, "cooldown-token");
     }
 
     @Test
@@ -213,7 +216,7 @@ class UserServiceTest {
         assertEquals(HttpStatus.BAD_REQUEST, ex3.getStatusCode());
 
         verify(userRepository, never()).save(any());
-        verify(emailService, never()).sendEmail(any(), any(), any());
+        verifyNoInteractions(authEmailService);
     }
 
     @Test
@@ -227,7 +230,7 @@ class UserServiceTest {
 
         assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
         verify(userRepository, never()).save(any());
-        verify(emailService, never()).sendEmail(any(), any(), any());
+        verifyNoInteractions(authEmailService);
     }
 
     @Test
@@ -246,7 +249,7 @@ class UserServiceTest {
 
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
         verify(userRepository, never()).save(any());
-        verify(emailService, never()).sendEmail(any(), any(), any());
+        verifyNoInteractions(authEmailService);
     }
 
     @Test
@@ -270,6 +273,6 @@ class UserServiceTest {
 
         assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
         verify(userRepository, never()).save(any());
-        verify(emailService, never()).sendEmail(any(), any(), any());
+        verifyNoInteractions(authEmailService);
     }
 }
