@@ -111,27 +111,23 @@ public class AuthEmailService {
     }
 
     @Transactional
-    public String sendPasswordChangeRequest(String email) {
-        if(email == null || email.isBlank()) {
-            return "Invalid e-mail provided for password reset.";
+    public String sendPasswordResetEmail(User user, String resetToken) {
+        // Impede que usuários não confirmados solicitem redefinição de senha
+        if (!user.isVerified()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not verified. Please verify your account before requesting a password reset.");
         }
 
-        User user = userRepository.findByEmailIgnoreCase(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
-
-        if(!user.isVerified()) {
-            return "User is not verified. Please verify your account before requesting a password reset.";
-        }
-
+        // Valida o cooldown antes de enviar o e-mail
         checkEmailCooldown(user);
 
-        String mockResetLink = baseUrl + "/reset-password?token=simulacao-temporaria";
+
+        // Gera o link de redefinição de senha com o token JWT
+        String resetLink = baseUrl + "/reset-password.html?token=" + resetToken;
 
         String subject = "Redefinição de senha - Sonarfy";
         String body = "Olá, " + user.getName() + " " + user.getSurname() +
                 "\n\nRecebemos uma solicitação para redefinir sua senha. " +
-                "\nPara redefinir sua senha, clique no link abaixo:\n" +
-                mockResetLink +
+                "\nPara redefinir sua senha, clique no link abaixo:\n" + resetLink +
                 "\n\nEste link é válido por 15 minutos. Se você não solicitou essa alteração, ignore este e-mail." +
                 "\n\nAtenciosamente,\nEquipe Sonarfy";
 
