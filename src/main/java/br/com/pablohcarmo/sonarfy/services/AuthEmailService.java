@@ -39,6 +39,13 @@ public class AuthEmailService {
     }
 
     public void sendActivationEmail(User user, String jwtToken) {
+        // Checa o cooldown antes de enviar o e-mail
+        checkEmailCooldown(user);
+
+        // Atualiza a timestamp no banco de dados
+        user.setLastEmailSentAt(OffsetDateTime.now());
+        userRepository.save(user);
+
         String activationLink = frontendUrl + "/verify.html?token=" + jwtToken;
 
         String subject = "Ative sua conta no Sonarfy!";
@@ -48,16 +55,10 @@ public class AuthEmailService {
                 "\nSe o link não funcionar, copie e cole no seu navegador.\n\n" +
                 "Atenciosamente,\nEquipe Sonarfy";
 
-        // Checa o cooldown antes de enviar o e-mail
-        checkEmailCooldown(user);
-
         try {
             // Dispara o e-mail de ativação
             this.emailService.sendEmail(user.getEmail(), subject, body);
 
-            // Atualiza a timestamp no banco de dados
-            user.setLastEmailSentAt(OffsetDateTime.now());
-            userRepository.save(user);
         } catch (Exception e) {
             // Exceção para dar Rollback no cadastro se o link falhar
             throw new RuntimeException("Failed to send activation token email: " + e.getMessage());
@@ -75,6 +76,8 @@ public class AuthEmailService {
         User user = userRepository.findByEmailIgnoreCase(email)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
 
+        checkEmailCooldown(user);
+
         // Verifica se o usuário já foi verificado
         if(user.isVerified()) {
             return "User already verified. You can log in.";
@@ -86,8 +89,6 @@ public class AuthEmailService {
         // Envia o e-mail de confirmação
         try {
             sendActivationEmail(user, jwtToken);
-            user.setLastEmailSentAt(OffsetDateTime.now());
-
             return "Confirmation email resent successfully! Please check your inbox.";
         } catch (ResponseStatusException e) {
             throw e; // ResponseStatusException é lançado para o cliente, não precisa ser encapsulado
@@ -120,6 +121,8 @@ public class AuthEmailService {
         // Valida o cooldown antes de enviar o e-mail
         checkEmailCooldown(user);
 
+        user.setLastEmailSentAt(OffsetDateTime.now());
+        userRepository.save(user);
 
         // Gera o link de redefinição de senha com o token JWT
         String resetLink = baseUrl + "/reset-password.html?token=" + resetToken;
@@ -133,9 +136,6 @@ public class AuthEmailService {
 
         try {
             emailService.sendEmail(user.getEmail(), subject, body);
-            user.setLastEmailSentAt(OffsetDateTime.now());
-            userRepository.save(user);
-
             return "Reset password email sent successfully! Please check your inbox.";
         } catch (Exception e) {
             throw new RuntimeException("Failed to send reset password email: " + e.getMessage());
