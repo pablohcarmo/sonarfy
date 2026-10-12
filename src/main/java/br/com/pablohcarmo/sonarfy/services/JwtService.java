@@ -31,6 +31,7 @@ public class JwtService {
                 .withIssuer(ISSUER)
                 .withSubject(userId)
                 .withClaim("purpose",PURPOSE_EMAIL_CONFIRMATION)
+                .withIssuedAt(Instant.now())
                 .withExpiresAt(Instant.now().plusSeconds(EMAIL_CONFIRMATION_TTL_SECONDS))
                 .sign(algorithm());
     }
@@ -42,6 +43,7 @@ public class JwtService {
                 .withIssuer(ISSUER)
                 .withSubject(userId)
                 .withClaim("purpose",PURPOSE_PENDING_REGISTRATION)
+                .withIssuedAt(Instant.now())
                 .withExpiresAt(Instant.now().plusSeconds(PENDING_REGISTRATION_TTL_SECONDS))
                 .sign(algorithm());
     }
