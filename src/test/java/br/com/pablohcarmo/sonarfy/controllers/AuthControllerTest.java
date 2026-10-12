@@ -2,7 +2,10 @@ package br.com.pablohcarmo.sonarfy.controllers;
 
 import br.com.pablohcarmo.sonarfy.dto.NewUserDto;
 import br.com.pablohcarmo.sonarfy.dto.RegisterResponseDto;
+import br.com.pablohcarmo.sonarfy.dto.UpdatePasswordDto;
 import br.com.pablohcarmo.sonarfy.dto.UpdatePendingEmailDto;
+import br.com.pablohcarmo.sonarfy.entities.User;
+import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import br.com.pablohcarmo.sonarfy.services.AuthEmailService;
 import br.com.pablohcarmo.sonarfy.services.JwtService;
 import br.com.pablohcarmo.sonarfy.services.UserService;
@@ -20,6 +23,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 import org.springframework.web.server.ResponseStatusException;
+
+import java.util.Optional;
 
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -43,6 +48,9 @@ class AuthControllerTest {
 
     @Mock
     private AuthEmailService authEmailService;
+
+    @Mock
+    private UserRepository userRepository;
 
     @InjectMocks
     private AuthController authController;
@@ -277,16 +285,63 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/auth/password-reset deve retornar 200 OK com mensagem de sucesso")
-    void shouldRequestPasswordResetSuccessfully() throws Exception {
-        when(authEmailService.sendPasswordChangeRequest("pablo@sonarfy.com"))
+    @DisplayName("POST /api/auth/reset-password deve retornar 200 OK ao redefinir senha com sucesso")
+    void shouldResetPasswordSuccessfully() throws Exception {
+        UpdatePasswordDto dto = new UpdatePasswordDto(
+                "valid-token-123",
+                null,
+                "NewPassword123!",
+                "NewPassword123!",
+                null
+        );
+
+        doNothing().when(userService).resetPassword(any(UpdatePasswordDto.class));
+
+        mockMvc.perform(post("/api/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isOk())
+                .andExpect(content().string("Password reset successfully. You can now log in."));
+
+        verify(userService).resetPassword(any(UpdatePasswordDto.class));
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/reset-password deve retornar 400 Bad Request quando payload for inválido")
+    void shouldReturnBadRequestWhenResetPasswordDtoIsInvalid() throws Exception {
+        UpdatePasswordDto dto = new UpdatePasswordDto(
+                "", // token em branco inválido
+                null,
+                "short", // senha curta < 8 caracteres
+                "short",
+                null
+        );
+
+        mockMvc.perform(post("/api/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isBadRequest());
+
+        verify(userService, never()).resetPassword(any());
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/forgot-password deve retornar 200 OK e enviar e-mail com token de reset")
+    void shouldSendForgotPasswordEmailSuccessfully() throws Exception {
+        User user = new User();
+        user.setId(1L);
+        user.setEmail("pablo@sonarfy.com");
+
+        when(userRepository.findByEmailIgnoreCase("pablo@sonarfy.com")).thenReturn(Optional.of(user));
+        when(jwtService.generatePasswordResetToken("1")).thenReturn("jwt-reset-token-123");
+        when(authEmailService.sendPasswordResetEmail(user, "jwt-reset-token-123"))
                 .thenReturn("Reset password email sent successfully! Please check your inbox.");
 
-        mockMvc.perform(post("/api/auth/password-reset")
+        mockMvc.perform(post("/api/auth/forgot-password")
                         .param("email", "pablo@sonarfy.com"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("Reset password email sent successfully! Please check your inbox."));
 
-        verify(authEmailService).sendPasswordChangeRequest("pablo@sonarfy.com");
+        verify(authEmailService).sendPasswordResetEmail(user, "jwt-reset-token-123");
     }
 }
