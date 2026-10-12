@@ -17,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.Optional;
@@ -435,5 +436,30 @@ class UserServiceTest {
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
         assertTrue(ex.getReason().contains("Invalid or expired token!"));
         verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Anti-Replay: Deve lançar 400 Bad Request ao tentar reutilizar token emitido antes da última alteração de senha")
+    void shouldThrowBadRequestWhenTokenIssuedBeforeLastPasswordUpdate() {
+        UpdatePasswordDto dto = new UpdatePasswordDto("used-token", null, "NewPass123!", "NewPass123!", null);
+
+        User user = new User();
+        user.setId(7L);
+        user.setPasswordLastUpdateDate(OffsetDateTime.now());
+
+        // Token emitido 5 minutos antes da última alteração de senha
+        Instant tokenIssuedAt = user.getPasswordLastUpdateDate().toInstant().minusSeconds(300);
+
+        when(jwtService.validatePasswordResetTokenAndGetUserId("used-token")).thenReturn("7");
+        when(userRepository.findById(7L)).thenReturn(Optional.of(user));
+        when(jwtService.getPasswordResetTokenIssuedAt("used-token")).thenReturn(tokenIssuedAt);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                userService.resetPassword(dto)
+        );
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        assertTrue(ex.getReason().contains("Token has already been used or is invalid!"));
+        verify(userRepository, never()).save(user);
     }
 }

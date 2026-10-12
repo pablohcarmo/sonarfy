@@ -83,5 +83,22 @@ class JwtServiceTest {
 
         assertThrows(IllegalArgumentException.class, () -> jwtService.generateRegistrationToken(null));
         assertThrows(IllegalArgumentException.class, () -> jwtService.generateRegistrationToken("  "));
+
+        assertThrows(IllegalArgumentException.class, () -> jwtService.generatePasswordResetToken(null));
+        assertThrows(IllegalArgumentException.class, () -> jwtService.generatePasswordResetToken("  "));
+    }
+
+    @Test
+    @DisplayName("Deve gerar e validar token de reset de senha e extrair issuedAt com sucesso")
+    void shouldGenerateAndValidatePasswordResetToken() {
+        String userId = "55";
+
+        String token = jwtService.generatePasswordResetToken(userId);
+        assertNotNull(token);
+
+        String extractedUserId = jwtService.validatePasswordResetTokenAndGetUserId(token);
+        assertEquals(userId, extractedUserId);
+
+        assertNotNull(jwtService.getPasswordResetTokenIssuedAt(token));
     }
 }
