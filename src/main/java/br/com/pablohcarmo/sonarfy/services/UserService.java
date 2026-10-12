@@ -7,8 +7,6 @@ import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import jakarta.transaction.Transactional;
 import org.jspecify.annotations.NonNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -150,6 +148,39 @@ public class UserService implements UserDetailsService {
     }
 
     @Transactional
+    public void changePassword(String loggedInEmail, UpdatePasswordDto dto) {
+        // Como o campo currentPassword é opcional no DTO, validamos manualmente a obrigatoriedade da senha atual neste fluxo
+        if (dto.currentPassword() == null || dto.currentPassword().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password is required!");
+        }
+
+        // 1. Valida se as senhas coincidem
+        validatePasswordConfirmation(dto.newPassword(), dto.confirmNewPassword());
+
+        // 2. Valida o token e obtém o usuário correspondente
+        User user = validateTokenAndGetUser(dto.token());
+
+        // 3. Impede que o usuário altere a senha de outro usuário, mesmo que possua o token
+        if(!user.getEmail().equalsIgnoreCase(loggedInEmail)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Token does not belong to the authenticated user!");
+        }
+
+        // 4. Verifica se a senha atual fornecida corresponde à senha armazenada no banco de dados
+        if (!passwordEncoder.matches(dto.currentPassword(), user.getPassword())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password is incorrect!");
+        }
+
+
+        // 5. Evita que o usuário altere a senha para a mesma senha atual
+        if (passwordEncoder.matches(dto.newPassword(), user.getPassword())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password cannot be the same as the current password!");
+        }
+
+        // 6. Atualiza a senha do usuário com a nova senha fornecida
+         updatePassword(user, dto.newPassword());
+    }
+
+    @Transactional
     public String updatePendingEmail(Long userId, String newEmail) {
         // Validação de input
         if(userId == null || newEmail == null || newEmail.isBlank()) {
@@ -231,5 +262,47 @@ public class UserService implements UserDetailsService {
         // Limpa espaços antes e depois do handle e remove o "@" do início, se houver
         String trimmed = handle.trim();
         return trimmed.startsWith("@") ? trimmed.substring(1) : trimmed;
+    }
+
+    public void resetPassword(UpdatePasswordDto dto) {
+        // Valida as duas senhas novas para garantir que são iguais
+        validatePasswordConfirmation(dto.newPassword(), dto.confirmNewPassword());
+
+        // Valida o token e obtém o usuário correspondente
+        User user = validateTokenAndGetUser(dto.token());
+
+        // Como o usuário não possui a senha atual, atualizamos diretamente a senha com a nova senha fornecida
+        updatePassword(user, dto.newPassword());
+    }
+
+    private void updatePassword(User user, String newRawPassword) {
+        // Atualiza a senha do usuário com a nova senha codificada
+        user.setPassword(passwordEncoder.encode(newRawPassword));
+        userRepository.save(user);
+    }
+
+    private User validateTokenAndGetUser(String token) {
+        String userIdStr = jwtService.validatePasswordResetTokenAndGetUserId(token);
+
+        // Verifica se o usuário foi extraído corretamente do token
+        if(userIdStr == null || userIdStr.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired token!");
+        }
+
+        try {
+            Long userId = Long.parseLong(userIdStr);
+            return userRepository.findById(userId)
+                    // Retorna HTTP 404 se o usuário não for encontrado
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found!"));
+        } catch (NumberFormatException e) {
+            // Retorna HTTP 400 se o ID se o token for inválido
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid token format!");
+        }
+    }
+
+    private void validatePasswordConfirmation(String newPassword, String confirmPassword) {
+        if (!newPassword.equals(confirmPassword)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password and confirmation do not match!");
+        }
     }
 }
