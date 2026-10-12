@@ -62,6 +62,7 @@ public class JwtService {
                 .withIssuer(ISSUER)
                 .withSubject(userId)
                 .withClaim("purpose", PURPOSE_PASSWORD_RESET)
+                .withIssuedAt(Instant.now())
                 .withExpiresAt(Instant.now().plusSeconds(PASSWORD_RESET_TTL_SECONDS))
                 .sign(algorithm());
     }
@@ -69,6 +70,11 @@ public class JwtService {
     public String validatePasswordResetTokenAndGetUserId(String token) {
         DecodedJWT jwt = verify(token, PURPOSE_PASSWORD_RESET);
         return jwt == null ? null : jwt.getSubject();
+    }
+
+    public Instant getPasswordResetTokenIssuedAt(String token) {
+        DecodedJWT jwt = verify(token, PURPOSE_PASSWORD_RESET);
+        return jwt == null ? null : jwt.getIssuedAt().toInstant();
     }
 
     private DecodedJWT verify(String token, String expectedPurpose) {

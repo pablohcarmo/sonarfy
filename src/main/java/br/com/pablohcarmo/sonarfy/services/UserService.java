@@ -15,7 +15,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.Period;
 import java.util.Optional;
 
@@ -177,7 +179,7 @@ public class UserService implements UserDetailsService {
         }
 
         // 6. Atualiza a senha do usuário com a nova senha fornecida
-         updatePassword(user, dto.newPassword());
+        updatePassword(user, dto.newPassword());
     }
 
     @Transactional
@@ -278,6 +280,7 @@ public class UserService implements UserDetailsService {
     private void updatePassword(User user, String newRawPassword) {
         // Atualiza a senha do usuário com a nova senha codificada
         user.setPassword(passwordEncoder.encode(newRawPassword));
+        user.setPasswordLastUpdateDate(OffsetDateTime.now());
         userRepository.save(user);
     }
 
@@ -291,9 +294,21 @@ public class UserService implements UserDetailsService {
 
         try {
             Long userId = Long.parseLong(userIdStr);
-            return userRepository.findById(userId)
+            User user = userRepository.findById(userId)
                     // Retorna HTTP 404 se o usuário não for encontrado
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found!"));
+
+            // Validação anti-replay
+            if (user.getPasswordLastUpdateDate() != null) {
+                Instant tokenIssuedAt = jwtService.getPasswordResetTokenIssuedAt(token);
+
+                // se o token foi gerado antes ou no mesmo instante da última atualização de senha, ele já foi utilizado
+                if (tokenIssuedAt == null || !tokenIssuedAt.isAfter(user.getPasswordLastUpdateDate().toInstant())) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token has already been used or is invalid!");
+                }
+            }
+
+            return user;
         } catch (NumberFormatException e) {
             // Retorna HTTP 400 se o ID se o token for inválido
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid token format!");
