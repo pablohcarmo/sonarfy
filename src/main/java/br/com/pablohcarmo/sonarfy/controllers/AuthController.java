@@ -1,15 +1,15 @@
 package br.com.pablohcarmo.sonarfy.controllers;
 
-import br.com.pablohcarmo.sonarfy.dto.LoginDto;
-import br.com.pablohcarmo.sonarfy.dto.NewUserDto;
-import br.com.pablohcarmo.sonarfy.dto.RegisterResponseDto;
-import br.com.pablohcarmo.sonarfy.dto.UpdatePendingEmailDto;
+import br.com.pablohcarmo.sonarfy.dto.*;
+import br.com.pablohcarmo.sonarfy.entities.User;
+import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import br.com.pablohcarmo.sonarfy.services.AuthEmailService;
 import br.com.pablohcarmo.sonarfy.services.JwtService;
 import br.com.pablohcarmo.sonarfy.services.UserService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -19,11 +19,13 @@ public class AuthController {
     private final UserService userService;
     private final JwtService jwtService;
     private final AuthEmailService authEmailService;
+    private final UserRepository userRepository;
 
-    public AuthController(UserService userService, JwtService jwtService, AuthEmailService authEmailService) {
+    public AuthController(UserService userService, JwtService jwtService, AuthEmailService authEmailService, UserRepository userRepository) {
         this.userService = userService;
         this.jwtService = jwtService;
         this.authEmailService = authEmailService;
+        this.userRepository = userRepository;
     }
 
     @PostMapping("/register")
@@ -45,7 +47,7 @@ public class AuthController {
         if(result.contains("success") || result.contains("already verified")) {
             return ResponseEntity.ok(result);
         } else {
-            // Retorna 400 Bad Request apenas se o o token for inválido, corrompido ou expirado
+            // Retorna 400 Bad Request apenas se o token for inválido, corrompido ou expirado
             return ResponseEntity.badRequest().body(result);
         }
     }
@@ -77,9 +79,23 @@ public class AuthController {
         return ResponseEntity.ok(result);
     }
 
-    @PostMapping("/password-reset")
-    public ResponseEntity<String> requestPasswordReset(@RequestParam("email") String email) {
-        String result = authEmailService.sendPasswordChangeRequest(email);
+    @PostMapping("/forgot-password")
+    public ResponseEntity<String> forgotPassword(
+            @RequestParam("email") String email
+    ) {
+        User user = userRepository.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found."));
+
+        String token = jwtService.generatePasswordResetToken(user.getId().toString());
+        String result = authEmailService.sendPasswordResetEmail(user, token);
         return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<String> resetPassword(
+            @Valid @RequestBody UpdatePasswordDto updatePasswordDto
+    ) {
+        userService.resetPassword(updatePasswordDto);
+        return ResponseEntity.ok("Password reset successfully. You can now log in.");
     }
 }
