@@ -286,7 +286,7 @@ class UserServiceTest {
     @Test
     @DisplayName("Deve alterar senha do usuário logado com sucesso")
     void shouldChangePasswordSuccessfully() {
-        ChangePasswordDto dto = new ChangePasswordDto("token-jwt", "Old123!", "New123!", "New123!", null);
+        ChangePasswordDto dto = new ChangePasswordDto("token-jwt", "Old123!", "New123!", "New123!");
 
         User user = new User();
         user.setId(1L);
@@ -308,7 +308,7 @@ class UserServiceTest {
     @Test
     @DisplayName("Deve lançar 400 Bad Request ao alterar senha sem fornecer currentPassword")
     void shouldThrowBadRequestWhenCurrentPasswordIsMissing() {
-        ChangePasswordDto dto = new ChangePasswordDto("token-jwt", null, "New123!", "New123!", null);
+        ChangePasswordDto dto = new ChangePasswordDto("token-jwt", null, "New123!", "New123!");
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
                 userService.changePassword("pablo@sonarfy.com", dto)
@@ -322,7 +322,7 @@ class UserServiceTest {
     @Test
     @DisplayName("Deve lançar 400 Bad Request quando nova senha e confirmação não forem iguais")
     void shouldThrowBadRequestWhenPasswordsDoNotMatchInChangePassword() {
-        ChangePasswordDto dto = new ChangePasswordDto("token-jwt", "Old123!", "New123!", "Different123!", null);
+        ChangePasswordDto dto = new ChangePasswordDto("token-jwt", "Old123!", "New123!", "Different123!");
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
                 userService.changePassword("pablo@sonarfy.com", dto)
@@ -336,7 +336,7 @@ class UserServiceTest {
     @Test
     @DisplayName("Deve lançar 403 Forbidden quando o token pertencer a outro usuário")
     void shouldThrowForbiddenWhenTokenBelongsToAnotherUser() {
-        ChangePasswordDto dto = new ChangePasswordDto("token-jwt", "Old123!", "New123!", "New123!", null);
+        ChangePasswordDto dto = new ChangePasswordDto("token-jwt", "Old123!", "New123!", "New123!");
 
         User user = new User();
         user.setId(2L);
@@ -357,7 +357,7 @@ class UserServiceTest {
     @Test
     @DisplayName("Deve lançar 400 Bad Request quando senha atual for incorreta")
     void shouldThrowBadRequestWhenCurrentPasswordIsIncorrect() {
-        ChangePasswordDto dto = new ChangePasswordDto("token-jwt", "Wrong123!", "New123!", "New123!", null);
+        ChangePasswordDto dto = new ChangePasswordDto("token-jwt", "Wrong123!", "New123!", "New123!");
 
         User user = new User();
         user.setId(1L);
@@ -380,7 +380,7 @@ class UserServiceTest {
     @Test
     @DisplayName("Deve lançar 400 Bad Request quando a nova senha for igual à senha atual")
     void shouldThrowBadRequestWhenNewPasswordIsSameAsCurrentPassword() {
-        ChangePasswordDto dto = new ChangePasswordDto("token-jwt", "Same123!", "Same123!", "Same123!", null);
+        ChangePasswordDto dto = new ChangePasswordDto("token-jwt", "Same123!", "Same123!", "Same123!");
 
         User user = new User();
         user.setId(1L);

@@ -1,6 +1,6 @@
 package br.com.pablohcarmo.sonarfy.controllers;
 
-import br.com.pablohcarmo.sonarfy.dto.UpdatePasswordDto;
+import br.com.pablohcarmo.sonarfy.dto.ChangePasswordDto;
 import br.com.pablohcarmo.sonarfy.dto.UpdateUserDto;
 import br.com.pablohcarmo.sonarfy.dto.UserDto;
 import br.com.pablohcarmo.sonarfy.entities.User;
@@ -157,15 +157,14 @@ class UserControllerTest {
     @Test
     @DisplayName("PUT /api/users/me/password deve retornar 200 OK ao alterar senha com sucesso")
     void shouldChangePasswordSuccessfully() throws Exception {
-        UpdatePasswordDto dto = new UpdatePasswordDto(
+        ChangePasswordDto dto = new ChangePasswordDto(
                 "valid-token-123",
                 "OldPass123!",
                 "NewPass123!",
-                "NewPass123!",
-                null
+                "NewPass123!"
         );
 
-        doNothing().when(userService).changePassword(eq("pablo@sonarfy.com"), any(UpdatePasswordDto.class));
+        doNothing().when(userService).changePassword(eq("pablo@sonarfy.com"), any(ChangePasswordDto.class));
 
         mockMvc.perform(put("/api/users/me/password")
                         .principal(mockPrincipal)
@@ -174,18 +173,17 @@ class UserControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string("Password updated successfully."));
 
-        verify(userService).changePassword(eq("pablo@sonarfy.com"), any(UpdatePasswordDto.class));
+        verify(userService).changePassword(eq("pablo@sonarfy.com"), any(ChangePasswordDto.class));
     }
 
     @Test
     @DisplayName("PUT /api/users/me/password deve retornar 400 Bad Request quando validação do DTO falhar")
     void shouldReturnBadRequestWhenChangePasswordValidationFails() throws Exception {
-        UpdatePasswordDto dto = new UpdatePasswordDto(
+        ChangePasswordDto dto = new ChangePasswordDto(
                 "", // token em branco inválido
                 null,
                 "short", // senha curta < 8 caracteres
-                "short",
-                null
+                "short"
         );
 
         mockMvc.perform(put("/api/users/me/password")
@@ -200,16 +198,15 @@ class UserControllerTest {
     @Test
     @DisplayName("PUT /api/users/me/password deve propagar ResponseStatusException lançada pelo UserService")
     void shouldPropagateResponseStatusExceptionFromUserService() throws Exception {
-        UpdatePasswordDto dto = new UpdatePasswordDto(
+        ChangePasswordDto dto = new ChangePasswordDto(
                 "valid-token-123",
                 "WrongPass123!",
                 "NewPass123!",
-                "NewPass123!",
-                null
+                "NewPass123!"
         );
 
         doThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password is incorrect!"))
-                .when(userService).changePassword(eq("pablo@sonarfy.com"), any(UpdatePasswordDto.class));
+                .when(userService).changePassword(eq("pablo@sonarfy.com"), any(ChangePasswordDto.class));
 
         mockMvc.perform(put("/api/users/me/password")
                         .principal(mockPrincipal)
@@ -217,7 +214,7 @@ class UserControllerTest {
                         .content(objectMapper.writeValueAsString(dto)))
                 .andExpect(status().isBadRequest());
 
-        verify(userService).changePassword(eq("pablo@sonarfy.com"), any(UpdatePasswordDto.class));
+        verify(userService).changePassword(eq("pablo@sonarfy.com"), any(ChangePasswordDto.class));
     }
 
     @Test
