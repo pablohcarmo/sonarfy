@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -71,14 +72,15 @@ class AuthEmailServiceTest {
 
         authEmailService.sendActivationEmail(sampleUser, token);
 
-        verify(emailService, times(1)).sendEmail(
+        InOrder inOrder = inOrder(userRepository, emailService);
+        inOrder.verify(userRepository).save(sampleUser);
+        inOrder.verify(emailService, times(1)).sendEmail(
                 eq("pablo@sonarfy.com"),
                 eq("Ative sua conta no Sonarfy!"),
                 argThat(body -> body.contains("http://localhost:3000/verify.html?token=" + token)
                         && body.contains("Pablo Carmo"))
         );
         assertNotNull(sampleUser.getLastEmailSentAt());
-        verify(userRepository, times(1)).save(sampleUser);
     }
 
     @Test
@@ -88,8 +90,9 @@ class AuthEmailServiceTest {
 
         authEmailService.sendActivationEmail(sampleUser, "token-expirado");
 
-        verify(emailService, times(1)).sendEmail(eq("pablo@sonarfy.com"), any(), any());
-        verify(userRepository, times(1)).save(sampleUser);
+        InOrder inOrder = inOrder(userRepository, emailService);
+        inOrder.verify(userRepository).save(sampleUser);
+        inOrder.verify(emailService, times(1)).sendEmail(eq("pablo@sonarfy.com"), any(), any());
     }
 
     @Test
@@ -118,6 +121,10 @@ class AuthEmailServiceTest {
         );
 
         assertTrue(ex.getMessage().contains("Failed to send activation token email"));
+
+        InOrder inOrder = inOrder(userRepository, emailService);
+        inOrder.verify(userRepository).save(sampleUser);
+        inOrder.verify(emailService).sendEmail(any(), any(), any());
     }
 
     // ==========================================
@@ -233,14 +240,15 @@ class AuthEmailServiceTest {
         String result = authEmailService.sendPasswordResetEmail(sampleUser, token);
 
         assertEquals("Reset password email sent successfully! Please check your inbox.", result);
-        verify(emailService, times(1)).sendEmail(
+        InOrder inOrder = inOrder(userRepository, emailService);
+        inOrder.verify(userRepository).save(sampleUser);
+        inOrder.verify(emailService, times(1)).sendEmail(
                 eq("pablo@sonarfy.com"),
                 eq("Redefinição de senha - Sonarfy"),
-                argThat(body -> body.contains("http://localhost:8080/reset-password.html?token=" + token)
+                argThat(body -> body.contains("http://localhost:3000/reset-password.html?token=" + token)
                         && body.contains("Pablo Carmo"))
         );
         assertNotNull(sampleUser.getLastEmailSentAt());
-        verify(userRepository, times(1)).save(sampleUser);
     }
 
     @Test
@@ -284,5 +292,9 @@ class AuthEmailServiceTest {
         );
 
         assertTrue(ex.getMessage().contains("Failed to send reset password email"));
+
+        InOrder inOrder = inOrder(userRepository, emailService);
+        inOrder.verify(userRepository).save(sampleUser);
+        inOrder.verify(emailService).sendEmail(any(), any(), any());
     }
 }

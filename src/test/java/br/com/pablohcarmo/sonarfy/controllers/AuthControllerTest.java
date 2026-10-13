@@ -1,5 +1,6 @@
 package br.com.pablohcarmo.sonarfy.controllers;
 
+import br.com.pablohcarmo.sonarfy.dto.ForgotPasswordDto;
 import br.com.pablohcarmo.sonarfy.dto.NewUserDto;
 import br.com.pablohcarmo.sonarfy.dto.RegisterResponseDto;
 import br.com.pablohcarmo.sonarfy.dto.UpdatePasswordDto;
@@ -326,22 +327,42 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/auth/forgot-password deve retornar 200 OK e enviar e-mail com token de reset")
+    @DisplayName("POST /api/auth/forgot-password deve retornar 200 OK com resposta genérica e delegar para o UserService")
     void shouldSendForgotPasswordEmailSuccessfully() throws Exception {
-        User user = new User();
-        user.setId(1L);
-        user.setEmail("pablo@sonarfy.com");
-
-        when(userRepository.findByEmailIgnoreCase("pablo@sonarfy.com")).thenReturn(Optional.of(user));
-        when(jwtService.generatePasswordResetToken("1")).thenReturn("jwt-reset-token-123");
-        when(authEmailService.sendPasswordResetEmail(user, "jwt-reset-token-123"))
-                .thenReturn("Reset password email sent successfully! Please check your inbox.");
+        ForgotPasswordDto dto = new ForgotPasswordDto("pablo@sonarfy.com");
 
         mockMvc.perform(post("/api/auth/forgot-password")
-                        .param("email", "pablo@sonarfy.com"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dto)))
                 .andExpect(status().isOk())
-                .andExpect(content().string("Reset password email sent successfully! Please check your inbox."));
+                .andExpect(content().string("If the email exists and is verified, a password reset link has been sent. Please check your inbox."));
 
-        verify(authEmailService).sendPasswordResetEmail(user, "jwt-reset-token-123");
+        verify(userService, times(1)).requestPasswordReset("pablo@sonarfy.com");
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/forgot-password deve retornar 400 Bad Request quando formato do email for inválido")
+    void shouldReturnBadRequestWhenEmailFormatIsInvalid() throws Exception {
+        ForgotPasswordDto dto = new ForgotPasswordDto("email-invalido");
+
+        mockMvc.perform(post("/api/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isBadRequest());
+
+        verify(userService, never()).requestPasswordReset(any());
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/forgot-password deve retornar 400 Bad Request quando email for em branco")
+    void shouldReturnBadRequestWhenEmailIsBlankInForgotPassword() throws Exception {
+        ForgotPasswordDto dto = new ForgotPasswordDto("   ");
+
+        mockMvc.perform(post("/api/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isBadRequest());
+
+        verify(userService, never()).requestPasswordReset(any());
     }
 }
