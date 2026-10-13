@@ -1,8 +1,12 @@
 package br.com.pablohcarmo.sonarfy.controllers;
 
+import br.com.pablohcarmo.sonarfy.dto.ChangePasswordDto;
 import br.com.pablohcarmo.sonarfy.dto.UpdateUserDto;
 import br.com.pablohcarmo.sonarfy.dto.UserDto;
+import br.com.pablohcarmo.sonarfy.entities.User;
+import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import br.com.pablohcarmo.sonarfy.services.AuthEmailService;
+import br.com.pablohcarmo.sonarfy.services.JwtService;
 import br.com.pablohcarmo.sonarfy.services.UserService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,6 +26,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.security.Principal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -43,6 +48,12 @@ class UserControllerTest {
 
     @Mock
     private AuthEmailService authEmailService;
+
+    @Mock
+    private JwtService jwtService;
+
+    @Mock
+    private UserRepository userRepository;
 
     @InjectMocks
     private UserController userController;
@@ -144,42 +155,85 @@ class UserControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/users/me/password-change deve retornar 200 OK ao solicitar redefinição de senha")
+    @DisplayName("PUT /api/users/me/password deve retornar 200 OK ao alterar senha com sucesso")
+    void shouldChangePasswordSuccessfully() throws Exception {
+        ChangePasswordDto dto = new ChangePasswordDto(
+                "valid-token-123",
+                "OldPass123!",
+                "NewPass123!",
+                "NewPass123!"
+        );
+
+        doNothing().when(userService).changePassword(eq("pablo@sonarfy.com"), any(ChangePasswordDto.class));
+
+        mockMvc.perform(put("/api/users/me/password")
+                        .principal(mockPrincipal)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isOk())
+                .andExpect(content().string("Password updated successfully."));
+
+        verify(userService).changePassword(eq("pablo@sonarfy.com"), any(ChangePasswordDto.class));
+    }
+
+    @Test
+    @DisplayName("PUT /api/users/me/password deve retornar 400 Bad Request quando validação do DTO falhar")
+    void shouldReturnBadRequestWhenChangePasswordValidationFails() throws Exception {
+        ChangePasswordDto dto = new ChangePasswordDto(
+                "", // token em branco inválido
+                null,
+                "short", // senha curta < 8 caracteres
+                "short"
+        );
+
+        mockMvc.perform(put("/api/users/me/password")
+                        .principal(mockPrincipal)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isBadRequest());
+
+        verify(userService, never()).changePassword(any(), any());
+    }
+
+    @Test
+    @DisplayName("PUT /api/users/me/password deve propagar ResponseStatusException lançada pelo UserService")
+    void shouldPropagateResponseStatusExceptionFromUserService() throws Exception {
+        ChangePasswordDto dto = new ChangePasswordDto(
+                "valid-token-123",
+                "WrongPass123!",
+                "NewPass123!",
+                "NewPass123!"
+        );
+
+        doThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password is incorrect!"))
+                .when(userService).changePassword(eq("pablo@sonarfy.com"), any(ChangePasswordDto.class));
+
+        mockMvc.perform(put("/api/users/me/password")
+                        .principal(mockPrincipal)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isBadRequest());
+
+        verify(userService).changePassword(eq("pablo@sonarfy.com"), any(ChangePasswordDto.class));
+    }
+
+    @Test
+    @DisplayName("POST /api/users/me/password-change-request deve retornar 200 OK e enviar token por e-mail")
     void shouldRequestPasswordChangeSuccessfully() throws Exception {
-        when(authEmailService.sendPasswordChangeRequest("pablo@sonarfy.com"))
+        User user = new User();
+        user.setId(1L);
+        user.setEmail("pablo@sonarfy.com");
+
+        when(userRepository.findByEmailIgnoreCase("pablo@sonarfy.com")).thenReturn(Optional.of(user));
+        when(jwtService.generatePasswordResetToken("1")).thenReturn("jwt-token-reset");
+        when(authEmailService.sendPasswordResetEmail(user, "jwt-token-reset"))
                 .thenReturn("Reset password email sent successfully! Please check your inbox.");
 
-        mockMvc.perform(post("/api/users/me/password-change")
+        mockMvc.perform(post("/api/users/me/password-change-request")
                         .principal(mockPrincipal))
                 .andExpect(status().isOk())
                 .andExpect(content().string("Reset password email sent successfully! Please check your inbox."));
 
-        verify(authEmailService).sendPasswordChangeRequest("pablo@sonarfy.com");
-    }
-
-    @Test
-    @DisplayName("POST /api/users/me/password-change deve retornar 429 Too Many Requests quando cooldown de e-mail estiver ativo")
-    void shouldReturnTooManyRequestsWhenPasswordChangeCooldownIsActive() throws Exception {
-        when(authEmailService.sendPasswordChangeRequest("pablo@sonarfy.com"))
-                .thenThrow(new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Please wait 20 seconds before requesting another email."));
-
-        mockMvc.perform(post("/api/users/me/password-change")
-                        .principal(mockPrincipal))
-                .andExpect(status().isTooManyRequests());
-
-        verify(authEmailService).sendPasswordChangeRequest("pablo@sonarfy.com");
-    }
-
-    @Test
-    @DisplayName("POST /api/users/me/password-change deve retornar 404 Not Found se usuário não existir")
-    void shouldReturnNotFoundWhenUserDoesNotExistForPasswordChange() throws Exception {
-        when(authEmailService.sendPasswordChangeRequest("pablo@sonarfy.com"))
-                .thenThrow(new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found!"));
-
-        mockMvc.perform(post("/api/users/me/password-change")
-                        .principal(mockPrincipal))
-                .andExpect(status().isNotFound());
-
-        verify(authEmailService).sendPasswordChangeRequest("pablo@sonarfy.com");
+        verify(authEmailService).sendPasswordResetEmail(user, "jwt-token-reset");
     }
 }

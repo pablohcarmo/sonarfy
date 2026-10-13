@@ -2,6 +2,8 @@ package br.com.pablohcarmo.sonarfy.services;
 
 import br.com.pablohcarmo.sonarfy.dto.NewUserDto;
 import br.com.pablohcarmo.sonarfy.dto.RegisterResponseDto;
+import br.com.pablohcarmo.sonarfy.dto.ChangePasswordDto;
+import br.com.pablohcarmo.sonarfy.dto.ResetPasswordDto;
 import br.com.pablohcarmo.sonarfy.entities.Permission;
 import br.com.pablohcarmo.sonarfy.entities.User;
 import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
@@ -16,6 +18,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.Optional;
@@ -274,5 +277,263 @@ class UserServiceTest {
         assertEquals(HttpStatus.CONFLICT, exception.getStatusCode());
         verify(userRepository, never()).save(any());
         verifyNoInteractions(authEmailService);
+    }
+
+    // =========================================================================
+    // changePassword tests
+    // =========================================================================
+
+    @Test
+    @DisplayName("Deve alterar senha do usuário logado com sucesso")
+    void shouldChangePasswordSuccessfully() {
+        ChangePasswordDto dto = new ChangePasswordDto("token-jwt", "Old123!", "New123!", "New123!");
+
+        User user = new User();
+        user.setId(1L);
+        user.setEmail("pablo@sonarfy.com");
+        user.setPassword("encodedOldPassword");
+
+        when(jwtService.validatePasswordResetTokenAndGetUserId("token-jwt")).thenReturn("1");
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("Old123!", "encodedOldPassword")).thenReturn(true);
+        when(passwordEncoder.matches("New123!", "encodedOldPassword")).thenReturn(false);
+        when(passwordEncoder.encode("New123!")).thenReturn("encodedNewPassword");
+
+        userService.changePassword("pablo@sonarfy.com", dto);
+
+        assertEquals("encodedNewPassword", user.getPassword());
+        verify(userRepository, times(1)).save(user);
+    }
+
+    @Test
+    @DisplayName("Deve lançar 400 Bad Request ao alterar senha sem fornecer currentPassword")
+    void shouldThrowBadRequestWhenCurrentPasswordIsMissing() {
+        ChangePasswordDto dto = new ChangePasswordDto("token-jwt", null, "New123!", "New123!");
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                userService.changePassword("pablo@sonarfy.com", dto)
+        );
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        assertTrue(ex.getReason().contains("Current password is required!"));
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Deve lançar 400 Bad Request quando nova senha e confirmação não forem iguais")
+    void shouldThrowBadRequestWhenPasswordsDoNotMatchInChangePassword() {
+        ChangePasswordDto dto = new ChangePasswordDto("token-jwt", "Old123!", "New123!", "Different123!");
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                userService.changePassword("pablo@sonarfy.com", dto)
+        );
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        assertTrue(ex.getReason().contains("New password and confirmation do not match!"));
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Deve lançar 403 Forbidden quando o token pertencer a outro usuário")
+    void shouldThrowForbiddenWhenTokenBelongsToAnotherUser() {
+        ChangePasswordDto dto = new ChangePasswordDto("token-jwt", "Old123!", "New123!", "New123!");
+
+        User user = new User();
+        user.setId(2L);
+        user.setEmail("outro@sonarfy.com");
+
+        when(jwtService.validatePasswordResetTokenAndGetUserId("token-jwt")).thenReturn("2");
+        when(userRepository.findById(2L)).thenReturn(Optional.of(user));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                userService.changePassword("pablo@sonarfy.com", dto)
+        );
+
+        assertEquals(HttpStatus.FORBIDDEN, ex.getStatusCode());
+        assertTrue(ex.getReason().contains("Token does not belong to the authenticated user!"));
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Deve lançar 400 Bad Request quando senha atual for incorreta")
+    void shouldThrowBadRequestWhenCurrentPasswordIsIncorrect() {
+        ChangePasswordDto dto = new ChangePasswordDto("token-jwt", "Wrong123!", "New123!", "New123!");
+
+        User user = new User();
+        user.setId(1L);
+        user.setEmail("pablo@sonarfy.com");
+        user.setPassword("encodedOldPassword");
+
+        when(jwtService.validatePasswordResetTokenAndGetUserId("token-jwt")).thenReturn("1");
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("Wrong123!", "encodedOldPassword")).thenReturn(false);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                userService.changePassword("pablo@sonarfy.com", dto)
+        );
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        assertTrue(ex.getReason().contains("Current password is incorrect!"));
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Deve lançar 400 Bad Request quando a nova senha for igual à senha atual")
+    void shouldThrowBadRequestWhenNewPasswordIsSameAsCurrentPassword() {
+        ChangePasswordDto dto = new ChangePasswordDto("token-jwt", "Same123!", "Same123!", "Same123!");
+
+        User user = new User();
+        user.setId(1L);
+        user.setEmail("pablo@sonarfy.com");
+        user.setPassword("encodedOldPassword");
+
+        when(jwtService.validatePasswordResetTokenAndGetUserId("token-jwt")).thenReturn("1");
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("Same123!", "encodedOldPassword")).thenReturn(true);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                userService.changePassword("pablo@sonarfy.com", dto)
+        );
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        assertTrue(ex.getReason().contains("New password cannot be the same as the current password!"));
+        verify(userRepository, never()).save(any());
+    }
+
+    // =========================================================================
+    // resetPassword tests
+    // =========================================================================
+
+    @Test
+    @DisplayName("Deve redefinir senha esquecida com sucesso")
+    void shouldResetPasswordSuccessfully() {
+        ResetPasswordDto dto = new ResetPasswordDto("token-jwt", "NewPass123!", "NewPass123!");
+
+        User user = new User();
+        user.setId(5L);
+        user.setEmail("pablo@sonarfy.com");
+
+        when(jwtService.validatePasswordResetTokenAndGetUserId("token-jwt")).thenReturn("5");
+        when(userRepository.findById(5L)).thenReturn(Optional.of(user));
+        when(passwordEncoder.encode("NewPass123!")).thenReturn("encodedNewPassword");
+
+        userService.resetPassword(dto);
+
+        assertEquals("encodedNewPassword", user.getPassword());
+        verify(userRepository, times(1)).save(user);
+    }
+
+    @Test
+    @DisplayName("Deve lançar 400 Bad Request quando a nova senha for igual à senha atual no resetPassword")
+    void shouldThrowBadRequestWhenNewPasswordIsSameAsCurrentPasswordInResetPassword() {
+        ResetPasswordDto dto = new ResetPasswordDto("token-jwt", "SamePass123!", "SamePass123!");
+
+        User user = new User();
+        user.setId(5L);
+        user.setEmail("pablo@sonarfy.com");
+        user.setPassword("encodedOldPassword");
+
+        when(jwtService.validatePasswordResetTokenAndGetUserId("token-jwt")).thenReturn("5");
+        when(userRepository.findById(5L)).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("SamePass123!", "encodedOldPassword")).thenReturn(true);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                userService.resetPassword(dto)
+        );
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        assertTrue(ex.getReason().contains("New password cannot be the same as the current password!"));
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Deve lançar 400 Bad Request quando token for inválido ou expirado no resetPassword")
+    void shouldThrowBadRequestWhenResetTokenIsInvalidOrExpired() {
+        ResetPasswordDto dto = new ResetPasswordDto("expired-token", "NewPass123!", "NewPass123!");
+
+        when(jwtService.validatePasswordResetTokenAndGetUserId("expired-token")).thenReturn(null);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                userService.resetPassword(dto)
+        );
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        assertTrue(ex.getReason().contains("Invalid or expired token!"));
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Anti-Replay: Deve lançar 400 Bad Request ao tentar reutilizar token emitido antes da última alteração de senha")
+    void shouldThrowBadRequestWhenTokenIssuedBeforeLastPasswordUpdate() {
+        ResetPasswordDto dto = new ResetPasswordDto("used-token", "NewPass123!", "NewPass123!");
+
+        User user = new User();
+        user.setId(7L);
+        user.setPasswordLastUpdateDate(OffsetDateTime.now());
+
+        // Token emitido 5 minutos antes da última alteração de senha
+        Instant tokenIssuedAt = user.getPasswordLastUpdateDate().toInstant().minusSeconds(300);
+
+        when(jwtService.validatePasswordResetTokenAndGetUserId("used-token")).thenReturn("7");
+        when(userRepository.findById(7L)).thenReturn(Optional.of(user));
+        when(jwtService.getPasswordResetTokenIssuedAt("used-token")).thenReturn(tokenIssuedAt);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                userService.resetPassword(dto)
+        );
+
+        assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
+        assertTrue(ex.getReason().contains("Token has already been used or is invalid!"));
+        verify(userRepository, never()).save(user);
+    }
+
+    // =========================================================================
+    // requestPasswordReset tests
+    // =========================================================================
+
+    @Test
+    @DisplayName("Deve gerar token e disparar e-mail quando usuário existir e for verificado")
+    void shouldSendPasswordResetTokenWhenUserExistsAndIsVerified() {
+        User user = new User();
+        user.setId(10L);
+        user.setEmail("pablo@sonarfy.com");
+        user.setVerified(true);
+
+        when(userRepository.findByEmailIgnoreCase("pablo@sonarfy.com")).thenReturn(Optional.of(user));
+        when(jwtService.generatePasswordResetToken("10")).thenReturn("reset-token-123");
+
+        userService.requestPasswordReset("pablo@sonarfy.com");
+
+        verify(jwtService).generatePasswordResetToken("10");
+        verify(authEmailService).sendPasswordResetEmail(user, "reset-token-123");
+    }
+
+    @Test
+    @DisplayName("Não deve gerar token nem disparar e-mail quando usuário não for verificado")
+    void shouldNotSendPasswordResetTokenWhenUserIsNotVerified() {
+        User user = new User();
+        user.setId(10L);
+        user.setEmail("pablo@sonarfy.com");
+        user.setVerified(false);
+
+        when(userRepository.findByEmailIgnoreCase("pablo@sonarfy.com")).thenReturn(Optional.of(user));
+
+        userService.requestPasswordReset("pablo@sonarfy.com");
+
+        verify(jwtService, never()).generatePasswordResetToken(any());
+        verify(jwtService, never()).generateEmailConfirmationToken(any());
+        verify(authEmailService, never()).sendPasswordResetEmail(any(), any());
+    }
+
+    @Test
+    @DisplayName("Não deve gerar token nem disparar e-mail quando usuário não for encontrado")
+    void shouldNotSendPasswordResetTokenWhenUserNotFound() {
+        when(userRepository.findByEmailIgnoreCase("inexistente@sonarfy.com")).thenReturn(Optional.empty());
+
+        userService.requestPasswordReset("inexistente@sonarfy.com");
+
+        verify(jwtService, never()).generatePasswordResetToken(any());
+        verify(jwtService, never()).generateEmailConfirmationToken(any());
+        verify(authEmailService, never()).sendPasswordResetEmail(any(), any());
     }
 }

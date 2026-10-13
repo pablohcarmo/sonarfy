@@ -1,8 +1,6 @@
 package br.com.pablohcarmo.sonarfy.controllers;
 
-import br.com.pablohcarmo.sonarfy.dto.NewUserDto;
-import br.com.pablohcarmo.sonarfy.dto.RegisterResponseDto;
-import br.com.pablohcarmo.sonarfy.dto.UpdatePendingEmailDto;
+import br.com.pablohcarmo.sonarfy.dto.*;
 import br.com.pablohcarmo.sonarfy.services.AuthEmailService;
 import br.com.pablohcarmo.sonarfy.services.JwtService;
 import br.com.pablohcarmo.sonarfy.services.UserService;
@@ -43,6 +41,7 @@ class AuthControllerTest {
 
     @Mock
     private AuthEmailService authEmailService;
+
 
     @InjectMocks
     private AuthController authController;
@@ -277,16 +276,79 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/auth/password-reset deve retornar 200 OK com mensagem de sucesso")
-    void shouldRequestPasswordResetSuccessfully() throws Exception {
-        when(authEmailService.sendPasswordChangeRequest("pablo@sonarfy.com"))
-                .thenReturn("Reset password email sent successfully! Please check your inbox.");
+    @DisplayName("POST /api/auth/reset-password deve retornar 200 OK ao redefinir senha com sucesso")
+    void shouldResetPasswordSuccessfully() throws Exception {
+        ResetPasswordDto dto = new ResetPasswordDto(
+                "valid-token-123",
+                "NewPassword123!",
+                "NewPassword123!"
+        );
 
-        mockMvc.perform(post("/api/auth/password-reset")
-                        .param("email", "pablo@sonarfy.com"))
+        doNothing().when(userService).resetPassword(any(ResetPasswordDto.class));
+
+        mockMvc.perform(post("/api/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dto)))
                 .andExpect(status().isOk())
-                .andExpect(content().string("Reset password email sent successfully! Please check your inbox."));
+                .andExpect(content().string("Password reset successfully. You can now log in."));
 
-        verify(authEmailService).sendPasswordChangeRequest("pablo@sonarfy.com");
+        verify(userService).resetPassword(any(ResetPasswordDto.class));
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/reset-password deve retornar 400 Bad Request quando payload for inválido")
+    void shouldReturnBadRequestWhenResetPasswordDtoIsInvalid() throws Exception {
+        ResetPasswordDto dto = new ResetPasswordDto(
+                "", // token em branco inválido
+                "short", // senha curta < 8 caracteres
+                "short"
+        );
+
+        mockMvc.perform(post("/api/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isBadRequest());
+
+        verify(userService, never()).resetPassword(any());
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/forgot-password deve retornar 200 OK com resposta genérica e delegar para o UserService")
+    void shouldSendForgotPasswordEmailSuccessfully() throws Exception {
+        ForgotPasswordDto dto = new ForgotPasswordDto("pablo@sonarfy.com");
+
+        mockMvc.perform(post("/api/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isOk())
+                .andExpect(content().string("If the email exists and is verified, a password reset link has been sent. Please check your inbox."));
+
+        verify(userService, times(1)).requestPasswordReset("pablo@sonarfy.com");
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/forgot-password deve retornar 400 Bad Request quando formato do email for inválido")
+    void shouldReturnBadRequestWhenEmailFormatIsInvalid() throws Exception {
+        ForgotPasswordDto dto = new ForgotPasswordDto("email-invalido");
+
+        mockMvc.perform(post("/api/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isBadRequest());
+
+        verify(userService, never()).requestPasswordReset(any());
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/forgot-password deve retornar 400 Bad Request quando email for em branco")
+    void shouldReturnBadRequestWhenEmailIsBlankInForgotPassword() throws Exception {
+        ForgotPasswordDto dto = new ForgotPasswordDto("   ");
+
+        mockMvc.perform(post("/api/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isBadRequest());
+
+        verify(userService, never()).requestPasswordReset(any());
     }
 }

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -71,14 +72,15 @@ class AuthEmailServiceTest {
 
         authEmailService.sendActivationEmail(sampleUser, token);
 
-        verify(emailService, times(1)).sendEmail(
+        InOrder inOrder = inOrder(userRepository, emailService);
+        inOrder.verify(userRepository).save(sampleUser);
+        inOrder.verify(emailService, times(1)).sendEmail(
                 eq("pablo@sonarfy.com"),
                 eq("Ative sua conta no Sonarfy!"),
                 argThat(body -> body.contains("http://localhost:3000/verify.html?token=" + token)
                         && body.contains("Pablo Carmo"))
         );
         assertNotNull(sampleUser.getLastEmailSentAt());
-        verify(userRepository, times(1)).save(sampleUser);
     }
 
     @Test
@@ -88,8 +90,9 @@ class AuthEmailServiceTest {
 
         authEmailService.sendActivationEmail(sampleUser, "token-expirado");
 
-        verify(emailService, times(1)).sendEmail(eq("pablo@sonarfy.com"), any(), any());
-        verify(userRepository, times(1)).save(sampleUser);
+        InOrder inOrder = inOrder(userRepository, emailService);
+        inOrder.verify(userRepository).save(sampleUser);
+        inOrder.verify(emailService, times(1)).sendEmail(eq("pablo@sonarfy.com"), any(), any());
     }
 
     @Test
@@ -118,6 +121,10 @@ class AuthEmailServiceTest {
         );
 
         assertTrue(ex.getMessage().contains("Failed to send activation token email"));
+
+        InOrder inOrder = inOrder(userRepository, emailService);
+        inOrder.verify(userRepository).save(sampleUser);
+        inOrder.verify(emailService).sendEmail(any(), any(), any());
     }
 
     // ==========================================
@@ -221,50 +228,40 @@ class AuthEmailServiceTest {
     }
 
     // ==========================================
-    // 4. sendPasswordChangeRequest
+    // 4. sendPasswordResetEmail
     // ==========================================
 
     @Test
-    @DisplayName("Deve buscar usuário e enviar e-mail de solicitação de redefinição de senha com sucesso")
-    void shouldSendPasswordChangeRequestSuccessfully() {
+    @DisplayName("Deve enviar e-mail de redefinição de senha com sucesso")
+    void shouldSendPasswordResetEmailSuccessfully() {
         sampleUser.setVerified(true);
-        when(userRepository.findByEmailIgnoreCase("pablo@sonarfy.com")).thenReturn(Optional.of(sampleUser));
+        String token = "jwt-reset-token-123";
 
-        String result = authEmailService.sendPasswordChangeRequest("pablo@sonarfy.com");
+        String result = authEmailService.sendPasswordResetEmail(sampleUser, token);
 
         assertEquals("Reset password email sent successfully! Please check your inbox.", result);
-        verify(emailService, times(1)).sendEmail(
+        InOrder inOrder = inOrder(userRepository, emailService);
+        inOrder.verify(userRepository).save(sampleUser);
+        inOrder.verify(emailService, times(1)).sendEmail(
                 eq("pablo@sonarfy.com"),
                 eq("Redefinição de senha - Sonarfy"),
-                argThat(body -> body.contains("http://localhost:8080/reset-password")
+                argThat(body -> body.contains("http://localhost:3000/reset-password.html?token=" + token)
                         && body.contains("Pablo Carmo"))
         );
-        verify(userRepository, times(1)).save(sampleUser);
+        assertNotNull(sampleUser.getLastEmailSentAt());
     }
 
     @Test
-    @DisplayName("Deve retornar mensagem de erro ao solicitar redefinição de senha com e-mail nulo, vazio ou em branco")
-    void shouldReturnErrorMessageWhenPasswordResetEmailIsInvalid() {
-        assertEquals("Invalid e-mail provided for password reset.",
-                authEmailService.sendPasswordChangeRequest(null));
-        assertEquals("Invalid e-mail provided for password reset.",
-                authEmailService.sendPasswordChangeRequest(""));
-        assertEquals("Invalid e-mail provided for password reset.",
-                authEmailService.sendPasswordChangeRequest("   "));
-
-        verifyNoInteractions(userRepository);
-        verifyNoInteractions(emailService);
-    }
-
-    @Test
-    @DisplayName("Deve retornar mensagem de erro quando usuário não for verificado ao solicitar redefinição de senha")
-    void shouldReturnErrorMessageWhenUserIsNotVerifiedOnPasswordReset() {
+    @DisplayName("Deve lançar 403 Forbidden quando usuário não for verificado ao solicitar redefinição de senha")
+    void shouldThrowForbiddenWhenUserIsNotVerifiedOnPasswordReset() {
         sampleUser.setVerified(false);
-        when(userRepository.findByEmailIgnoreCase("pablo@sonarfy.com")).thenReturn(Optional.of(sampleUser));
 
-        String result = authEmailService.sendPasswordChangeRequest("pablo@sonarfy.com");
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                authEmailService.sendPasswordResetEmail(sampleUser, "token-123")
+        );
 
-        assertEquals("User is not verified. Please verify your account before requesting a password reset.", result);
+        assertEquals(HttpStatus.FORBIDDEN, ex.getStatusCode());
+        assertTrue(ex.getReason().contains("User is not verified"));
         verify(emailService, never()).sendEmail(any(), any(), any());
         verify(userRepository, never()).save(any());
     }
@@ -274,10 +271,9 @@ class AuthEmailServiceTest {
     void shouldThrowTooManyRequestsWhenCooldownIsActiveOnPasswordReset() {
         sampleUser.setVerified(true);
         sampleUser.setLastEmailSentAt(OffsetDateTime.now().minusSeconds(10));
-        when(userRepository.findByEmailIgnoreCase("pablo@sonarfy.com")).thenReturn(Optional.of(sampleUser));
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
-                authEmailService.sendPasswordChangeRequest("pablo@sonarfy.com")
+                authEmailService.sendPasswordResetEmail(sampleUser, "token-123")
         );
 
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, ex.getStatusCode());
@@ -285,29 +281,20 @@ class AuthEmailServiceTest {
     }
 
     @Test
-    @DisplayName("Deve lançar UsernameNotFoundException ao solicitar redefinição de senha para e-mail inexistente")
-    void shouldThrowUsernameNotFoundExceptionWhenEmailDoesNotExistForPasswordReset() {
-        when(userRepository.findByEmailIgnoreCase("naoexiste@sonarfy.com")).thenReturn(Optional.empty());
-
-        assertThrows(UsernameNotFoundException.class, () ->
-                authEmailService.sendPasswordChangeRequest("naoexiste@sonarfy.com")
-        );
-
-        verify(emailService, never()).sendEmail(any(), any(), any());
-    }
-
-    @Test
     @DisplayName("Deve lançar RuntimeException quando falhar o transporte do e-mail de redefinição de senha")
     void shouldThrowRuntimeExceptionWhenEmailTransportFailsOnPasswordReset() {
         sampleUser.setVerified(true);
-        when(userRepository.findByEmailIgnoreCase("pablo@sonarfy.com")).thenReturn(Optional.of(sampleUser));
         doThrow(new RuntimeException("SMTP Connection refused"))
                 .when(emailService).sendEmail(any(), any(), any());
 
         RuntimeException ex = assertThrows(RuntimeException.class, () ->
-                authEmailService.sendPasswordChangeRequest("pablo@sonarfy.com")
+                authEmailService.sendPasswordResetEmail(sampleUser, "token-123")
         );
 
         assertTrue(ex.getMessage().contains("Failed to send reset password email"));
+
+        InOrder inOrder = inOrder(userRepository, emailService);
+        inOrder.verify(userRepository).save(sampleUser);
+        inOrder.verify(emailService).sendEmail(any(), any(), any());
     }
 }

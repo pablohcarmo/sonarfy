@@ -39,6 +39,13 @@ public class AuthEmailService {
     }
 
     public void sendActivationEmail(User user, String jwtToken) {
+        // Checa o cooldown antes de enviar o e-mail
+        checkEmailCooldown(user);
+
+        // Atualiza a timestamp no banco de dados
+        user.setLastEmailSentAt(OffsetDateTime.now());
+        userRepository.save(user);
+
         String activationLink = frontendUrl + "/verify.html?token=" + jwtToken;
 
         String subject = "Ative sua conta no Sonarfy!";
@@ -48,16 +55,10 @@ public class AuthEmailService {
                 "\nSe o link não funcionar, copie e cole no seu navegador.\n\n" +
                 "Atenciosamente,\nEquipe Sonarfy";
 
-        // Checa o cooldown antes de enviar o e-mail
-        checkEmailCooldown(user);
-
         try {
             // Dispara o e-mail de ativação
             this.emailService.sendEmail(user.getEmail(), subject, body);
 
-            // Atualiza a timestamp no banco de dados
-            user.setLastEmailSentAt(OffsetDateTime.now());
-            userRepository.save(user);
         } catch (Exception e) {
             // Exceção para dar Rollback no cadastro se o link falhar
             throw new RuntimeException("Failed to send activation token email: " + e.getMessage());
@@ -75,6 +76,8 @@ public class AuthEmailService {
         User user = userRepository.findByEmailIgnoreCase(email)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
 
+        checkEmailCooldown(user);
+
         // Verifica se o usuário já foi verificado
         if(user.isVerified()) {
             return "User already verified. You can log in.";
@@ -86,8 +89,6 @@ public class AuthEmailService {
         // Envia o e-mail de confirmação
         try {
             sendActivationEmail(user, jwtToken);
-            user.setLastEmailSentAt(OffsetDateTime.now());
-
             return "Confirmation email resent successfully! Please check your inbox.";
         } catch (ResponseStatusException e) {
             throw e; // ResponseStatusException é lançado para o cliente, não precisa ser encapsulado
@@ -110,36 +111,30 @@ public class AuthEmailService {
         }
     }
 
-    @Transactional
-    public String sendPasswordChangeRequest(String email) {
-        if(email == null || email.isBlank()) {
-            return "Invalid e-mail provided for password reset.";
+    public String sendPasswordResetEmail(User user, String resetToken) {
+        // Impede que usuários não confirmados solicitem redefinição de senha
+        if (!user.isVerified()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not verified. Please verify your account before requesting a password reset.");
         }
 
-        User user = userRepository.findByEmailIgnoreCase(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
-
-        if(!user.isVerified()) {
-            return "User is not verified. Please verify your account before requesting a password reset.";
-        }
-
+        // Valida o cooldown antes de enviar o e-mail
         checkEmailCooldown(user);
 
-        String mockResetLink = baseUrl + "/reset-password?token=simulacao-temporaria";
+        user.setLastEmailSentAt(OffsetDateTime.now());
+        userRepository.save(user);
+
+        // Gera o link de redefinição de senha com o token JWT
+        String resetLink = frontendUrl + "/reset-password.html?token=" + resetToken;
 
         String subject = "Redefinição de senha - Sonarfy";
         String body = "Olá, " + user.getName() + " " + user.getSurname() +
                 "\n\nRecebemos uma solicitação para redefinir sua senha. " +
-                "\nPara redefinir sua senha, clique no link abaixo:\n" +
-                mockResetLink +
+                "\nPara redefinir sua senha, clique no link abaixo:\n" + resetLink +
                 "\n\nEste link é válido por 15 minutos. Se você não solicitou essa alteração, ignore este e-mail." +
                 "\n\nAtenciosamente,\nEquipe Sonarfy";
 
         try {
             emailService.sendEmail(user.getEmail(), subject, body);
-            user.setLastEmailSentAt(OffsetDateTime.now());
-            userRepository.save(user);
-
             return "Reset password email sent successfully! Please check your inbox.";
         } catch (Exception e) {
             throw new RuntimeException("Failed to send reset password email: " + e.getMessage());

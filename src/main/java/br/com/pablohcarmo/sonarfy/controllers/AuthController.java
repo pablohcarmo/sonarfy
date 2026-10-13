@@ -1,9 +1,6 @@
 package br.com.pablohcarmo.sonarfy.controllers;
 
-import br.com.pablohcarmo.sonarfy.dto.LoginDto;
-import br.com.pablohcarmo.sonarfy.dto.NewUserDto;
-import br.com.pablohcarmo.sonarfy.dto.RegisterResponseDto;
-import br.com.pablohcarmo.sonarfy.dto.UpdatePendingEmailDto;
+import br.com.pablohcarmo.sonarfy.dto.*;
 import br.com.pablohcarmo.sonarfy.services.AuthEmailService;
 import br.com.pablohcarmo.sonarfy.services.JwtService;
 import br.com.pablohcarmo.sonarfy.services.UserService;
@@ -45,7 +42,7 @@ public class AuthController {
         if(result.contains("success") || result.contains("already verified")) {
             return ResponseEntity.ok(result);
         } else {
-            // Retorna 400 Bad Request apenas se o o token for inválido, corrompido ou expirado
+            // Retorna 400 Bad Request apenas se o token for inválido, corrompido ou expirado
             return ResponseEntity.badRequest().body(result);
         }
     }
@@ -77,9 +74,16 @@ public class AuthController {
         return ResponseEntity.ok(result);
     }
 
-    @PostMapping("/password-reset")
-    public ResponseEntity<String> requestPasswordReset(@RequestParam("email") String email) {
-        String result = authEmailService.sendPasswordChangeRequest(email);
-        return ResponseEntity.ok(result);
+    @PostMapping("/forgot-password")
+    public ResponseEntity<String> forgotPassword(@Valid @RequestBody ForgotPasswordDto dto) {
+        userService.requestPasswordReset(dto.email());
+        // Resposta sempre genérica para não revelar se o e-mail existe ou não
+        return ResponseEntity.ok("If the email exists and is verified, a password reset link has been sent. Please check your inbox.");
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<String> resetPassword(@Valid @RequestBody ResetPasswordDto resetPasswordDto) {
+        userService.resetPassword(resetPasswordDto);
+        return ResponseEntity.ok("Password reset successfully. You can now log in.");
     }
 }
