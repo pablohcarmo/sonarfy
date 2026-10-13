@@ -1,6 +1,6 @@
 package br.com.pablohcarmo.sonarfy.controllers;
 
-import br.com.pablohcarmo.sonarfy.dto.UpdatePasswordDto;
+import br.com.pablohcarmo.sonarfy.dto.ChangePasswordDto;
 import br.com.pablohcarmo.sonarfy.dto.UpdateUserDto;
 import br.com.pablohcarmo.sonarfy.dto.UserDto;
 import br.com.pablohcarmo.sonarfy.entities.User;
@@ -62,7 +62,7 @@ public class UserController {
     }
 
     @PutMapping("/me/password")
-    public ResponseEntity<String> changePassword(@Valid @RequestBody UpdatePasswordDto dto, Principal principal) {
+    public ResponseEntity<String> changePassword(@Valid @RequestBody ChangePasswordDto dto, Principal principal) {
         userService.changePassword(principal.getName(), dto);
         return ResponseEntity.ok("Password updated successfully.");
     }

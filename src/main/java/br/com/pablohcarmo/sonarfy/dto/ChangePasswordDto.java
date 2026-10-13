@@ -3,11 +3,11 @@ package br.com.pablohcarmo.sonarfy.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
-public record UpdatePasswordDto(
+public record ChangePasswordDto(
         @NotBlank(message = "Token is required.")
         String token,
 
-        // Opcional, DTO utilizada para alterar senha de usuários logados e não logados (recuperação de senha)
+        @NotBlank(message = "Current password is required.")
         String currentPassword,
 
         @NotBlank(message = "New password is required.")
@@ -15,8 +15,6 @@ public record UpdatePasswordDto(
         String newPassword,
 
         @NotBlank(message = "Password confirmation is required.")
-        String confirmNewPassword,
-
-        String email
+        String confirmNewPassword
 ) {
 }
