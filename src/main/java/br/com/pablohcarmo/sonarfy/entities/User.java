@@ -275,6 +275,7 @@ public class User implements UserDetails {
     protected void onCreate() {
         creationDate = OffsetDateTime.now();
         lastUpdateDate = OffsetDateTime.now();
+        passwordLastUpdateDate = OffsetDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
         this.isActive = true;
     }
 

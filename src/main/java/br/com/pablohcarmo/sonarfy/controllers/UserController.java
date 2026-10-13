@@ -9,9 +9,6 @@ import br.com.pablohcarmo.sonarfy.services.AuthEmailService;
 import br.com.pablohcarmo.sonarfy.services.JwtService;
 import br.com.pablohcarmo.sonarfy.services.UserService;
 import jakarta.validation.Valid;
-import org.apache.coyote.Response;
-import org.hibernate.sql.Update;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.*;
@@ -56,7 +53,7 @@ public class UserController {
     @PostMapping("/me/password-change-request")
     public ResponseEntity<String> requestPasswordChange(Principal principal) {
         User user = userRepository.findByEmailIgnoreCase(principal.getName())
-                .orElseThrow(() -> new UsernameNotFoundException("User not found.!"));
+                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
 
         String token = jwtService.generatePasswordResetToken(user.getId().toString());
         String result  = authEmailService.sendPasswordResetEmail(user, token);

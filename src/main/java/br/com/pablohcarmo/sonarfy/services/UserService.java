@@ -179,6 +179,7 @@ public class UserService implements UserDetailsService {
         }
 
         // 6. Atualiza a senha do usuário com a nova senha fornecida
+
         updatePassword(user, dto.newPassword());
     }
 
@@ -266,12 +267,18 @@ public class UserService implements UserDetailsService {
         return trimmed.startsWith("@") ? trimmed.substring(1) : trimmed;
     }
 
+    @Transactional
     public void resetPassword(UpdatePasswordDto dto) {
         // Valida as duas senhas novas para garantir que são iguais
         validatePasswordConfirmation(dto.newPassword(), dto.confirmNewPassword());
 
         // Valida o token e obtém o usuário correspondente
         User user = validateTokenAndGetUser(dto.token());
+
+        // Evita que o usuário altere a senha para a mesma senha atual
+        if (passwordEncoder.matches(dto.newPassword(), user.getPassword())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password cannot be the same as the current password!");
+        }
 
         // Como o usuário não possui a senha atual, atualizamos diretamente a senha com a nova senha fornecida
         updatePassword(user, dto.newPassword());
@@ -280,7 +287,7 @@ public class UserService implements UserDetailsService {
     private void updatePassword(User user, String newRawPassword) {
         // Atualiza a senha do usuário com a nova senha codificada
         user.setPassword(passwordEncoder.encode(newRawPassword));
-        user.setPasswordLastUpdateDate(OffsetDateTime.now());
+        user.setPasswordLastUpdateDate(OffsetDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS)); // Trunca para segundos para evitar problemas de precisão
         userRepository.save(user);
     }
 
@@ -318,6 +325,19 @@ public class UserService implements UserDetailsService {
     private void validatePasswordConfirmation(String newPassword, String confirmPassword) {
         if (!newPassword.equals(confirmPassword)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password and confirmation do not match!");
+        }
+    }
+
+    public void requestPasswordReset(String email) {
+        Optional<User> optionalUser = userRepository.findByEmailIgnoreCase(email);
+
+        // Se o usuário existir e for verificado, gera o token e dispara o e-mail
+        if (optionalUser.isPresent()) {
+            User user = optionalUser.get();
+            if(user.isVerified()) {
+                String token = jwtService.generatePasswordResetToken(user.getId().toString());
+                authEmailService.sendPasswordResetEmail(user, token);
+            }
         }
     }
 }
