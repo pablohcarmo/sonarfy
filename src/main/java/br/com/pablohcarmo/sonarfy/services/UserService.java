@@ -3,10 +3,13 @@ package br.com.pablohcarmo.sonarfy.services;
 import br.com.pablohcarmo.sonarfy.dto.*;
 import br.com.pablohcarmo.sonarfy.entities.Permission;
 import br.com.pablohcarmo.sonarfy.entities.User;
+import br.com.pablohcarmo.sonarfy.exceptions.EmailDeliveryException;
 import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import jakarta.transaction.Transactional;
 import org.jspecify.annotations.NonNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -28,6 +31,7 @@ public class UserService implements UserDetailsService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthEmailService authEmailService;
+    private static final Logger logger = LoggerFactory.getLogger(UserService.class);
 
     public UserService (UserRepository userRepository, PermissionRepository permissionRepository, PasswordEncoder passwordEncoder, JwtService jwtService, AuthEmailService authEmailService) {
         this.userRepository = userRepository;
@@ -329,15 +333,40 @@ public class UserService implements UserDetailsService {
     }
 
     public void requestPasswordReset(String email) {
+        // Opcional representa uma busca que pode não encontrar uma conta.
         Optional<User> optionalUser = userRepository.findByEmailIgnoreCase(email);
 
-        // Se o usuário existir e for verificado, gera o token e dispara o e-mail
-        if (optionalUser.isPresent()) {
-            User user = optionalUser.get();
-            if(user.isVerified()) {
-                String token = jwtService.generatePasswordResetToken(user.getId().toString());
-                authEmailService.sendPasswordResetEmail(user, token);
+        if(optionalUser.isEmpty()) {
+            return; // Retorna silenciosamente para não revelar se o e-mail existe ou não
+        }
+
+        User user = optionalUser.get();
+        if(!user.isVerified()) {
+            return; // Não envia para a conta não verificada e termina o fluxo silenciosamente
+        }
+
+
+        // Gera o token de redefinição apenas para conta elegível
+        String token = jwtService.generatePasswordResetToken(user.getId().toString());
+
+        try {
+            authEmailService.sendPasswordResetEmail(user, token);
+        } catch (ResponseStatusException e) {
+            // Apenas 429 é tratado como um impedimento esperado
+            if (e.getStatusCode() .value() != HttpStatus.TOO_MANY_REQUESTS.value()) {
+                throw e;
             }
+
+            return;
+        } catch(EmailDeliveryException e) {
+            // Escolhe o nome do tipo de conta, sem copiar mensagens do provedor que podem conter informações sensíveis
+            Throwable cause = e.getCause();
+            String failureType = cause == null
+                    ? e.getClass().getSimpleName()
+                    : cause.getClass().getSimpleName();
+
+            // Registra o problema no log sem incluir token, senha ou destinatário
+            logger.warn("Password reset email delivery failed; failure type: {}", failureType);
         }
     }
 }

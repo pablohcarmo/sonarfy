@@ -236,4 +236,25 @@ class UserControllerTest {
 
         verify(authEmailService).sendPasswordResetEmail(user, "jwt-token-reset");
     }
+
+    @Test
+    @DisplayName("Solicitação autenticada mantém 429 durante cooldown")
+    void shouldKeepCooldownFeedbackForAuthenticatedPasswordChange() throws Exception {
+        User user = new User();
+        user.setId(1L);
+        user.setEmail("pablo@sonarfy.com");
+        user.setVerified(true);
+
+        when(userRepository.findByEmailIgnoreCase(user.getEmail())).thenReturn(Optional.of(user));
+        when(jwtService.generatePasswordResetToken("1")).thenReturn("jwt-token-reset");
+        when(authEmailService.sendPasswordResetEmail(user, "jwt-token-reset"))
+                .thenThrow(new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Please wait"));
+
+        mockMvc.perform(post("/api/users/me/password-change-request")
+                        .principal(mockPrincipal))
+                .andExpect(status().isTooManyRequests());
+
+        verify(authEmailService).sendPasswordResetEmail(user, "jwt-token-reset");
+        verifyNoInteractions(userService);
+    }
 }

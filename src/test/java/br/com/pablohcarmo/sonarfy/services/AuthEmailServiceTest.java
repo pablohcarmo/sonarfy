@@ -1,6 +1,7 @@
 package br.com.pablohcarmo.sonarfy.services;
 
 import br.com.pablohcarmo.sonarfy.entities.User;
+import br.com.pablohcarmo.sonarfy.exceptions.EmailDeliveryException;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -11,6 +12,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.mail.MailSendException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
@@ -278,20 +280,25 @@ class AuthEmailServiceTest {
 
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, ex.getStatusCode());
         verify(emailService, never()).sendEmail(any(), any(), any());
+        verify(userRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("Deve lançar RuntimeException quando falhar o transporte do e-mail de redefinição de senha")
-    void shouldThrowRuntimeExceptionWhenEmailTransportFailsOnPasswordReset() {
+    @DisplayName("Deve preservar a exceção específica e sua causa quando a entrega falha")
+    void shouldPropagateEmailDeliveryExceptionOnPasswordReset() {
         sampleUser.setVerified(true);
-        doThrow(new RuntimeException("SMTP Connection refused"))
+        MailSendException cause = new MailSendException("SMTP Connection refused");
+        EmailDeliveryException failure = new EmailDeliveryException("Failed to deliver email.", cause);
+        doThrow(failure)
                 .when(emailService).sendEmail(any(), any(), any());
 
-        RuntimeException ex = assertThrows(RuntimeException.class, () ->
+        EmailDeliveryException ex = assertThrows(EmailDeliveryException.class, () ->
                 authEmailService.sendPasswordResetEmail(sampleUser, "token-123")
         );
 
-        assertTrue(ex.getMessage().contains("Failed to send reset password email"));
+        assertSame(failure, ex);
+        assertSame(cause, ex.getCause());
+        assertNotNull(sampleUser.getLastEmailSentAt());
 
         InOrder inOrder = inOrder(userRepository, emailService);
         inOrder.verify(userRepository).save(sampleUser);

@@ -114,12 +114,15 @@ public class AuthEmailService {
     public String sendPasswordResetEmail(User user, String resetToken) {
         // Impede que usuários não confirmados solicitem redefinição de senha
         if (!user.isVerified()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not verified. Please verify your account before requesting a password reset.");
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "User is not verified. Please verify your account before requesting a password reset.");
         }
 
-        // Valida o cooldown antes de enviar o e-mail
+        // Se ainda estiver em cooldown, lança 429 e interrompe a execução antes de atualizar a timestamp
         checkEmailCooldown(user);
 
+        // Registra a tentativa antes do envio do e-mail para evitar abuso
         user.setLastEmailSentAt(OffsetDateTime.now());
         userRepository.save(user);
 
@@ -133,12 +136,10 @@ public class AuthEmailService {
                 "\n\nEste link é válido por 15 minutos. Se você não solicitou essa alteração, ignore este e-mail." +
                 "\n\nAtenciosamente,\nEquipe Sonarfy";
 
-        try {
-            emailService.sendEmail(user.getEmail(), subject, body);
-            return "Reset password email sent successfully! Please check your inbox.";
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to send reset password email: " + e.getMessage());
-        }
+        // Deixa EmailDeliveryException subir até o chamador com seu tipo preservado
+        // O fluxo público decide como responder, e o autenticado pode tratar diferente.
+        emailService.sendEmail(user.getEmail(), subject, body);
+        return "Reset password email sent successfully! Please check your inbox.";
     }
 
     private void checkEmailCooldown(User user){

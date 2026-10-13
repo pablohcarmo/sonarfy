@@ -6,6 +6,7 @@ import br.com.pablohcarmo.sonarfy.dto.ChangePasswordDto;
 import br.com.pablohcarmo.sonarfy.dto.ResetPasswordDto;
 import br.com.pablohcarmo.sonarfy.entities.Permission;
 import br.com.pablohcarmo.sonarfy.entities.User;
+import br.com.pablohcarmo.sonarfy.exceptions.EmailDeliveryException;
 import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -15,6 +16,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.mail.MailSendException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -535,5 +537,90 @@ class UserServiceTest {
         verify(jwtService, never()).generatePasswordResetToken(any());
         verify(jwtService, never()).generateEmailConfirmationToken(any());
         verify(authEmailService, never()).sendPasswordResetEmail(any(), any());
+    }
+
+    @Test
+    @DisplayName("Recuperação pública não propaga cooldown de uma conta verificada")
+    void shouldNotPropagatePasswordResetCooldown() {
+        User user = verifiedPasswordResetUser();
+        when(jwtService.generatePasswordResetToken("10")).thenReturn("reset-token-123");
+        doThrow(new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Wait before retrying"))
+                .when(authEmailService).sendPasswordResetEmail(user, "reset-token-123");
+
+        assertDoesNotThrow(() -> userService.requestPasswordReset(user.getEmail()));
+
+        // Evita um falso sucesso caso o método simplesmente ignore contas verificadas.
+        verify(authEmailService).sendPasswordResetEmail(user, "reset-token-123");
+    }
+
+    @Test
+    @DisplayName("Recuperação pública não propaga falha conhecida de entrega")
+    void shouldNotPropagatePasswordResetDeliveryFailure() {
+        User user = verifiedPasswordResetUser();
+        when(jwtService.generatePasswordResetToken("10")).thenReturn("reset-token-123");
+        doThrow(new EmailDeliveryException("Failed to deliver email.", new MailSendException("SMTP offline")))
+                .when(authEmailService).sendPasswordResetEmail(user, "reset-token-123");
+
+        assertDoesNotThrow(() -> userService.requestPasswordReset(user.getEmail()));
+
+        verify(authEmailService).sendPasswordResetEmail(user, "reset-token-123");
+    }
+
+    @Test
+    @DisplayName("Recuperação pública não esconde status diferentes de 429")
+    void shouldPropagateUnexpectedPasswordResetStatus() {
+        User user = verifiedPasswordResetUser();
+        when(jwtService.generatePasswordResetToken("10")).thenReturn("reset-token-123");
+        ResponseStatusException failure = new ResponseStatusException(HttpStatus.FORBIDDEN, "Forbidden");
+        doThrow(failure).when(authEmailService).sendPasswordResetEmail(user, "reset-token-123");
+
+        assertSame(failure, assertThrows(ResponseStatusException.class,
+                () -> userService.requestPasswordReset(user.getEmail())));
+    }
+
+    @Test
+    @DisplayName("Recuperação pública não esconde erros inesperados do serviço de e-mail")
+    void shouldPropagateUnexpectedPasswordResetFailure() {
+        User user = verifiedPasswordResetUser();
+        when(jwtService.generatePasswordResetToken("10")).thenReturn("reset-token-123");
+        IllegalStateException failure = new IllegalStateException("Unexpected application failure");
+        doThrow(failure).when(authEmailService).sendPasswordResetEmail(user, "reset-token-123");
+
+        assertSame(failure, assertThrows(IllegalStateException.class,
+                () -> userService.requestPasswordReset(user.getEmail())));
+    }
+
+    @Test
+    @DisplayName("Falha na consulta não é tratada como falha de entrega")
+    void shouldPropagatePasswordResetLookupFailure() {
+        IllegalStateException failure = new IllegalStateException("Database unavailable");
+        when(userRepository.findByEmailIgnoreCase("pablo@sonarfy.com")).thenThrow(failure);
+
+        assertSame(failure, assertThrows(IllegalStateException.class,
+                () -> userService.requestPasswordReset("pablo@sonarfy.com")));
+
+        verifyNoInteractions(jwtService, authEmailService);
+    }
+
+    @Test
+    @DisplayName("Falha na geração do token não é tratada como falha de entrega")
+    void shouldPropagatePasswordResetTokenGenerationFailure() {
+        User user = verifiedPasswordResetUser();
+        IllegalStateException failure = new IllegalStateException("Token generation failed");
+        when(jwtService.generatePasswordResetToken("10")).thenThrow(failure);
+
+        assertSame(failure, assertThrows(IllegalStateException.class,
+                () -> userService.requestPasswordReset(user.getEmail())));
+
+        verifyNoInteractions(authEmailService);
+    }
+
+    private User verifiedPasswordResetUser() {
+        User user = new User();
+        user.setId(10L);
+        user.setEmail("pablo@sonarfy.com");
+        user.setVerified(true);
+        when(userRepository.findByEmailIgnoreCase(user.getEmail())).thenReturn(Optional.of(user));
+        return user;
     }
 }

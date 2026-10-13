@@ -321,7 +321,7 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(dto)))
                 .andExpect(status().isOk())
-                .andExpect(content().string("If the email exists and is verified, a password reset link has been sent. Please check your inbox."));
+                .andExpect(content().string("If an eligible account exists, you may receive password reset instructions. Please check your inbox."));
 
         verify(userService, times(1)).requestPasswordReset("pablo@sonarfy.com");
     }
@@ -350,5 +350,16 @@ class AuthControllerTest {
                 .andExpect(status().isBadRequest());
 
         verify(userService, never()).requestPasswordReset(any());
+    }
+
+    @Test
+    @DisplayName("POST /api/auth/forgot-password rejeita email ausente sem chamar o serviço")
+    void shouldRejectMissingEmailInForgotPassword() throws Exception {
+        mockMvc.perform(post("/api/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(userService);
     }
 }

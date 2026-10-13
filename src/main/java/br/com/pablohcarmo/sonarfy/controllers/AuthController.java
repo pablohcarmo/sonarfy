@@ -78,7 +78,9 @@ public class AuthController {
     public ResponseEntity<String> forgotPassword(@Valid @RequestBody ForgotPasswordDto dto) {
         userService.requestPasswordReset(dto.email());
         // Resposta sempre genérica para não revelar se o e-mail existe ou não
-        return ResponseEntity.ok("If the email exists and is verified, a password reset link has been sent. Please check your inbox.");
+        return ResponseEntity.ok(
+                "If an eligible account exists, you may receive password reset instructions. Please check your inbox."
+        );
     }
 
     @PostMapping("/reset-password")
