@@ -1,7 +1,6 @@
 package br.com.pablohcarmo.sonarfy.controllers;
 
 import br.com.pablohcarmo.sonarfy.dto.*;
-import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import br.com.pablohcarmo.sonarfy.services.AuthEmailService;
 import br.com.pablohcarmo.sonarfy.services.JwtService;
 import br.com.pablohcarmo.sonarfy.services.UserService;
@@ -43,8 +42,6 @@ class AuthControllerTest {
     @Mock
     private AuthEmailService authEmailService;
 
-    @Mock
-    private UserRepository userRepository;
 
     @InjectMocks
     private AuthController authController;
