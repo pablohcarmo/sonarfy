@@ -1,11 +1,6 @@
 package br.com.pablohcarmo.sonarfy.controllers;
 
-import br.com.pablohcarmo.sonarfy.dto.ForgotPasswordDto;
-import br.com.pablohcarmo.sonarfy.dto.NewUserDto;
-import br.com.pablohcarmo.sonarfy.dto.RegisterResponseDto;
-import br.com.pablohcarmo.sonarfy.dto.UpdatePasswordDto;
-import br.com.pablohcarmo.sonarfy.dto.UpdatePendingEmailDto;
-import br.com.pablohcarmo.sonarfy.entities.User;
+import br.com.pablohcarmo.sonarfy.dto.*;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import br.com.pablohcarmo.sonarfy.services.AuthEmailService;
 import br.com.pablohcarmo.sonarfy.services.JwtService;
@@ -24,8 +19,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 import org.springframework.web.server.ResponseStatusException;
-
-import java.util.Optional;
 
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -288,15 +281,13 @@ class AuthControllerTest {
     @Test
     @DisplayName("POST /api/auth/reset-password deve retornar 200 OK ao redefinir senha com sucesso")
     void shouldResetPasswordSuccessfully() throws Exception {
-        UpdatePasswordDto dto = new UpdatePasswordDto(
+        ResetPasswordDto dto = new ResetPasswordDto(
                 "valid-token-123",
-                null,
                 "NewPassword123!",
-                "NewPassword123!",
-                null
+                "NewPassword123!"
         );
 
-        doNothing().when(userService).resetPassword(any(UpdatePasswordDto.class));
+        doNothing().when(userService).resetPassword(any(ResetPasswordDto.class));
 
         mockMvc.perform(post("/api/auth/reset-password")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -304,18 +295,16 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string("Password reset successfully. You can now log in."));
 
-        verify(userService).resetPassword(any(UpdatePasswordDto.class));
+        verify(userService).resetPassword(any(ResetPasswordDto.class));
     }
 
     @Test
     @DisplayName("POST /api/auth/reset-password deve retornar 400 Bad Request quando payload for inválido")
     void shouldReturnBadRequestWhenResetPasswordDtoIsInvalid() throws Exception {
-        UpdatePasswordDto dto = new UpdatePasswordDto(
+        ResetPasswordDto dto = new ResetPasswordDto(
                 "", // token em branco inválido
-                null,
                 "short", // senha curta < 8 caracteres
-                "short",
-                null
+                "short"
         );
 
         mockMvc.perform(post("/api/auth/reset-password")
