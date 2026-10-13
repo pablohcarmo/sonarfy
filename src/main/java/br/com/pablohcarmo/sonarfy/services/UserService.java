@@ -150,7 +150,7 @@ public class UserService implements UserDetailsService {
     }
 
     @Transactional
-    public void changePassword(String loggedInEmail, UpdatePasswordDto dto) {
+    public void changePassword(String loggedInEmail, ChangePasswordDto dto) {
         // Como o campo currentPassword é opcional no DTO, validamos manualmente a obrigatoriedade da senha atual neste fluxo
         if (dto.currentPassword() == null || dto.currentPassword().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password is required!");
@@ -268,7 +268,7 @@ public class UserService implements UserDetailsService {
     }
 
     @Transactional
-    public void resetPassword(UpdatePasswordDto dto) {
+    public void resetPassword(ResetPasswordDto dto) {
         // Valida as duas senhas novas para garantir que são iguais
         validatePasswordConfirmation(dto.newPassword(), dto.confirmNewPassword());
 
