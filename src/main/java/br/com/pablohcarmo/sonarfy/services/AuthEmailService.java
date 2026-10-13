@@ -111,7 +111,6 @@ public class AuthEmailService {
         }
     }
 
-    @Transactional
     public String sendPasswordResetEmail(User user, String resetToken) {
         // Impede que usuários não confirmados solicitem redefinição de senha
         if (!user.isVerified()) {
@@ -125,7 +124,7 @@ public class AuthEmailService {
         userRepository.save(user);
 
         // Gera o link de redefinição de senha com o token JWT
-        String resetLink = baseUrl + "/reset-password.html?token=" + resetToken;
+        String resetLink = frontendUrl + "/reset-password.html?token=" + resetToken;
 
         String subject = "Redefinição de senha - Sonarfy";
         String body = "Olá, " + user.getName() + " " + user.getSurname() +

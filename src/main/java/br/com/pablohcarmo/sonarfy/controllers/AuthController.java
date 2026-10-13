@@ -1,15 +1,12 @@
 package br.com.pablohcarmo.sonarfy.controllers;
 
 import br.com.pablohcarmo.sonarfy.dto.*;
-import br.com.pablohcarmo.sonarfy.entities.User;
-import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import br.com.pablohcarmo.sonarfy.services.AuthEmailService;
 import br.com.pablohcarmo.sonarfy.services.JwtService;
 import br.com.pablohcarmo.sonarfy.services.UserService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -19,13 +16,11 @@ public class AuthController {
     private final UserService userService;
     private final JwtService jwtService;
     private final AuthEmailService authEmailService;
-    private final UserRepository userRepository;
 
-    public AuthController(UserService userService, JwtService jwtService, AuthEmailService authEmailService, UserRepository userRepository) {
+    public AuthController(UserService userService, JwtService jwtService, AuthEmailService authEmailService) {
         this.userService = userService;
         this.jwtService = jwtService;
         this.authEmailService = authEmailService;
-        this.userRepository = userRepository;
     }
 
     @PostMapping("/register")
@@ -80,15 +75,10 @@ public class AuthController {
     }
 
     @PostMapping("/forgot-password")
-    public ResponseEntity<String> forgotPassword(
-            @RequestParam("email") String email
-    ) {
-        User user = userRepository.findByEmailIgnoreCase(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found."));
-
-        String token = jwtService.generatePasswordResetToken(user.getId().toString());
-        String result = authEmailService.sendPasswordResetEmail(user, token);
-        return ResponseEntity.ok(result);
+    public ResponseEntity<String> forgotPassword(@Valid @RequestBody ForgotPasswordDto dto) {
+        userService.requestPasswordReset(dto.email());
+        // Resposta sempre genérica para não revelar se o e-mail existe ou não
+        return ResponseEntity.ok("If the email exists and is verified, a password reset link has been sent. Please check your inbox.");
     }
 
     @PostMapping("/reset-password")
