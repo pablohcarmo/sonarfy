@@ -5,6 +5,8 @@ import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import br.com.pablohcarmo.sonarfy.services.AuthEmailService;
 import br.com.pablohcarmo.sonarfy.services.EmailService;
+import br.com.pablohcarmo.sonarfy.services.EmailCooldownService;
+import org.springframework.context.ApplicationEventPublisher;
 import br.com.pablohcarmo.sonarfy.services.JwtService;
 import br.com.pablohcarmo.sonarfy.services.UserService;
 import org.junit.jupiter.api.AfterEach;
@@ -21,10 +23,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
-import java.time.OffsetDateTime;
+
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -61,12 +63,12 @@ class ForgotPasswordFlowTest {
         JwtService jwtService = new JwtService();
         ReflectionTestUtils.setField(jwtService, "secretKey", "local-test-secret-not-for-production");
 
-        AuthEmailService authEmailService = new AuthEmailService(emailService, userRepository, jwtService);
+        AuthEmailService authEmailService = new AuthEmailService(emailService, userRepository, jwtService, new EmailCooldownService(userRepository, 30));
         ReflectionTestUtils.setField(authEmailService, "frontendUrl", "http://localhost:3000");
-        ReflectionTestUtils.setField(authEmailService, "emailCooldownSeconds", 30L);
+
 
         UserService userService = new UserService(userRepository, mock(PermissionRepository.class),
-                mock(PasswordEncoder.class), jwtService, authEmailService);
+                mock(PasswordEncoder.class), jwtService, authEmailService, mock(ApplicationEventPublisher.class));
         AuthController controller = new AuthController(userService, jwtService, authEmailService);
 
         validator = new LocalValidatorFactoryBean();
@@ -92,7 +94,10 @@ class ForgotPasswordFlowTest {
         when(userRepository.findByEmailIgnoreCase(user.getEmail())).thenReturn(
                 scenario == Scenario.UNKNOWN_EMAIL ? Optional.empty() : Optional.of(user));
         if (scenario == Scenario.ACTIVE_COOLDOWN) {
-            user.setLastEmailSentAt(OffsetDateTime.now());
+            when(userRepository.reserveEmailSend(any(), any(), anyBoolean(), any(), any())).thenReturn(0);
+        }
+        if (scenario == Scenario.ELIGIBLE_ACCOUNT || scenario == Scenario.SMTP_FAILURE) {
+            when(userRepository.reserveEmailSend(any(), any(), anyBoolean(), any(), any())).thenReturn(1);
         }
         if (scenario == Scenario.SMTP_FAILURE) {
             doThrow(new MailSendException("SMTP offline"))
@@ -112,8 +117,8 @@ class ForgotPasswordFlowTest {
         if (shouldAttemptDelivery) {
             // Um endpoint que sempre retorna 200, mas nunca envia, não pode passar.
             verify(mailSender).send(any(SimpleMailMessage.class));
-            verify(userRepository).save(user);
-            assertNotNull(user.getLastEmailSentAt());
+            verify(userRepository).reserveEmailSend(eq(10L), eq(user.getEmail()), eq(true), any(), any());
+            verify(userRepository, never()).save(any());
         } else {
             verifyNoInteractions(mailSender);
             verify(userRepository, never()).save(any());

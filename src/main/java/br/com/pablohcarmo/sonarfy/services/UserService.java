@@ -3,6 +3,7 @@ package br.com.pablohcarmo.sonarfy.services;
 import br.com.pablohcarmo.sonarfy.dto.*;
 import br.com.pablohcarmo.sonarfy.entities.Permission;
 import br.com.pablohcarmo.sonarfy.entities.User;
+import br.com.pablohcarmo.sonarfy.events.ActivationEmailRequested;
 import br.com.pablohcarmo.sonarfy.exceptions.EmailDeliveryException;
 import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
@@ -10,6 +11,7 @@ import jakarta.transaction.Transactional;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -31,14 +33,21 @@ public class UserService implements UserDetailsService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthEmailService authEmailService;
+    private final ApplicationEventPublisher eventPublisher;
     private static final Logger logger = LoggerFactory.getLogger(UserService.class);
 
-    public UserService (UserRepository userRepository, PermissionRepository permissionRepository, PasswordEncoder passwordEncoder, JwtService jwtService, AuthEmailService authEmailService) {
+    public UserService (UserRepository userRepository,
+                        PermissionRepository permissionRepository,
+                        PasswordEncoder passwordEncoder,
+                        JwtService jwtService,
+                        AuthEmailService authEmailService,
+                        ApplicationEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.permissionRepository = permissionRepository;
         this.jwtService = jwtService;
         this.authEmailService = authEmailService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -95,14 +104,13 @@ public class UserService implements UserDetailsService {
         user = userRepository.save(user);
 
         String userId = user.getId().toString();
-        String confirmationToken = jwtService.generateEmailConfirmationToken(userId);
-        authEmailService.sendActivationEmail(user, confirmationToken);
+        eventPublisher.publishEvent(new ActivationEmailRequested(user.getId()));
 
         // Gera o token de posse do cadastro para autorizar retificação segura pelo frontend
         String registrationToken = jwtService.generateRegistrationToken(userId);
 
         return new RegisterResponseDto(
-                "User registered successfully! Please check your inbox.",
+                "User registered successfully! Please wait for activation instructions.",
                 user.getEmail(),
                 registrationToken,
                 JwtService.PENDING_REGISTRATION_TTL_SECONDS
@@ -212,9 +220,8 @@ public class UserService implements UserDetailsService {
         user.setEmail(newEmail);
         userRepository.save(user);
 
-        // 5. Gera um novo token JWT e envia a confirmação
-        String jwtToken = jwtService.generateEmailConfirmationToken(user.getId().toString());
-        authEmailService.sendActivationEmail(user, jwtToken);
+        // 5. Publica o evento de solicitação de e-mail de ativação
+        eventPublisher.publishEvent(new ActivationEmailRequested(user.getId()));
         return "Pending email updated successfully!";
     }
 

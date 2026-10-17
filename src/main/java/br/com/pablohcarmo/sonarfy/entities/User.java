@@ -71,7 +71,7 @@ public class User implements UserDetails {
     @Column (name = "password_updated_at")
     private OffsetDateTime passwordLastUpdateDate;
 
-    @Column (name = "last_email_sent_at")
+    @Column (name = "last_email_sent_at", updatable = false)
     private OffsetDateTime lastEmailSentAt;
 
     public User(Long id,

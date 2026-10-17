@@ -36,6 +36,43 @@ O Sonarfy busca criar um espaço em que fãs de música, críticos e colecionado
 - acompanhar tendências e gostos da comunidade;
 - construir uma identidade musical própria dentro da plataforma.
 
+## E-mails de conta e intervalo entre tentativas
+
+Ativação e recuperação de senha compartilham um intervalo mínimo de 30 segundos,
+configurável por `app.email.cooldown-seconds`. O campo `lastEmailSentAt` registra
+a última tentativa autorizada, não a confirmação de entrega. A reserva é confirmada
+no banco antes do envio e permanece válida mesmo se o SMTP falhar. Um envio de
+ativação pode, portanto, impedir temporariamente um envio de recuperação.
+
+Cadastro e alteração de e-mail pendente publicam um evento dentro da transação.
+O envio de ativação ocorre após o commit: falhas de entrega não desfazem o cadastro
+nem a alteração. O usuário pode solicitar reenvio após o intervalo. A recuperação
+pública mantém a mesma resposta para contas inelegíveis, cooldown e falha de entrega.
+
+Os eventos ficam em memória e o listener é síncrono. Se a aplicação encerrar entre
+o commit e o envio, não há recuperação automática da mensagem; é necessário pedir
+reenvio. A solução não garante entrega nem elimina diferenças de tempo de resposta.
+
+### Testes da reserva de e-mail
+
+`mvn test` executa os testes unitários e de integração, usando H2 isolado por padrão.
+Os testes de integração usam serviços, proxies Spring e transações reais, com
+transporte simulado. Para validar concorrência também em PostgreSQL, use um banco
+descartável exclusivo: o contexto de testes cria e remove as tabelas mapeadas.
+Nunca forneça a URL do banco de desenvolvimento ou de produção.
+
+Exemplo em PowerShell, com Docker:
+
+```powershell
+docker run --detach --rm --name sonarfy-task2-tests -e POSTGRES_PASSWORD=sonarfy_test_only -e POSTGRES_DB=sonarfy_task2_tests -p 127.0.0.1:55432:5432 postgres:17.9
+docker exec sonarfy-task2-tests pg_isready -U postgres -d sonarfy_task2_tests
+# Execute o Maven depois que pg_isready indicar que o banco aceita conexões.
+mvn test "-Dsonarfy.test.jdbc-url=jdbc:postgresql://127.0.0.1:55432/sonarfy_task2_tests" "-Dsonarfy.test.db-user=postgres" "-Dsonarfy.test.db-password=sonarfy_test_only"
+docker stop sonarfy-task2-tests
+```
+
+Relatórios: `target/surefire-reports`. A senha acima é exclusiva do banco temporário.
+
 ## Status do projeto
 
 O projeto está em desenvolvimento, com foco inicial na modelagem de funcionalidades, experiência do usuário e prototipação das principais telas.

@@ -2,7 +2,6 @@ package br.com.pablohcarmo.sonarfy.services;
 
 import br.com.pablohcarmo.sonarfy.entities.User;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
-import jakarta.transaction.Transactional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,39 +11,32 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.Duration;
-import java.time.OffsetDateTime;
 
 @Service
 public class AuthEmailService {
 
-    @Value("${app.base-url}")
-    private String baseUrl;
-
     @Value("${app.frontend-url}")
     private String frontendUrl;
-
-    @Value("${app.email.cooldown-seconds:30}")
-    private long emailCooldownSeconds;
 
     private final UserRepository userRepository;
     private final EmailService emailService;
     private final JwtService jwtService;
+    private final EmailCooldownService emailCooldownService;
     private static final Logger logger = LoggerFactory.getLogger(AuthEmailService.class);
 
-    public AuthEmailService(EmailService emailService, UserRepository userRepository, JwtService jwtService) {
+    public AuthEmailService(EmailService emailService, UserRepository userRepository, JwtService jwtService, EmailCooldownService emailCooldownService) {
         this.userRepository = userRepository;
         this.emailService = emailService;
         this.jwtService = jwtService;
+        this.emailCooldownService = emailCooldownService;
     }
 
     public void sendActivationEmail(User user, String jwtToken) {
-        // Checa o cooldown antes de enviar o e-mail
-        checkEmailCooldown(user);
-
-        // Atualiza a timestamp no banco de dados
-        user.setLastEmailSentAt(OffsetDateTime.now());
-        userRepository.save(user);
+        // Se o usuário já estiver verificado, não envia o e-mail de ativação
+        if (user.isVerified()) {
+            return;
+        }
+        emailCooldownService.reserveOrThrow(user.getId(), user.getEmail(), false);
 
         String activationLink = frontendUrl + "/verify.html?token=" + jwtToken;
 
@@ -55,17 +47,10 @@ public class AuthEmailService {
                 "\nSe o link não funcionar, copie e cole no seu navegador.\n\n" +
                 "Atenciosamente,\nEquipe Sonarfy";
 
-        try {
-            // Dispara o e-mail de ativação
-            this.emailService.sendEmail(user.getEmail(), subject, body);
-
-        } catch (Exception e) {
-            // Exceção para dar Rollback no cadastro se o link falhar
-            throw new RuntimeException("Failed to send activation token email: " + e.getMessage());
-        }
+        // Dispara o e-mail de ativação
+        this.emailService.sendEmail(user.getEmail(), subject, body);
     }
 
-    @Transactional
     public String resendActivationEmail(String email){
         // Validação de input
         if(email == null || email.isBlank()) {
@@ -76,26 +61,15 @@ public class AuthEmailService {
         User user = userRepository.findByEmailIgnoreCase(email)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
 
-        checkEmailCooldown(user);
-
         // Verifica se o usuário já foi verificado
         if(user.isVerified()) {
             return "User already verified. You can log in.";
         }
 
         // Gera um novo token JWT para o e-mail do usuário
-        String jwtToken = jwtService.generateEmailConfirmationToken(user.getId().toString());
-
-        // Envia o e-mail de confirmação
-        try {
-            sendActivationEmail(user, jwtToken);
-            return "Confirmation email resent successfully! Please check your inbox.";
-        } catch (ResponseStatusException e) {
-            throw e; // ResponseStatusException é lançado para o cliente, não precisa ser encapsulado
-        } catch (Exception e) {
-            // O Rollback cancela qualquer transação pendente se o e-mail falhar
-            throw new RuntimeException("Failed to resend email confirmation: " + e.getMessage());
-        }
+        String token = jwtService.generateEmailConfirmationToken(user.getId().toString());
+        sendActivationEmail(user, token);
+        return "Confirmation email request processed. Please check your inbox.";
     }
 
     public void sendWelcomeEmail(User user) {
@@ -119,12 +93,7 @@ public class AuthEmailService {
                     "User is not verified. Please verify your account before requesting a password reset.");
         }
 
-        // Se ainda estiver em cooldown, lança 429 e interrompe a execução antes de atualizar a timestamp
-        checkEmailCooldown(user);
-
-        // Registra a tentativa antes do envio do e-mail para evitar abuso
-        user.setLastEmailSentAt(OffsetDateTime.now());
-        userRepository.save(user);
+        emailCooldownService.reserveOrThrow(user.getId(), user.getEmail(), true);
 
         // Gera o link de redefinição de senha com o token JWT
         String resetLink = frontendUrl + "/reset-password.html?token=" + resetToken;
@@ -142,16 +111,4 @@ public class AuthEmailService {
         return "Reset password email sent successfully! Please check your inbox.";
     }
 
-    private void checkEmailCooldown(User user){
-        if (user.getLastEmailSentAt() != null) {
-            long secondsSinceLastEmail = Duration.between(user.getLastEmailSentAt(), OffsetDateTime.now()).toSeconds();
-            if(secondsSinceLastEmail < emailCooldownSeconds) {
-                long remainingSeconds = emailCooldownSeconds - secondsSinceLastEmail;
-                throw new ResponseStatusException(
-                        HttpStatus.TOO_MANY_REQUESTS,
-                        "Please wait " + remainingSeconds + " seconds before requesting another email."
-                );
-            }
-        }
-    }
 }

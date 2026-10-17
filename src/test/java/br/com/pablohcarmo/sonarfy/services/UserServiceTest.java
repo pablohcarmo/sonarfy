@@ -6,6 +6,8 @@ import br.com.pablohcarmo.sonarfy.dto.ChangePasswordDto;
 import br.com.pablohcarmo.sonarfy.dto.ResetPasswordDto;
 import br.com.pablohcarmo.sonarfy.entities.Permission;
 import br.com.pablohcarmo.sonarfy.entities.User;
+import br.com.pablohcarmo.sonarfy.events.ActivationEmailRequested;
+import org.springframework.context.ApplicationEventPublisher;
 import br.com.pablohcarmo.sonarfy.exceptions.EmailDeliveryException;
 import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
@@ -48,11 +50,14 @@ class UserServiceTest {
     @Mock
     private JwtService jwtService;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private UserService userService;
 
     @Test
-    @DisplayName("Deve registrar novo usuário, enviar ativação e retornar RegisterResponseDto com registrationToken")
+    @DisplayName("Deve registrar novo usuário, publicar ativação e retornar RegisterResponseDto com registrationToken")
     void shouldRegisterNewUserSuccessfully() {
         NewUserDto dto = new NewUserDto();
         dto.setName("Pablo");
@@ -79,7 +84,6 @@ class UserServiceTest {
         when(passwordEncoder.encode("Secret123!")).thenReturn("encodedPassword");
         when(permissionRepository.findByName("ROLE_USER")).thenReturn(Optional.of(defaultPermission));
         when(userRepository.save(any(User.class))).thenReturn(savedUser);
-        when(jwtService.generateEmailConfirmationToken("10")).thenReturn("token-email-confirmacao");
         when(jwtService.generateRegistrationToken("10")).thenReturn("token-retificacao-pendente");
 
         RegisterResponseDto response = userService.newUser(dto);
@@ -89,8 +93,8 @@ class UserServiceTest {
         assertEquals("token-retificacao-pendente", response.registrationToken());
         assertEquals(JwtService.PENDING_REGISTRATION_TTL_SECONDS, response.expiresInSeconds());
 
-        verify(authEmailService, times(1)).sendActivationEmail(any(User.class), eq("token-email-confirmacao"));
-        verify(jwtService, times(1)).generateEmailConfirmationToken("10");
+        verify(eventPublisher).publishEvent(new ActivationEmailRequested(10L));
+        verifyNoInteractions(authEmailService);
         verify(jwtService, times(1)).generateRegistrationToken("10");
     }
 
@@ -141,14 +145,14 @@ class UserServiceTest {
 
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(userRepository.findByEmailIgnoreCase("correto@gmail.com")).thenReturn(Optional.empty());
-        when(jwtService.generateEmailConfirmationToken("1")).thenReturn("mocked-jwt-token");
 
         String result = userService.updatePendingEmail(1L, "correto@gmail.com");
 
         assertEquals("correto@gmail.com", user.getEmail());
         assertEquals("Pending email updated successfully!", result);
         verify(userRepository, atLeastOnce()).save(user);
-        verify(authEmailService, times(1)).sendActivationEmail(eq(user), eq("mocked-jwt-token"));
+        verify(eventPublisher).publishEvent(new ActivationEmailRequested(1L));
+        verifyNoInteractions(authEmailService, jwtService);
     }
 
     @Test
@@ -164,18 +168,18 @@ class UserServiceTest {
 
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(userRepository.findByEmailIgnoreCase("novo@gmail.com")).thenReturn(Optional.empty());
-        when(jwtService.generateEmailConfirmationToken("1")).thenReturn("token-123");
 
         String result = userService.updatePendingEmail(1L, "novo@gmail.com");
 
         assertEquals("novo@gmail.com", user.getEmail());
         assertEquals("Pending email updated successfully!", result);
-        verify(authEmailService, times(1)).sendActivationEmail(eq(user), eq("token-123"));
+        verify(eventPublisher).publishEvent(new ActivationEmailRequested(1L));
+        verifyNoInteractions(authEmailService, jwtService);
     }
 
     @Test
-    @DisplayName("Deve lançar 429 Too Many Requests quando cooldown de 30s ainda estiver ativo")
-    void shouldThrowTooManyRequestsWhenCooldownIsActive() {
+    @DisplayName("Deve salvar retificação e publicar evento mesmo durante cooldown")
+    void shouldUpdatePendingEmailAndPublishEvenDuringCooldown() {
         User user = new User();
         user.setId(1L);
         user.setName("Pablo");
@@ -186,17 +190,12 @@ class UserServiceTest {
 
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(userRepository.findByEmailIgnoreCase("novo@gmail.com")).thenReturn(Optional.empty());
-        when(jwtService.generateEmailConfirmationToken("1")).thenReturn("cooldown-token");
-        doThrow(new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Please wait 20 seconds before requesting another email."))
-                .when(authEmailService).sendActivationEmail(user, "cooldown-token");
-
-        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
-                userService.updatePendingEmail(1L, "novo@gmail.com")
-        );
-
-        assertEquals(HttpStatus.TOO_MANY_REQUESTS, ex.getStatusCode());
-        assertTrue(ex.getReason().contains("seconds before requesting another email"));
-        verify(authEmailService, times(1)).sendActivationEmail(user, "cooldown-token");
+        assertEquals("Pending email updated successfully!",
+                userService.updatePendingEmail(1L, "novo@gmail.com"));
+        assertEquals("novo@gmail.com", user.getEmail());
+        verify(userRepository).save(user);
+        verify(eventPublisher).publishEvent(new ActivationEmailRequested(1L));
+        verifyNoInteractions(authEmailService, jwtService);
     }
 
     @Test
