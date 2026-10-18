@@ -71,7 +71,7 @@ public class User implements UserDetails {
     @Column (name = "password_updated_at")
     private OffsetDateTime passwordLastUpdateDate;
 
-    @Column (name = "last_email_sent_at")
+    @Column (name = "last_email_sent_at", updatable = false)
     private OffsetDateTime lastEmailSentAt;
 
     public User(Long id,
@@ -275,6 +275,7 @@ public class User implements UserDetails {
     protected void onCreate() {
         creationDate = OffsetDateTime.now();
         lastUpdateDate = OffsetDateTime.now();
+        passwordLastUpdateDate = OffsetDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
         this.isActive = true;
     }
 

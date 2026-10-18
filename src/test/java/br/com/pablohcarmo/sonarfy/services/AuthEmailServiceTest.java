@@ -1,15 +1,18 @@
 package br.com.pablohcarmo.sonarfy.services;
 
 import br.com.pablohcarmo.sonarfy.entities.User;
+import br.com.pablohcarmo.sonarfy.exceptions.EmailDeliveryException;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.mail.MailSendException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
@@ -35,6 +38,9 @@ class AuthEmailServiceTest {
     @Mock
     private JwtService jwtService;
 
+    @Mock
+    private EmailCooldownService emailCooldownService;
+
     @InjectMocks
     private AuthEmailService authEmailService;
 
@@ -42,13 +48,7 @@ class AuthEmailServiceTest {
 
     @BeforeEach
     void setUp() {
-        ReflectionTestUtils.setField(authEmailService, "baseUrl", "http://localhost:8080");
         ReflectionTestUtils.setField(authEmailService, "frontendUrl", "http://localhost:3000");
-        try {
-            ReflectionTestUtils.setField(authEmailService, "emailCooldownSeconds", 30L);
-        } catch (Exception ignored) {
-            // Suporta campo caso esteja estático ou de instância
-        }
 
         sampleUser = new User();
         sampleUser.setId(1L);
@@ -65,44 +65,47 @@ class AuthEmailServiceTest {
     // ==========================================
 
     @Test
-    @DisplayName("Deve enviar e-mail de ativação, atualizar lastEmailSentAt e salvar usuário com sucesso")
+    @DisplayName("Deve reservar antes de enviar ativação sem salvar entidade antiga")
     void shouldSendActivationEmailSuccessfully() {
         String token = "jwt-activation-token-123";
 
         authEmailService.sendActivationEmail(sampleUser, token);
 
-        verify(emailService, times(1)).sendEmail(
+        InOrder inOrder = inOrder(emailCooldownService, emailService);
+        inOrder.verify(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), sampleUser.isVerified());
+        inOrder.verify(emailService, times(1)).sendEmail(
                 eq("pablo@sonarfy.com"),
                 eq("Ative sua conta no Sonarfy!"),
                 argThat(body -> body.contains("http://localhost:3000/verify.html?token=" + token)
                         && body.contains("Pablo Carmo"))
         );
-        assertNotNull(sampleUser.getLastEmailSentAt());
-        verify(userRepository, times(1)).save(sampleUser);
+        verify(userRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("Deve enviar e-mail de ativação quando cooldown de 30 segundos já tiver expirado")
+    @DisplayName("Deve delegar decisão de cooldown à reserva no banco")
     void shouldSendActivationEmailWhenCooldownHasExpired() {
         sampleUser.setLastEmailSentAt(OffsetDateTime.now().minusSeconds(35));
 
         authEmailService.sendActivationEmail(sampleUser, "token-expirado");
 
-        verify(emailService, times(1)).sendEmail(eq("pablo@sonarfy.com"), any(), any());
-        verify(userRepository, times(1)).save(sampleUser);
+        InOrder inOrder = inOrder(emailCooldownService, emailService);
+        inOrder.verify(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), sampleUser.isVerified());
+        inOrder.verify(emailService, times(1)).sendEmail(eq("pablo@sonarfy.com"), any(), any());
     }
 
     @Test
     @DisplayName("Deve lançar 429 Too Many Requests ao tentar enviar e-mail de ativação durante cooldown ativo")
     void shouldThrowTooManyRequestsWhenSendingActivationEmailDuringCooldown() {
-        sampleUser.setLastEmailSentAt(OffsetDateTime.now().minusSeconds(10));
+        doThrow(new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Cooldown active"))
+                .when(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), sampleUser.isVerified());
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
                 authEmailService.sendActivationEmail(sampleUser, "token-cooldown")
         );
 
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, ex.getStatusCode());
-        assertTrue(ex.getReason().contains("seconds before requesting another email"));
+        assertEquals("Cooldown active", ex.getReason());
         verify(emailService, never()).sendEmail(any(), any(), any());
         verify(userRepository, never()).save(any());
     }
@@ -117,7 +120,11 @@ class AuthEmailServiceTest {
                 authEmailService.sendActivationEmail(sampleUser, "token-fail")
         );
 
-        assertTrue(ex.getMessage().contains("Failed to send activation token email"));
+        assertEquals("SMTP offline", ex.getMessage());
+
+        InOrder inOrder = inOrder(emailCooldownService, emailService);
+        inOrder.verify(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), sampleUser.isVerified());
+        inOrder.verify(emailService).sendEmail(any(), any(), any());
     }
 
     // ==========================================
@@ -132,10 +139,10 @@ class AuthEmailServiceTest {
 
         String result = authEmailService.resendActivationEmail("pablo@sonarfy.com");
 
-        assertEquals("Confirmation email resent successfully! Please check your inbox.", result);
+        assertEquals("Confirmation email request processed. Please check your inbox.", result);
         verify(jwtService, times(1)).generateEmailConfirmationToken("1");
         verify(emailService, times(1)).sendEmail(eq("pablo@sonarfy.com"), any(), any());
-        verify(userRepository, times(1)).save(sampleUser);
+        verify(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), false);
     }
 
     @Test
@@ -184,7 +191,8 @@ class AuthEmailServiceTest {
     @Test
     @DisplayName("Deve lançar 429 Too Many Requests ao solicitar reenvio durante cooldown ativo")
     void shouldThrowTooManyRequestsWhenResendingDuringCooldown() {
-        sampleUser.setLastEmailSentAt(OffsetDateTime.now().minusSeconds(15));
+        doThrow(new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Cooldown active"))
+                .when(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), sampleUser.isVerified());
         when(userRepository.findByEmailIgnoreCase("pablo@sonarfy.com")).thenReturn(Optional.of(sampleUser));
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
@@ -221,50 +229,40 @@ class AuthEmailServiceTest {
     }
 
     // ==========================================
-    // 4. sendPasswordChangeRequest
+    // 4. sendPasswordResetEmail
     // ==========================================
 
     @Test
-    @DisplayName("Deve buscar usuário e enviar e-mail de solicitação de redefinição de senha com sucesso")
-    void shouldSendPasswordChangeRequestSuccessfully() {
+    @DisplayName("Deve enviar e-mail de redefinição de senha com sucesso")
+    void shouldSendPasswordResetEmailSuccessfully() {
         sampleUser.setVerified(true);
-        when(userRepository.findByEmailIgnoreCase("pablo@sonarfy.com")).thenReturn(Optional.of(sampleUser));
+        String token = "jwt-reset-token-123";
 
-        String result = authEmailService.sendPasswordChangeRequest("pablo@sonarfy.com");
+        String result = authEmailService.sendPasswordResetEmail(sampleUser, token);
 
         assertEquals("Reset password email sent successfully! Please check your inbox.", result);
-        verify(emailService, times(1)).sendEmail(
+        InOrder inOrder = inOrder(emailCooldownService, emailService);
+        inOrder.verify(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), sampleUser.isVerified());
+        inOrder.verify(emailService, times(1)).sendEmail(
                 eq("pablo@sonarfy.com"),
                 eq("Redefinição de senha - Sonarfy"),
-                argThat(body -> body.contains("http://localhost:8080/reset-password")
+                argThat(body -> body.contains("http://localhost:3000/reset-password.html?token=" + token)
                         && body.contains("Pablo Carmo"))
         );
-        verify(userRepository, times(1)).save(sampleUser);
+        verify(userRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("Deve retornar mensagem de erro ao solicitar redefinição de senha com e-mail nulo, vazio ou em branco")
-    void shouldReturnErrorMessageWhenPasswordResetEmailIsInvalid() {
-        assertEquals("Invalid e-mail provided for password reset.",
-                authEmailService.sendPasswordChangeRequest(null));
-        assertEquals("Invalid e-mail provided for password reset.",
-                authEmailService.sendPasswordChangeRequest(""));
-        assertEquals("Invalid e-mail provided for password reset.",
-                authEmailService.sendPasswordChangeRequest("   "));
-
-        verifyNoInteractions(userRepository);
-        verifyNoInteractions(emailService);
-    }
-
-    @Test
-    @DisplayName("Deve retornar mensagem de erro quando usuário não for verificado ao solicitar redefinição de senha")
-    void shouldReturnErrorMessageWhenUserIsNotVerifiedOnPasswordReset() {
+    @DisplayName("Deve lançar 403 Forbidden quando usuário não for verificado ao solicitar redefinição de senha")
+    void shouldThrowForbiddenWhenUserIsNotVerifiedOnPasswordReset() {
         sampleUser.setVerified(false);
-        when(userRepository.findByEmailIgnoreCase("pablo@sonarfy.com")).thenReturn(Optional.of(sampleUser));
 
-        String result = authEmailService.sendPasswordChangeRequest("pablo@sonarfy.com");
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                authEmailService.sendPasswordResetEmail(sampleUser, "token-123")
+        );
 
-        assertEquals("User is not verified. Please verify your account before requesting a password reset.", result);
+        assertEquals(HttpStatus.FORBIDDEN, ex.getStatusCode());
+        assertTrue(ex.getReason().contains("User is not verified"));
         verify(emailService, never()).sendEmail(any(), any(), any());
         verify(userRepository, never()).save(any());
     }
@@ -273,41 +271,71 @@ class AuthEmailServiceTest {
     @DisplayName("Deve lançar 429 Too Many Requests quando cooldown estiver ativo na solicitação de redefinição de senha")
     void shouldThrowTooManyRequestsWhenCooldownIsActiveOnPasswordReset() {
         sampleUser.setVerified(true);
-        sampleUser.setLastEmailSentAt(OffsetDateTime.now().minusSeconds(10));
-        when(userRepository.findByEmailIgnoreCase("pablo@sonarfy.com")).thenReturn(Optional.of(sampleUser));
+        doThrow(new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Cooldown active"))
+                .when(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), sampleUser.isVerified());
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
-                authEmailService.sendPasswordChangeRequest("pablo@sonarfy.com")
+                authEmailService.sendPasswordResetEmail(sampleUser, "token-123")
         );
 
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, ex.getStatusCode());
         verify(emailService, never()).sendEmail(any(), any(), any());
+        verify(userRepository, never()).save(any());
     }
 
     @Test
-    @DisplayName("Deve lançar UsernameNotFoundException ao solicitar redefinição de senha para e-mail inexistente")
-    void shouldThrowUsernameNotFoundExceptionWhenEmailDoesNotExistForPasswordReset() {
-        when(userRepository.findByEmailIgnoreCase("naoexiste@sonarfy.com")).thenReturn(Optional.empty());
-
-        assertThrows(UsernameNotFoundException.class, () ->
-                authEmailService.sendPasswordChangeRequest("naoexiste@sonarfy.com")
-        );
-
-        verify(emailService, never()).sendEmail(any(), any(), any());
-    }
-
-    @Test
-    @DisplayName("Deve lançar RuntimeException quando falhar o transporte do e-mail de redefinição de senha")
-    void shouldThrowRuntimeExceptionWhenEmailTransportFailsOnPasswordReset() {
+    @DisplayName("Deve preservar a exceção específica e sua causa quando a entrega falha")
+    void shouldPropagateEmailDeliveryExceptionOnPasswordReset() {
         sampleUser.setVerified(true);
-        when(userRepository.findByEmailIgnoreCase("pablo@sonarfy.com")).thenReturn(Optional.of(sampleUser));
-        doThrow(new RuntimeException("SMTP Connection refused"))
+        MailSendException cause = new MailSendException("SMTP Connection refused");
+        EmailDeliveryException failure = new EmailDeliveryException("Failed to deliver email.", cause);
+        doThrow(failure)
                 .when(emailService).sendEmail(any(), any(), any());
 
-        RuntimeException ex = assertThrows(RuntimeException.class, () ->
-                authEmailService.sendPasswordChangeRequest("pablo@sonarfy.com")
+        EmailDeliveryException ex = assertThrows(EmailDeliveryException.class, () ->
+                authEmailService.sendPasswordResetEmail(sampleUser, "token-123")
         );
 
-        assertTrue(ex.getMessage().contains("Failed to send reset password email"));
+        assertSame(failure, ex);
+        assertSame(cause, ex.getCause());
+        verify(userRepository, never()).save(any());
+
+        InOrder inOrder = inOrder(emailCooldownService, emailService);
+        inOrder.verify(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), sampleUser.isVerified());
+        inOrder.verify(emailService).sendEmail(any(), any(), any());
+    }
+    @Test
+    void shouldNotReserveOrSendActivationForVerifiedAccount() {
+        sampleUser.setVerified(true);
+        authEmailService.sendActivationEmail(sampleUser, "unused");
+        verifyNoInteractions(emailCooldownService, emailService, userRepository);
+    }
+
+    @Test
+    void shouldPreserveDeliveryFailureOnActivation() {
+        EmailDeliveryException failure = new EmailDeliveryException("Delivery failed",
+                new MailSendException("SMTP offline"));
+        doThrow(failure).when(emailService).sendEmail(any(), any(), any());
+        assertSame(failure, assertThrows(EmailDeliveryException.class,
+                () -> authEmailService.sendActivationEmail(sampleUser, "confirmation")));
+        InOrder order = inOrder(emailCooldownService, emailService);
+        order.verify(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), false);
+        order.verify(emailService).sendEmail(any(), any(), any());
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void shouldSendDistinctPasswordChangeAuthorizationToken() {
+        sampleUser.setVerified(true);
+
+        authEmailService.sendPasswordChangeEmail(sampleUser, "change-token");
+
+        InOrder order = inOrder(emailCooldownService, emailService);
+        order.verify(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), true);
+        order.verify(emailService).sendEmail(
+                eq(sampleUser.getEmail()),
+                eq("Autorização para troca de senha - Sonarfy"),
+                argThat(body -> body.contains("change-token")
+                        && body.contains("não pode ser usado para redefinir uma senha esquecida")));
     }
 }

@@ -3,12 +3,18 @@ package br.com.pablohcarmo.sonarfy.services;
 import br.com.pablohcarmo.sonarfy.dto.*;
 import br.com.pablohcarmo.sonarfy.entities.Permission;
 import br.com.pablohcarmo.sonarfy.entities.User;
+import br.com.pablohcarmo.sonarfy.events.ActivationEmailRequested;
+import br.com.pablohcarmo.sonarfy.exceptions.EmailDeliveryException;
 import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.PersistenceContext;
 import jakarta.transaction.Transactional;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -17,24 +23,38 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.Period;
 import java.util.Optional;
 
 @Service
 public class UserService implements UserDetailsService {
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
     private final UserRepository userRepository;
     private final PermissionRepository permissionRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthEmailService authEmailService;
+    private final ApplicationEventPublisher eventPublisher;
+    private static final Logger logger = LoggerFactory.getLogger(UserService.class);
 
-    public UserService (UserRepository userRepository, PermissionRepository permissionRepository, PasswordEncoder passwordEncoder, JwtService jwtService, AuthEmailService authEmailService) {
+    public UserService (UserRepository userRepository,
+                        PermissionRepository permissionRepository,
+                        PasswordEncoder passwordEncoder,
+                        JwtService jwtService,
+                        AuthEmailService authEmailService,
+                        ApplicationEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.permissionRepository = permissionRepository;
         this.jwtService = jwtService;
         this.authEmailService = authEmailService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -91,14 +111,13 @@ public class UserService implements UserDetailsService {
         user = userRepository.save(user);
 
         String userId = user.getId().toString();
-        String confirmationToken = jwtService.generateEmailConfirmationToken(userId);
-        authEmailService.sendActivationEmail(user, confirmationToken);
+        eventPublisher.publishEvent(new ActivationEmailRequested(user.getId()));
 
         // Gera o token de posse do cadastro para autorizar retificação segura pelo frontend
         String registrationToken = jwtService.generateRegistrationToken(userId);
 
         return new RegisterResponseDto(
-                "User registered successfully! Please check your inbox.",
+                "User registered successfully! Please wait for activation instructions.",
                 user.getEmail(),
                 registrationToken,
                 JwtService.PENDING_REGISTRATION_TTL_SECONDS
@@ -150,6 +169,40 @@ public class UserService implements UserDetailsService {
     }
 
     @Transactional
+    public void changePassword(String loggedInEmail, ChangePasswordDto dto) {
+        // O DTO exige a senha atual na entrada HTTP. Mantemos também esta validação para chamadas diretas ao serviço, que não passam pelo @Valid do controller.
+        if (dto.currentPassword() == null || dto.currentPassword().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password is required!");
+        }
+
+        // 1. Valida se as senhas coincidem
+        validatePasswordConfirmation(dto.newPassword(), dto.confirmNewPassword());
+
+        // 2. Valida o token e obtém o usuário correspondente
+        User user = validateTokenAndGetUser(dto.token(), true);
+
+        // 3. Impede que o usuário altere a senha de outro usuário, mesmo que possua o token
+        if(!user.getEmail().equalsIgnoreCase(loggedInEmail)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Token does not belong to the authenticated user!");
+        }
+
+        // 4. Verifica se a senha atual fornecida corresponde à senha armazenada no banco de dados
+        if (!passwordEncoder.matches(dto.currentPassword(), user.getPassword())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password is incorrect!");
+        }
+
+
+        // 5. Evita que o usuário altere a senha para a mesma senha atual
+        if (passwordEncoder.matches(dto.newPassword(), user.getPassword())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password cannot be the same as the current password!");
+        }
+
+        // 6. Atualiza a senha do usuário com a nova senha fornecida
+
+        updatePassword(user, dto.newPassword());
+    }
+
+    @Transactional
     public String updatePendingEmail(Long userId, String newEmail) {
         // Validação de input
         if(userId == null || newEmail == null || newEmail.isBlank()) {
@@ -174,9 +227,8 @@ public class UserService implements UserDetailsService {
         user.setEmail(newEmail);
         userRepository.save(user);
 
-        // 5. Gera um novo token JWT e envia a confirmação
-        String jwtToken = jwtService.generateEmailConfirmationToken(user.getId().toString());
-        authEmailService.sendActivationEmail(user, jwtToken);
+        // 5. Publica o evento de solicitação de e-mail de ativação
+        eventPublisher.publishEvent(new ActivationEmailRequested(user.getId()));
         return "Pending email updated successfully!";
     }
 
@@ -231,5 +283,116 @@ public class UserService implements UserDetailsService {
         // Limpa espaços antes e depois do handle e remove o "@" do início, se houver
         String trimmed = handle.trim();
         return trimmed.startsWith("@") ? trimmed.substring(1) : trimmed;
+    }
+
+    @Transactional
+    public void resetPassword(ResetPasswordDto dto) {
+        // Valida as duas senhas novas para garantir que são iguais
+        validatePasswordConfirmation(dto.newPassword(), dto.confirmNewPassword());
+
+        // Valida o token e obtém o usuário correspondente
+        User user = validateTokenAndGetUser(dto.token(), false);
+
+        // Evita que o usuário altere a senha para a mesma senha atual
+        if (passwordEncoder.matches(dto.newPassword(), user.getPassword())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password cannot be the same as the current password!");
+        }
+
+        // Como o usuário não possui a senha atual, atualizamos diretamente a senha com a nova senha fornecida
+        updatePassword(user, dto.newPassword());
+    }
+
+    private void updatePassword(User user, String newRawPassword) {
+        user.setPassword(passwordEncoder.encode(newRawPassword));
+
+        // Política compatível com os tokens emitidos pela biblioteca atual.
+        // Igualdade é rejeitada na validação: token novo no mesmo segundo também será rejeitado.
+        user.setPasswordLastUpdateDate(OffsetDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS)); // Trunca para segundos para evitar problemas de precisão
+        userRepository.save(user);
+    }
+
+    private User validateTokenAndGetUser(String token, boolean authenticatedChange) {
+        String userIdStr = authenticatedChange
+                ? jwtService.validatePasswordChangeTokenAndGetUserId(token)
+                : jwtService.validatePasswordResetTokenAndGetUserId(token);
+
+        // Verifica se o usuário foi extraído corretamente do token
+        if(userIdStr == null || userIdStr.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired token!");
+        }
+
+        final Long userId;
+
+        try {
+            userId = Long.parseLong(userIdStr);
+        } catch (NumberFormatException e) {
+            // Retorna HTTP 400 se o ID se o token for inválido
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid token format!");
+        }
+
+        User user = userRepository.findByIdForPasswordUpdate(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found!"));
+
+        // O usuário pode ter sido carregado antes, por ex. durante a autenticação.
+        // Recarrega os campos enquanto mantém o bloqueio, evitando comparar um estado antigo.
+        entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE);
+
+        Instant tokenIssuedAt = authenticatedChange
+                ? jwtService.getPasswordChangeTokenIssuedAt(token)
+                : jwtService.getPasswordResetTokenIssuedAt(token);
+        if (tokenIssuedAt == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token issuance date is required!");
+        }
+
+        if (user.getPasswordLastUpdateDate() != null && !tokenIssuedAt.isAfter(user.getPasswordLastUpdateDate().toInstant())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token has already been used or is invalid!");
+        }
+
+        // Continua gerenciado e bloqueado até terminar o método público transacional.
+        return user;
+    }
+
+    private void validatePasswordConfirmation(String newPassword, String confirmPassword) {
+        if (!newPassword.equals(confirmPassword)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "New password and confirmation do not match!");
+        }
+    }
+
+    public void requestPasswordReset(String email) {
+        // Opcional representa uma busca que pode não encontrar uma conta.
+        Optional<User> optionalUser = userRepository.findByEmailIgnoreCase(email);
+
+        if(optionalUser.isEmpty()) {
+            return; // Retorna silenciosamente para não revelar se o e-mail existe ou não
+        }
+
+        User user = optionalUser.get();
+        if(!user.isVerified()) {
+            return; // Não envia para a conta não verificada e termina o fluxo silenciosamente
+        }
+
+
+        // Gera o token de redefinição apenas para conta elegível
+        String token = jwtService.generatePasswordResetToken(user.getId().toString());
+
+        try {
+            authEmailService.sendPasswordResetEmail(user, token);
+        } catch (ResponseStatusException e) {
+            // Apenas 429 é tratado como um impedimento esperado
+            if (e.getStatusCode() .value() != HttpStatus.TOO_MANY_REQUESTS.value()) {
+                throw e;
+            }
+
+            return;
+        } catch(EmailDeliveryException e) {
+            // Escolhe o nome do tipo de conta, sem copiar mensagens do provedor que podem conter informações sensíveis
+            Throwable cause = e.getCause();
+            String failureType = cause == null
+                    ? e.getClass().getSimpleName()
+                    : cause.getClass().getSimpleName();
+
+            // Registra o problema no log sem incluir token, senha ou destinatário
+            logger.warn("Password reset email delivery failed; failure type: {}", failureType);
+        }
     }
 }

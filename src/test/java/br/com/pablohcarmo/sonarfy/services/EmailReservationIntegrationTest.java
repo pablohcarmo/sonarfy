@@ -1,0 +1,304 @@
+package br.com.pablohcarmo.sonarfy.services;
+
+import br.com.pablohcarmo.sonarfy.dto.NewUserDto;
+import br.com.pablohcarmo.sonarfy.entities.Permission;
+import br.com.pablohcarmo.sonarfy.entities.User;
+import br.com.pablohcarmo.sonarfy.events.ActivationEmailListener;
+import br.com.pablohcarmo.sonarfy.events.ActivationEmailRequested;
+import br.com.pablohcarmo.sonarfy.exceptions.EmailDeliveryException;
+import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
+import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
+import jakarta.persistence.EntityManagerFactory;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.annotation.*;
+import org.springframework.core.env.Environment;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.orm.jpa.JpaTransactionManager;
+import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
+import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+import org.springframework.test.context.TestPropertySource;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.server.ResponseStatusException;
+import javax.sql.DataSource;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.util.Map;
+import java.util.concurrent.*;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+/**
+ * Real Spring proxies, JPA and database transactions; only email transport is mocked.
+ * Defaults to an isolated H2 database. For PostgreSQL, supply sonarfy.test.jdbc-url,
+ * sonarfy.test.db-user and sonarfy.test.db-password targeting a disposable database:
+ * the mapped tables are created and dropped by this context.
+ */
+@SpringJUnitConfig(EmailReservationIntegrationTest.Config.class)
+@TestPropertySource(properties = {
+        "app.frontend-url=http://localhost:3000",
+        "api.security.token.secret=isolated-test-secret",
+        "spring.mail.username=noreply@example.com"
+})
+class EmailReservationIntegrationTest {
+    @Configuration
+    @EnableTransactionManagement(proxyTargetClass = true)
+    @EnableJpaRepositories(basePackageClasses = UserRepository.class)
+    @Import({EmailCooldownService.class, AuthEmailService.class, UserService.class,
+            ActivationEmailListener.class})
+    static class Config {
+        @Bean DataSource dataSource(Environment env) {
+            return new DriverManagerDataSource(
+                    env.getProperty("sonarfy.test.jdbc-url",
+                            "jdbc:h2:mem:email_reservation;MODE=PostgreSQL;DB_CLOSE_DELAY=-1"),
+                    env.getProperty("sonarfy.test.db-user", "sa"),
+                    env.getProperty("sonarfy.test.db-password", ""));
+        }
+        @Bean LocalContainerEntityManagerFactoryBean entityManagerFactory(DataSource ds) {
+            var factory = new LocalContainerEntityManagerFactoryBean();
+            factory.setDataSource(ds);
+            factory.setPackagesToScan("br.com.pablohcarmo.sonarfy.entities");
+            factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
+            factory.setJpaPropertyMap(Map.of("hibernate.hbm2ddl.auto", "create-drop"));
+            return factory;
+        }
+        @Bean PlatformTransactionManager transactionManager(EntityManagerFactory factory) {
+            return new JpaTransactionManager(factory);
+        }
+        @Bean EmailService emailService() { return mock(EmailService.class); }
+        @Bean JavaMailSender javaMailSender() { return mock(JavaMailSender.class); }
+        @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(4); }
+        @Bean JwtService jwtService() {
+            JwtService jwt = new JwtService();
+            ReflectionTestUtils.setField(jwt, "secretKey", "isolated-test-secret");
+            return jwt;
+        }
+    }
+
+    @Autowired UserRepository users;
+    @Autowired PermissionRepository permissions;
+    @Autowired EmailCooldownService cooldown;
+    @Autowired AuthEmailService authEmails;
+    @Autowired EmailService transport;
+    @Autowired UserService userService;
+    @Autowired JwtService jwt;
+    @Autowired ApplicationEventPublisher publisher;
+    @Autowired PlatformTransactionManager transactions;
+    @Autowired DataSource dataSource;
+    private Permission permission;
+
+    @BeforeEach
+    void prepare() {
+        reset(transport);
+        users.deleteAll();
+        permission = permissions.findByName("ROLE_USER").orElseGet(() -> {
+            Permission role = new Permission();
+            role.setName("ROLE_USER");
+            return permissions.save(role);
+        });
+    }
+
+    @Test
+    void simultaneousRequestsProduceOneReservationAndOneDelivery() throws Exception {
+        User user = persistedUser(true);
+        CyclicBarrier start = new CyclicBarrier(2);
+        try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
+            Callable<Boolean> request = () -> {
+                start.await(10, TimeUnit.SECONDS);
+                try {
+                    authEmails.sendPasswordResetEmail(user, "reset-token");
+                    return true;
+                } catch (ResponseStatusException rejected) {
+                    assertEquals(429, rejected.getStatusCode().value());
+                    return false;
+                }
+            };
+            Future<Boolean> first = pool.submit(request);
+            Future<Boolean> second = pool.submit(request);
+            int accepted = (first.get(15, TimeUnit.SECONDS) ? 1 : 0)
+                    + (second.get(15, TimeUnit.SECONDS) ? 1 : 0);
+            assertEquals(1, accepted);
+        }
+        verify(transport, times(1)).sendEmail(eq(user.getEmail()), anyString(), anyString());
+        assertNotNull(users.findById(user.getId()).orElseThrow().getLastEmailSentAt());
+    }
+
+    @Test
+    void deliveryFailureKeepsCommittedReservationAndBlocksRetry() {
+        User user = persistedUser(true);
+        when(transport.sendEmail(anyString(), anyString(), anyString())).thenAnswer(call -> {
+            assertFalse(TransactionSynchronizationManager.isActualTransactionActive());
+            // Fresh repository transaction sees the reservation before SMTP.
+            assertNotNull(users.findById(user.getId()).orElseThrow().getLastEmailSentAt());
+            throw new EmailDeliveryException("SMTP offline", new IllegalStateException());
+        });
+        assertThrows(EmailDeliveryException.class,
+                () -> authEmails.sendPasswordResetEmail(user, "reset-token"));
+        assertEquals(429, assertThrows(ResponseStatusException.class,
+                () -> authEmails.sendPasswordResetEmail(user, "retry")).getStatusCode().value());
+        verify(transport, times(1)).sendEmail(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void expiredReservationAllowsAnotherDelivery() {
+        User user = persistedUser(true);
+        authEmails.sendPasswordResetEmail(user, "first");
+        new JdbcTemplate(dataSource).update(
+                "UPDATE users SET last_email_sent_at = ? WHERE user_id = ?",
+                OffsetDateTime.now().minusMinutes(1), user.getId());
+        authEmails.sendPasswordResetEmail(user, "second");
+        verify(transport, times(2)).sendEmail(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void staleProfileSaveCannotEraseReservation() {
+        User stale = persistedUser(true);
+        cooldown.reserveOrThrow(stale.getId(), stale.getEmail(), true);
+        OffsetDateTime reserved = users.findById(stale.getId()).orElseThrow().getLastEmailSentAt();
+        stale.setName("Updated profile");
+        users.saveAndFlush(stale);
+        User updated = users.findById(stale.getId()).orElseThrow();
+        assertEquals("Updated profile", updated.getName());
+        assertEquals(reserved.toInstant(), updated.getLastEmailSentAt().toInstant());
+    }
+
+    @Test
+    void concurrentProfileTransactionCannotEraseReservation() throws Exception {
+        User user = persistedUser(true);
+        CountDownLatch profileLoaded = new CountDownLatch(1);
+        CountDownLatch reservationCommitted = new CountDownLatch(1);
+        try (ExecutorService pool = Executors.newSingleThreadExecutor()) {
+            Future<?> profile = pool.submit(() -> new TransactionTemplate(transactions)
+                    .executeWithoutResult(status -> {
+                        User old = users.findById(user.getId()).orElseThrow();
+                        profileLoaded.countDown();
+                        try {
+                            assertTrue(reservationCommitted.await(10, TimeUnit.SECONDS));
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(e);
+                        }
+                        old.setName("Concurrent update");
+                        users.saveAndFlush(old);
+                    }));
+            assertTrue(profileLoaded.await(10, TimeUnit.SECONDS));
+            try {
+                cooldown.reserveOrThrow(user.getId(), user.getEmail(), true);
+            } finally {
+                reservationCommitted.countDown();
+            }
+            profile.get(15, TimeUnit.SECONDS);
+        }
+        User updated = users.findById(user.getId()).orElseThrow();
+        assertEquals("Concurrent update", updated.getName());
+        assertNotNull(updated.getLastEmailSentAt());
+        assertThrows(ResponseStatusException.class,
+                () -> cooldown.reserveOrThrow(user.getId(), user.getEmail(), true));
+    }
+
+    @Test
+    void reservationRejectsChangedIdentityOrVerification() {
+        User user = persistedUser(true);
+        assertThrows(ResponseStatusException.class,
+                () -> cooldown.reserveOrThrow(user.getId(), "old@example.com", true));
+        assertThrows(ResponseStatusException.class,
+                () -> cooldown.reserveOrThrow(user.getId(), user.getEmail(), false));
+        assertNull(users.findById(user.getId()).orElseThrow().getLastEmailSentAt());
+    }
+
+    @Test
+    void activationAndRecoveryShareCooldown() {
+        User user = persistedUser(false);
+        authEmails.sendActivationEmail(user, "activation");
+        user.setVerified(true);
+        users.saveAndFlush(user);
+        assertThrows(ResponseStatusException.class,
+                () -> authEmails.sendPasswordResetEmail(user, "reset"));
+        verify(transport, times(1)).sendEmail(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void rollbackDoesNotSendActivation() {
+        TransactionTemplate tx = new TransactionTemplate(transactions);
+        tx.executeWithoutResult(status -> {
+            User user = persistedUser(false);
+            publisher.publishEvent(new ActivationEmailRequested(user.getId()));
+            verifyNoInteractions(transport);
+            status.setRollbackOnly();
+        });
+        verifyNoInteractions(transport);
+        assertEquals(0, users.count());
+    }
+
+    @Test
+    void registrationCommitsBeforeSendingAndUsesValidConfirmationToken() {
+        when(transport.sendEmail(anyString(), anyString(), anyString())).thenAnswer(call -> {
+            assertFalse(TransactionSynchronizationManager.isActualTransactionActive());
+            User saved = users.findByEmailIgnoreCase(call.getArgument(0)).orElseThrow();
+            assertNotNull(saved.getLastEmailSentAt());
+            String body = call.getArgument(2);
+            String token = body.substring(body.indexOf("?token=") + 7).split("\\s")[0];
+            assertEquals(saved.getId().toString(), jwt.validateTokenAndGetEmail(token));
+            return "accepted";
+        });
+        var response = userService.newUser(registration());
+        assertNotNull(jwt.validateRegistrationTokenAndGetUserId(response.registrationToken()));
+        verify(transport).sendEmail(eq("new@example.com"), anyString(), anyString());
+    }
+
+    @Test
+    void failedActivationDoesNotUndoRegistration() {
+        when(transport.sendEmail(anyString(), anyString(), anyString()))
+                .thenThrow(new EmailDeliveryException("SMTP offline", new IllegalStateException()));
+        assertDoesNotThrow(() -> userService.newUser(registration()));
+        User saved = users.findByEmailIgnoreCase("new@example.com").orElseThrow();
+        assertNotNull(saved.getLastEmailSentAt());
+        verify(transport).sendEmail(eq("new@example.com"), anyString(), anyString());
+    }
+
+    @Test
+    void pendingEmailChangeIsCommittedBeforeDelivery() {
+        User user = persistedUser(false);
+        when(transport.sendEmail(anyString(), anyString(), anyString())).thenAnswer(call -> {
+            assertFalse(TransactionSynchronizationManager.isActualTransactionActive());
+            assertEquals("changed@example.com", users.findById(user.getId()).orElseThrow().getEmail());
+            return "accepted";
+        });
+        userService.updatePendingEmail(user.getId(), "changed@example.com");
+        verify(transport).sendEmail(eq("changed@example.com"), anyString(), anyString());
+    }
+
+    private User persistedUser(boolean verified) {
+        User user = new User();
+        user.setPermissionId(permission);
+        user.setName("Test");
+        user.setSurname("Account");
+        user.setHandle("test-account");
+        user.setEmail("user@example.com");
+        user.setVerified(verified);
+        return users.saveAndFlush(user);
+    }
+
+    private NewUserDto registration() {
+        NewUserDto dto = new NewUserDto();
+        dto.setName("New");
+        dto.setSurname("Account");
+        dto.setEmail("new@example.com");
+        dto.setHandle("new-account");
+        dto.setPassword("TestPassword123!");
+        dto.setBirthDate(LocalDate.now().minusYears(20));
+        return dto;
+    }
+}

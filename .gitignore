@@ -38,7 +38,10 @@ src/main/resources/application.properties
 src/main/infra/
 src/main/docs/
 src/main/infra
-
+.codex
+docs/pr-21-description.md
+issues/
+guias/
 # Postman
 .postman/
 postman/

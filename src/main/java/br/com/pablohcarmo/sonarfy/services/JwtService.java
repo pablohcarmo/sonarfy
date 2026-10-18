@@ -12,13 +12,15 @@ import java.time.Instant;
 @Service
 public class JwtService {
 
-
     private static final String ISSUER = "sonarfy-api";
     private static final String PURPOSE_EMAIL_CONFIRMATION = "email_confirmation";
     private static final String PURPOSE_PENDING_REGISTRATION = "pending_registration";
+    private static final String PURPOSE_PASSWORD_RESET = "password_reset";
+    private static final String PURPOSE_PASSWORD_CHANGE = "password_change";
 
     public static final long EMAIL_CONFIRMATION_TTL_SECONDS = 900; // 15 minutes
     public static final long PENDING_REGISTRATION_TTL_SECONDS = 900; // 15 minutes
+    public static final long PASSWORD_RESET_TTL_SECONDS = 900; // 15 minutes
 
     @Value("${api.security.token.secret}")
     private String secretKey;
@@ -30,6 +32,7 @@ public class JwtService {
                 .withIssuer(ISSUER)
                 .withSubject(userId)
                 .withClaim("purpose",PURPOSE_EMAIL_CONFIRMATION)
+                .withIssuedAt(Instant.now())
                 .withExpiresAt(Instant.now().plusSeconds(EMAIL_CONFIRMATION_TTL_SECONDS))
                 .sign(algorithm());
     }
@@ -41,6 +44,7 @@ public class JwtService {
                 .withIssuer(ISSUER)
                 .withSubject(userId)
                 .withClaim("purpose",PURPOSE_PENDING_REGISTRATION)
+                .withIssuedAt(Instant.now())
                 .withExpiresAt(Instant.now().plusSeconds(PENDING_REGISTRATION_TTL_SECONDS))
                 .sign(algorithm());
     }
@@ -53,6 +57,56 @@ public class JwtService {
     public String validateRegistrationTokenAndGetUserId(String token) {
         DecodedJWT jwt = verify(token, PURPOSE_PENDING_REGISTRATION);
         return jwt == null ? null : jwt.getSubject();
+    }
+
+    public String generatePasswordResetToken(String userId) {
+        requireNotBlank(userId, "user ID");
+        return JWT.create()
+                .withIssuer(ISSUER)
+                .withSubject(userId)
+                .withClaim("purpose", PURPOSE_PASSWORD_RESET)
+                .withIssuedAt(Instant.now())
+                .withExpiresAt(Instant.now().plusSeconds(PASSWORD_RESET_TTL_SECONDS))
+                .sign(algorithm());
+    }
+
+    public String validatePasswordResetTokenAndGetUserId(String token) {
+        DecodedJWT jwt = verify(token, PURPOSE_PASSWORD_RESET);
+        return jwt == null ? null : jwt.getSubject();
+    }
+
+    public String generatePasswordChangeToken(String userId) {
+        requireNotBlank(userId, "user ID");
+        return JWT.create()
+                .withIssuer(ISSUER)
+                .withSubject(userId)
+                .withClaim("purpose", PURPOSE_PASSWORD_CHANGE)
+                .withIssuedAt(Instant.now())
+                .withExpiresAt(Instant.now().plusSeconds(PASSWORD_RESET_TTL_SECONDS))
+                .sign(algorithm());
+    }
+
+    public String validatePasswordChangeTokenAndGetUserId(String token) {
+        DecodedJWT jwt = verify(token, PURPOSE_PASSWORD_CHANGE);
+        return jwt == null ? null : jwt.getSubject();
+    }
+
+    public Instant getPasswordResetTokenIssuedAt(String token) {
+        return getIssuedAt(token, PURPOSE_PASSWORD_RESET);
+    }
+
+    public Instant getPasswordChangeTokenIssuedAt(String token) {
+        return getIssuedAt(token, PURPOSE_PASSWORD_CHANGE);
+    }
+
+    private Instant getIssuedAt(String token, String expectedPurpose) {
+        DecodedJWT jwt = verify(token, expectedPurpose);
+
+        if(jwt == null || jwt.getIssuedAt() == null) {
+            return null;
+        }
+
+        return jwt.getIssuedAt().toInstant();
     }
 
     private DecodedJWT verify(String token, String expectedPurpose) {
@@ -70,7 +124,6 @@ public class JwtService {
         }
     }
 
-
     private Algorithm algorithm() {
         return Algorithm.HMAC256(secretKey);
     }
@@ -80,5 +133,4 @@ public class JwtService {
             throw new IllegalArgumentException("Cannot generate token for a null or blank " + fieldName + ".");
         }
     }
-
 }

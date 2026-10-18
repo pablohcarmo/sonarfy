@@ -9,6 +9,30 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class JwtServiceTest {
 
+    @Test
+    void shouldSerializeIssuedAtWithWholeSecondPrecision() {
+        java.time.Instant issuedAt = java.time.Instant.now().minusSeconds(60)
+                .truncatedTo(java.time.temporal.ChronoUnit.SECONDS).plusNanos(987654321);
+        String token = com.auth0.jwt.JWT.create()
+                .withIssuer("sonarfy-api").withSubject("42")
+                .withClaim("purpose", "password_reset")
+                .withIssuedAt(issuedAt).withExpiresAt(java.time.Instant.now().plusSeconds(60))
+                .sign(com.auth0.jwt.algorithms.Algorithm.HMAC256("unit-test-secret-key-super-secure-12345"));
+        assertEquals(issuedAt.truncatedTo(java.time.temporal.ChronoUnit.SECONDS),
+                jwtService.getPasswordResetTokenIssuedAt(token));
+    }
+
+    @Test
+    void shouldReturnNullForMissingIssuedAtWithoutThrowing() {
+        String token = com.auth0.jwt.JWT.create()
+                .withIssuer("sonarfy-api").withSubject("42")
+                .withClaim("purpose", "password_reset")
+                .withExpiresAt(java.time.Instant.now().plusSeconds(60))
+                .sign(com.auth0.jwt.algorithms.Algorithm.HMAC256("unit-test-secret-key-super-secure-12345"));
+        assertEquals("42", jwtService.validatePasswordResetTokenAndGetUserId(token));
+        assertNull(jwtService.getPasswordResetTokenIssuedAt(token));
+    }
+
     private JwtService jwtService;
 
     @BeforeEach
@@ -83,5 +107,36 @@ class JwtServiceTest {
 
         assertThrows(IllegalArgumentException.class, () -> jwtService.generateRegistrationToken(null));
         assertThrows(IllegalArgumentException.class, () -> jwtService.generateRegistrationToken("  "));
+
+        assertThrows(IllegalArgumentException.class, () -> jwtService.generatePasswordResetToken(null));
+        assertThrows(IllegalArgumentException.class, () -> jwtService.generatePasswordResetToken("  "));
+    }
+
+    @Test
+    @DisplayName("Deve gerar e validar token de reset de senha e extrair issuedAt com sucesso")
+    void shouldGenerateAndValidatePasswordResetToken() {
+        String userId = "55";
+
+        String token = jwtService.generatePasswordResetToken(userId);
+        assertNotNull(token);
+
+        String extractedUserId = jwtService.validatePasswordResetTokenAndGetUserId(token);
+        assertEquals(userId, extractedUserId);
+
+        assertNotNull(jwtService.getPasswordResetTokenIssuedAt(token));
+    }
+
+    @Test
+    @DisplayName("Tokens de troca e recuperação de senha devem ter propósitos isolados")
+    void shouldIsolatePasswordChangeAndResetTokens() {
+        String resetToken = jwtService.generatePasswordResetToken("55");
+        String changeToken = jwtService.generatePasswordChangeToken("55");
+
+        assertEquals("55", jwtService.validatePasswordResetTokenAndGetUserId(resetToken));
+        assertEquals("55", jwtService.validatePasswordChangeTokenAndGetUserId(changeToken));
+        assertNull(jwtService.validatePasswordResetTokenAndGetUserId(changeToken));
+        assertNull(jwtService.validatePasswordChangeTokenAndGetUserId(resetToken));
+        assertNotNull(jwtService.getPasswordChangeTokenIssuedAt(changeToken));
+        assertNull(jwtService.getPasswordChangeTokenIssuedAt(resetToken));
     }
 }
