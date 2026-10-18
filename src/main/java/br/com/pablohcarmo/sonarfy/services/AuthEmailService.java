@@ -111,4 +111,26 @@ public class AuthEmailService {
         return "Reset password email sent successfully! Please check your inbox.";
     }
 
+    public String sendPasswordChangeEmail(User user, String changeToken) {
+        if (!user.isVerified()) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "User is not verified. Please verify your account before requesting a password change.");
+        }
+
+        emailCooldownService.reserveOrThrow(user.getId(), user.getEmail(), true);
+
+        String subject = "Autorização para troca de senha - Sonarfy";
+        String body = "Olá, " + user.getName() + " " + user.getSurname() +
+                "\n\nRecebemos uma solicitação de troca de senha estando autenticado." +
+                "\nUse o token abaixo na tela de configurações da sua conta:" +
+                "\n\n" + changeToken +
+                "\n\nEste token é válido por 15 minutos e não pode ser usado para redefinir uma senha esquecida." +
+                " Se você não solicitou essa alteração, ignore este e-mail." +
+                "\n\nAtenciosamente,\nEquipe Sonarfy";
+
+        emailService.sendEmail(user.getEmail(), subject, body);
+        return "Password change authorization email sent successfully. Please check your inbox.";
+    }
+
 }

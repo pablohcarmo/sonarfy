@@ -55,8 +55,8 @@ public class UserController {
         User user = userRepository.findByEmailIgnoreCase(principal.getName())
                 .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
 
-        String token = jwtService.generatePasswordResetToken(user.getId().toString());
-        String result  = authEmailService.sendPasswordResetEmail(user, token);
+        String token = jwtService.generatePasswordChangeToken(user.getId().toString());
+        String result  = authEmailService.sendPasswordChangeEmail(user, token);
         return ResponseEntity.ok(result);
 
     }

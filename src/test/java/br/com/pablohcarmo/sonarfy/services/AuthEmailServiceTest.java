@@ -323,4 +323,19 @@ class AuthEmailServiceTest {
         order.verify(emailService).sendEmail(any(), any(), any());
         verify(userRepository, never()).save(any());
     }
+
+    @Test
+    void shouldSendDistinctPasswordChangeAuthorizationToken() {
+        sampleUser.setVerified(true);
+
+        authEmailService.sendPasswordChangeEmail(sampleUser, "change-token");
+
+        InOrder order = inOrder(emailCooldownService, emailService);
+        order.verify(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), true);
+        order.verify(emailService).sendEmail(
+                eq(sampleUser.getEmail()),
+                eq("Autorização para troca de senha - Sonarfy"),
+                argThat(body -> body.contains("change-token")
+                        && body.contains("não pode ser usado para redefinir uma senha esquecida")));
+    }
 }

@@ -125,4 +125,18 @@ class JwtServiceTest {
 
         assertNotNull(jwtService.getPasswordResetTokenIssuedAt(token));
     }
+
+    @Test
+    @DisplayName("Tokens de troca e recuperação de senha devem ter propósitos isolados")
+    void shouldIsolatePasswordChangeAndResetTokens() {
+        String resetToken = jwtService.generatePasswordResetToken("55");
+        String changeToken = jwtService.generatePasswordChangeToken("55");
+
+        assertEquals("55", jwtService.validatePasswordResetTokenAndGetUserId(resetToken));
+        assertEquals("55", jwtService.validatePasswordChangeTokenAndGetUserId(changeToken));
+        assertNull(jwtService.validatePasswordResetTokenAndGetUserId(changeToken));
+        assertNull(jwtService.validatePasswordChangeTokenAndGetUserId(resetToken));
+        assertNotNull(jwtService.getPasswordChangeTokenIssuedAt(changeToken));
+        assertNull(jwtService.getPasswordChangeTokenIssuedAt(resetToken));
+    }
 }

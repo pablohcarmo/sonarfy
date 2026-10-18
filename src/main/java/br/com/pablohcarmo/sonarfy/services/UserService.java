@@ -179,7 +179,7 @@ public class UserService implements UserDetailsService {
         validatePasswordConfirmation(dto.newPassword(), dto.confirmNewPassword());
 
         // 2. Valida o token e obtém o usuário correspondente
-        User user = validateTokenAndGetUser(dto.token());
+        User user = validateTokenAndGetUser(dto.token(), true);
 
         // 3. Impede que o usuário altere a senha de outro usuário, mesmo que possua o token
         if(!user.getEmail().equalsIgnoreCase(loggedInEmail)) {
@@ -291,7 +291,7 @@ public class UserService implements UserDetailsService {
         validatePasswordConfirmation(dto.newPassword(), dto.confirmNewPassword());
 
         // Valida o token e obtém o usuário correspondente
-        User user = validateTokenAndGetUser(dto.token());
+        User user = validateTokenAndGetUser(dto.token(), false);
 
         // Evita que o usuário altere a senha para a mesma senha atual
         if (passwordEncoder.matches(dto.newPassword(), user.getPassword())) {
@@ -311,8 +311,10 @@ public class UserService implements UserDetailsService {
         userRepository.save(user);
     }
 
-    private User validateTokenAndGetUser(String token) {
-        String userIdStr = jwtService.validatePasswordResetTokenAndGetUserId(token);
+    private User validateTokenAndGetUser(String token, boolean authenticatedChange) {
+        String userIdStr = authenticatedChange
+                ? jwtService.validatePasswordChangeTokenAndGetUserId(token)
+                : jwtService.validatePasswordResetTokenAndGetUserId(token);
 
         // Verifica se o usuário foi extraído corretamente do token
         if(userIdStr == null || userIdStr.isBlank()) {
@@ -335,7 +337,9 @@ public class UserService implements UserDetailsService {
         // Recarrega os campos enquanto mantém o bloqueio, evitando comparar um estado antigo.
         entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE);
 
-        Instant tokenIssuedAt = jwtService.getPasswordResetTokenIssuedAt(token);
+        Instant tokenIssuedAt = authenticatedChange
+                ? jwtService.getPasswordChangeTokenIssuedAt(token)
+                : jwtService.getPasswordResetTokenIssuedAt(token);
         if (tokenIssuedAt == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token issuance date is required!");
         }

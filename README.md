@@ -113,7 +113,9 @@ da transação. Após obter o bloqueio, o estado é recarregado antes de validar
 e a senha atual. Senha e horário de alteração são confirmados juntos; rollback
 preserva os valores anteriores e permite uma nova tentativa com o token válido.
 
-A biblioteca `java-jwt:4.4.0` serializa `iat` em segundos inteiros. Um token só é
+A biblioteca `java-jwt:4.4.0` serializa `iat` em segundos inteiros. Tokens de
+recuperação (`password_reset`) e de troca autenticada (`password_change`) têm
+propósitos distintos e são aceitos somente em seus respectivos fluxos. Um token só é
 aceito se sua emissão for estritamente posterior à última alteração de senha.
 Igualdade é rejeitada: um token novo emitido no mesmo segundo da alteração (ou do
 cadastro) também pode ser recusado. Tokens sem `iat`, expirados ou com outra

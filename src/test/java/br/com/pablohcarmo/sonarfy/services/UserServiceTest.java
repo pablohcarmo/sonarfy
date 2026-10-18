@@ -323,9 +323,9 @@ class UserServiceTest {
         user.setEmail("pablo@sonarfy.com");
         user.setPassword("encodedOldPassword");
 
-        when(jwtService.validatePasswordResetTokenAndGetUserId("token-jwt")).thenReturn("1");
+        when(jwtService.validatePasswordChangeTokenAndGetUserId("token-jwt")).thenReturn("1");
         when(userRepository.findByIdForPasswordUpdate(1L)).thenReturn(Optional.of(user));
-        when(jwtService.getPasswordResetTokenIssuedAt("token-jwt")).thenReturn(Instant.now().minusSeconds(5));
+        when(jwtService.getPasswordChangeTokenIssuedAt("token-jwt")).thenReturn(Instant.now().minusSeconds(5));
         when(passwordEncoder.matches("Old123!", "encodedOldPassword")).thenReturn(true);
         when(passwordEncoder.matches("New123!", "encodedOldPassword")).thenReturn(false);
         when(passwordEncoder.encode("New123!")).thenReturn("encodedNewPassword");
@@ -335,7 +335,7 @@ class UserServiceTest {
         var order = inOrder(userRepository, entityManager, jwtService, passwordEncoder);
         order.verify(userRepository).findByIdForPasswordUpdate(1L);
         order.verify(entityManager).refresh(user, LockModeType.PESSIMISTIC_WRITE);
-        order.verify(jwtService).getPasswordResetTokenIssuedAt("token-jwt");
+        order.verify(jwtService).getPasswordChangeTokenIssuedAt("token-jwt");
         order.verify(passwordEncoder).matches("Old123!", "encodedOldPassword");
         assertEquals("encodedNewPassword", user.getPassword());
         verify(userRepository, times(1)).save(user);
@@ -378,9 +378,9 @@ class UserServiceTest {
         user.setId(2L);
         user.setEmail("outro@sonarfy.com");
 
-        when(jwtService.validatePasswordResetTokenAndGetUserId("token-jwt")).thenReturn("2");
+        when(jwtService.validatePasswordChangeTokenAndGetUserId("token-jwt")).thenReturn("2");
         when(userRepository.findByIdForPasswordUpdate(2L)).thenReturn(Optional.of(user));
-        when(jwtService.getPasswordResetTokenIssuedAt("token-jwt")).thenReturn(Instant.now().minusSeconds(5));
+        when(jwtService.getPasswordChangeTokenIssuedAt("token-jwt")).thenReturn(Instant.now().minusSeconds(5));
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
                 userService.changePassword("pablo@sonarfy.com", dto)
@@ -401,9 +401,9 @@ class UserServiceTest {
         user.setEmail("pablo@sonarfy.com");
         user.setPassword("encodedOldPassword");
 
-        when(jwtService.validatePasswordResetTokenAndGetUserId("token-jwt")).thenReturn("1");
+        when(jwtService.validatePasswordChangeTokenAndGetUserId("token-jwt")).thenReturn("1");
         when(userRepository.findByIdForPasswordUpdate(1L)).thenReturn(Optional.of(user));
-        when(jwtService.getPasswordResetTokenIssuedAt("token-jwt")).thenReturn(Instant.now().minusSeconds(5));
+        when(jwtService.getPasswordChangeTokenIssuedAt("token-jwt")).thenReturn(Instant.now().minusSeconds(5));
         when(passwordEncoder.matches("Wrong123!", "encodedOldPassword")).thenReturn(false);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
@@ -425,9 +425,9 @@ class UserServiceTest {
         user.setEmail("pablo@sonarfy.com");
         user.setPassword("encodedOldPassword");
 
-        when(jwtService.validatePasswordResetTokenAndGetUserId("token-jwt")).thenReturn("1");
+        when(jwtService.validatePasswordChangeTokenAndGetUserId("token-jwt")).thenReturn("1");
         when(userRepository.findByIdForPasswordUpdate(1L)).thenReturn(Optional.of(user));
-        when(jwtService.getPasswordResetTokenIssuedAt("token-jwt")).thenReturn(Instant.now().minusSeconds(5));
+        when(jwtService.getPasswordChangeTokenIssuedAt("token-jwt")).thenReturn(Instant.now().minusSeconds(5));
         when(passwordEncoder.matches("Same123!", "encodedOldPassword")).thenReturn(true);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->

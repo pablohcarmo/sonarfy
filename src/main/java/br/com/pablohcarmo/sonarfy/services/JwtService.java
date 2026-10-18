@@ -16,6 +16,7 @@ public class JwtService {
     private static final String PURPOSE_EMAIL_CONFIRMATION = "email_confirmation";
     private static final String PURPOSE_PENDING_REGISTRATION = "pending_registration";
     private static final String PURPOSE_PASSWORD_RESET = "password_reset";
+    private static final String PURPOSE_PASSWORD_CHANGE = "password_change";
 
     public static final long EMAIL_CONFIRMATION_TTL_SECONDS = 900; // 15 minutes
     public static final long PENDING_REGISTRATION_TTL_SECONDS = 900; // 15 minutes
@@ -74,8 +75,32 @@ public class JwtService {
         return jwt == null ? null : jwt.getSubject();
     }
 
+    public String generatePasswordChangeToken(String userId) {
+        requireNotBlank(userId, "user ID");
+        return JWT.create()
+                .withIssuer(ISSUER)
+                .withSubject(userId)
+                .withClaim("purpose", PURPOSE_PASSWORD_CHANGE)
+                .withIssuedAt(Instant.now())
+                .withExpiresAt(Instant.now().plusSeconds(PASSWORD_RESET_TTL_SECONDS))
+                .sign(algorithm());
+    }
+
+    public String validatePasswordChangeTokenAndGetUserId(String token) {
+        DecodedJWT jwt = verify(token, PURPOSE_PASSWORD_CHANGE);
+        return jwt == null ? null : jwt.getSubject();
+    }
+
     public Instant getPasswordResetTokenIssuedAt(String token) {
-        DecodedJWT jwt = verify(token, PURPOSE_PASSWORD_RESET);
+        return getIssuedAt(token, PURPOSE_PASSWORD_RESET);
+    }
+
+    public Instant getPasswordChangeTokenIssuedAt(String token) {
+        return getIssuedAt(token, PURPOSE_PASSWORD_CHANGE);
+    }
+
+    private Instant getIssuedAt(String token, String expectedPurpose) {
+        DecodedJWT jwt = verify(token, expectedPurpose);
 
         if(jwt == null || jwt.getIssuedAt() == null) {
             return null;

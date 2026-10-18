@@ -225,16 +225,16 @@ class UserControllerTest {
         user.setEmail("pablo@sonarfy.com");
 
         when(userRepository.findByEmailIgnoreCase("pablo@sonarfy.com")).thenReturn(Optional.of(user));
-        when(jwtService.generatePasswordResetToken("1")).thenReturn("jwt-token-reset");
-        when(authEmailService.sendPasswordResetEmail(user, "jwt-token-reset"))
-                .thenReturn("Reset password email sent successfully! Please check your inbox.");
+        when(jwtService.generatePasswordChangeToken("1")).thenReturn("jwt-token-reset");
+        when(authEmailService.sendPasswordChangeEmail(user, "jwt-token-reset"))
+                .thenReturn("Password change authorization email sent successfully. Please check your inbox.");
 
         mockMvc.perform(post("/api/users/me/password-change-request")
                         .principal(mockPrincipal))
                 .andExpect(status().isOk())
-                .andExpect(content().string("Reset password email sent successfully! Please check your inbox."));
+                .andExpect(content().string("Password change authorization email sent successfully. Please check your inbox."));
 
-        verify(authEmailService).sendPasswordResetEmail(user, "jwt-token-reset");
+        verify(authEmailService).sendPasswordChangeEmail(user, "jwt-token-reset");
     }
 
     @Test
@@ -246,15 +246,15 @@ class UserControllerTest {
         user.setVerified(true);
 
         when(userRepository.findByEmailIgnoreCase(user.getEmail())).thenReturn(Optional.of(user));
-        when(jwtService.generatePasswordResetToken("1")).thenReturn("jwt-token-reset");
-        when(authEmailService.sendPasswordResetEmail(user, "jwt-token-reset"))
+        when(jwtService.generatePasswordChangeToken("1")).thenReturn("jwt-token-reset");
+        when(authEmailService.sendPasswordChangeEmail(user, "jwt-token-reset"))
                 .thenThrow(new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Please wait"));
 
         mockMvc.perform(post("/api/users/me/password-change-request")
                         .principal(mockPrincipal))
                 .andExpect(status().isTooManyRequests());
 
-        verify(authEmailService).sendPasswordResetEmail(user, "jwt-token-reset");
+        verify(authEmailService).sendPasswordChangeEmail(user, "jwt-token-reset");
         verifyNoInteractions(userService);
     }
 }

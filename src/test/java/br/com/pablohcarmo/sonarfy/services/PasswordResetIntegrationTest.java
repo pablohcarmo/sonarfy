@@ -43,7 +43,8 @@ class PasswordResetIntegrationTest {
     private Long id;
     private Instant issuedAt;
     private OffsetDateTime originalCutoff;
-    private String token;
+    private String resetToken;
+    private String changeToken;
     private String originalHash;
 
     @BeforeEach
@@ -65,18 +66,19 @@ class PasswordResetIntegrationTest {
         issuedAt = Instant.now().minusSeconds(60).truncatedTo(ChronoUnit.SECONDS);
         originalCutoff = issuedAt.minusSeconds(60).atOffset(ZoneOffset.UTC);
         setCutoff(originalCutoff);
-        token = signedToken(issuedAt, "password_reset", Instant.now().plusSeconds(600));
+        resetToken = signedToken(issuedAt, "password_reset", Instant.now().plusSeconds(600));
+        changeToken = signedToken(issuedAt, "password_change", Instant.now().plusSeconds(600));
     }
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void sequentialReplayWithDifferentNewPasswordIsRejected(boolean authenticated) {
-        change(authenticated, token, "FirstPassword123!");
+        change(authenticated, authenticated ? changeToken : resetToken, "FirstPassword123!");
         User saved = users.findById(id).orElseThrow();
         assertTrue(encoder.matches("FirstPassword123!", saved.getPassword()));
         assertEquals(0, saved.getPasswordLastUpdateDate().getNano());
         ResponseStatusException rejected = assertThrows(ResponseStatusException.class,
-                () -> change(authenticated, token, "SecondPassword123!"));
+                () -> change(authenticated, authenticated ? changeToken : resetToken, "SecondPassword123!"));
         assertEquals(400, rejected.getStatusCode().value());
         assertTrue(rejected.getReason().contains("already been used"));
         assertEquals(saved.getPassword(), users.findById(id).orElseThrow().getPassword());
@@ -130,11 +132,14 @@ class PasswordResetIntegrationTest {
     void expiredAndWrongPurposeTokensAreRejected() {
         for (String invalid : new String[] {
                 signedToken(issuedAt, "password_reset", Instant.now().minusSeconds(1)),
-                signedToken(issuedAt, "email_confirmation", Instant.now().plusSeconds(600))
+                signedToken(issuedAt, "email_confirmation", Instant.now().plusSeconds(600)),
+                changeToken
         }) {
             assertEquals(400, assertThrows(ResponseStatusException.class,
                     () -> change(false, invalid, "FirstPassword123!")).getStatusCode().value());
         }
+        assertEquals(400, assertThrows(ResponseStatusException.class,
+                () -> change(true, resetToken, "FirstPassword123!")).getStatusCode().value());
         assertUnchanged();
     }
 
@@ -142,17 +147,17 @@ class PasswordResetIntegrationTest {
     void validationFailuresDoNotConsumeToken() {
         assertEquals(403, assertThrows(ResponseStatusException.class,
                 () -> service.changePassword("other@example.com",
-                        new ChangePasswordDto(token, "OldPassword123!", "FirstPassword123!", "FirstPassword123!")))
+                        new ChangePasswordDto(changeToken, "OldPassword123!", "FirstPassword123!", "FirstPassword123!")))
                 .getStatusCode().value());
         assertEquals(400, assertThrows(ResponseStatusException.class,
                 () -> service.changePassword("password@example.com",
-                        new ChangePasswordDto(token, "wrong", "FirstPassword123!", "FirstPassword123!")))
+                        new ChangePasswordDto(changeToken, "wrong", "FirstPassword123!", "FirstPassword123!")))
                 .getStatusCode().value());
         assertThrows(ResponseStatusException.class,
-                () -> service.resetPassword(new ResetPasswordDto(token, "FirstPassword123!", "Mismatch")));
-        assertThrows(ResponseStatusException.class, () -> change(false, token, "OldPassword123!"));
+                () -> service.resetPassword(new ResetPasswordDto(resetToken, "FirstPassword123!", "Mismatch")));
+        assertThrows(ResponseStatusException.class, () -> change(false, resetToken, "OldPassword123!"));
         assertUnchanged();
-        change(true, token, "FirstPassword123!");
+        change(true, changeToken, "FirstPassword123!");
         assertTrue(encoder.matches("FirstPassword123!", users.findById(id).orElseThrow().getPassword()));
     }
 
@@ -160,12 +165,12 @@ class PasswordResetIntegrationTest {
     void rollbackRestoresPasswordAndCutoffAndAllowsRetry() {
         assertThrows(IllegalStateException.class, () -> new TransactionTemplate(transactions)
                 .executeWithoutResult(status -> {
-                    change(false, token, "FirstPassword123!");
+                    change(false, resetToken, "FirstPassword123!");
                     users.flush();
                     throw new IllegalStateException("Force rollback after SQL update");
                 }));
         assertUnchanged();
-        change(false, token, "SecondPassword123!");
+        change(false, resetToken, "SecondPassword123!");
         assertTrue(encoder.matches("SecondPassword123!", users.findById(id).orElseThrow().getPassword()));
     }
 
@@ -175,12 +180,12 @@ class PasswordResetIntegrationTest {
                 .executeWithoutResult(status -> {
                     User cached = users.findById(id).orElseThrow();
                     try (ExecutorService pool = Executors.newSingleThreadExecutor()) {
-                        pool.submit(() -> change(false, token, "FirstPassword123!")).get(15, TimeUnit.SECONDS);
+                        pool.submit(() -> change(false, resetToken, "FirstPassword123!")).get(15, TimeUnit.SECONDS);
                     } catch (Exception e) {
                         throw new AssertionError(e);
                     }
                     assertEquals(originalHash, cached.getPassword(), "Persistence context still has old state");
-                    change(false, token, "SecondPassword123!");
+                    change(false, resetToken, "SecondPassword123!");
                 }));
         assertTrue(encoder.matches("FirstPassword123!", users.findById(id).orElseThrow().getPassword()));
     }
@@ -188,7 +193,7 @@ class PasswordResetIntegrationTest {
     private boolean compete(CyclicBarrier start, boolean authenticated, String password) throws Exception {
         start.await(10, TimeUnit.SECONDS);
         try {
-            change(authenticated, token, password);
+            change(authenticated, authenticated ? changeToken : resetToken, password);
             return true;
         } catch (ResponseStatusException rejected) {
             assertEquals(400, rejected.getStatusCode().value());

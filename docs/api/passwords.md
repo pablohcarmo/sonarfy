@@ -50,7 +50,8 @@ O `ResetPasswordDto` exige os três campos não vazios. A nova senha deve ter ao
 Não se exige `currentPassword`: o usuário está recuperando uma senha esquecida.
 
 Use o token recebido por e-mail, de finalidade `password_reset`, válido por
-15 minutos. Não use token de ativação ou de retificação de cadastro.
+15 minutos. Tokens de troca autenticada têm finalidade separada e são rejeitados
+neste endpoint. Não use token de ativação ou de retificação de cadastro.
 
 Sucesso: HTTP 200, corpo em texto:
 
@@ -67,9 +68,10 @@ do tratamento de erros do Spring: não há aqui promessa de um formato JSON est�
 
 `POST /api/users/me/password-change-request` — exige identidade autenticada,
 sem corpo. O controller usa `Principal.getName()` para identificar o e-mail da conta.
-O token enviado possui finalidade `password_reset`.
+O token enviado possui finalidade `password_change`, distinta de
+`password_reset`; cada endpoint aceita somente o token emitido para seu próprio fluxo.
 
-Sucesso: HTTP 200, texto `Reset password email sent successfully! Please check your inbox.`
+Sucesso: HTTP 200, texto `Password change authorization email sent successfully. Please check your inbox.`
 Essa mensagem indica que o transporte não reportou erro, não comprova entrega.
 Conta não verificada retorna 403; cooldown retorna 429. Diferentemente da solicitação
 pública, falhas de entrega não são ocultadas por uma resposta genérica neste fluxo.
