@@ -170,7 +170,7 @@ public class UserService implements UserDetailsService {
 
     @Transactional
     public void changePassword(String loggedInEmail, ChangePasswordDto dto) {
-        // Como o campo currentPassword é opcional no DTO, validamos manualmente a obrigatoriedade da senha atual neste fluxo
+        // O DTO exige a senha atual na entrada HTTP. Mantemos também esta validação para chamadas diretas ao serviço, que não passam pelo @Valid do controller.
         if (dto.currentPassword() == null || dto.currentPassword().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password is required!");
         }

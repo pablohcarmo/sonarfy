@@ -36,6 +36,30 @@ O Sonarfy busca criar um espaço em que fãs de música, críticos e colecionado
 - acompanhar tendências e gostos da comunidade;
 - construir uma identidade musical própria dentro da plataforma.
 
+## Contrato da API de senhas
+
+O projeto usa Java 21, Spring Boot 4.1.0 e java-jwt 4.4.0.
+Consulte o [contrato de recuperação e troca de senha](docs/api/passwords.md)
+para os campos obrigatórios, exemplos JSON, respostas e limites de autenticação.
+Importe a [coleção oficial do Postman](docs/api/sonarfy-passwords.postman_collection.json)
+e ajuste a variável `baseUrl` (exemplo local: `http://localhost:8081`).
+
+| Operação | Endpoint | Campos JSON |
+| --- | --- | --- |
+| Solicitar recuperação | `POST /api/auth/forgot-password` | `email` |
+| Redefinir senha esquecida | `POST /api/auth/reset-password` | `token`, `newPassword`, `confirmNewPassword` |
+| Solicitar token de troca autenticada | `POST /api/users/me/password-change-request` | Sem corpo |
+| Trocar senha autenticada | `PUT /api/users/me/password` | `token`, `currentPassword`, `newPassword`, `confirmNewPassword` |
+
+As requisições com corpo usam `Content-Type: application/json`. Na solicitação
+pública, o e-mail vai no JSON. Recuperação e troca usam DTOs separados:
+a recuperação não exige a senha esquecida; a troca exige a senha atual.
+
+As rotas `/api/users/**` exigem identidade autenticada, mas o código atual ainda
+não configura um mecanismo de autenticação HTTP que a estabeleça. O token enviado
+no JSON não substitui essa autenticação. A coleção documenta esse impedimento;
+não presume um JWT Bearer de acesso funcional.
+
 ## E-mails de conta e intervalo entre tentativas
 
 Ativação e recuperação de senha compartilham um intervalo mínimo de 30 segundos,
