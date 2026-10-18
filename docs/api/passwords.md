@@ -116,6 +116,21 @@ Os testes de controller fornecem um principal simulado; não comprovam login rea
 
 ## Cenários e evidências
 
+### Decisão: DTOs separados
+
+`ResetPasswordDto` e `ChangePasswordDto` representam entradas diferentes.
+Na recuperação, a autorização é comprovada pelo token e não se exige a senha
+esquecida. Na troca autenticada, `currentPassword` é obrigatório e validado
+com `@NotBlank`, além das verificações de identidade e senha atual no serviço.
+
+Um DTO único exigiria tornar esse campo opcional ou selecionar validações
+condicionais por operação. Mantemos os contratos explícitos e a validação
+compartilhada do token e da atualização da senha no serviço. A repetição dos
+campos comuns é pequena e evita aceitar combinações de entrada inadequadas
+para cada endpoint.
+
+### Cobertura existente
+
 | Cenário | Resultado esperado | Verificação existente |
 | --- | --- | --- |
 | Solicitação com e-mail válido | 200, resposta genérica | AuthControllerTest / ForgotPasswordFlowTest |

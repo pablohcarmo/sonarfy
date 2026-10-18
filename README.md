@@ -6,6 +6,15 @@ O nome combina "sonar" e "for you", remetendo à ideia de um espaço musical pen
 
 ## Sobre o projeto
 
+Este repositório é público para permitir a avaliação acadêmica pelo orientador
+e pela banca do TCC, sem exigir acesso de colaborador. O Sonarfy não adota uma
+licença open-source; a publicação tem finalidade de consulta e avaliação.
+Esta documentação não concede acesso aos ambientes, contas ou serviços do projeto.
+
+O [guia de avaliação](docs/avaliacao-academica.md) apresenta os comandos de teste,
+as evidências disponíveis e um roteiro de demonstração. A aplicação está em
+desenvolvimento e não é apresentada como pronta para produção.
+
 O Sonarfy é uma plataforma web voltada para:
 
 - criar e gerenciar perfis de usuários;
@@ -123,7 +132,10 @@ O projeto está em desenvolvimento, com foco inicial na modelagem de funcionalid
 
 ## Observação
 
-Esta página foi pensada para apresentação pública do projeto e não expõe detalhes internos que possam comprometer a segurança ou a implementação futura da aplicação.
+O código e a documentação técnica deste repositório são públicos. Exemplos usam
+dados fictícios e recursos locais de teste; credenciais reais, tokens em uso,
+configurações pessoais e dados de usuários não fazem parte dos entregáveis.
+As limitações descritas permitem avaliar o estado real da implementação.
 
 ---
 
