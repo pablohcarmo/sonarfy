@@ -9,6 +9,30 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class JwtServiceTest {
 
+    @Test
+    void shouldSerializeIssuedAtWithWholeSecondPrecision() {
+        java.time.Instant issuedAt = java.time.Instant.now().minusSeconds(60)
+                .truncatedTo(java.time.temporal.ChronoUnit.SECONDS).plusNanos(987654321);
+        String token = com.auth0.jwt.JWT.create()
+                .withIssuer("sonarfy-api").withSubject("42")
+                .withClaim("purpose", "password_reset")
+                .withIssuedAt(issuedAt).withExpiresAt(java.time.Instant.now().plusSeconds(60))
+                .sign(com.auth0.jwt.algorithms.Algorithm.HMAC256("unit-test-secret-key-super-secure-12345"));
+        assertEquals(issuedAt.truncatedTo(java.time.temporal.ChronoUnit.SECONDS),
+                jwtService.getPasswordResetTokenIssuedAt(token));
+    }
+
+    @Test
+    void shouldReturnNullForMissingIssuedAtWithoutThrowing() {
+        String token = com.auth0.jwt.JWT.create()
+                .withIssuer("sonarfy-api").withSubject("42")
+                .withClaim("purpose", "password_reset")
+                .withExpiresAt(java.time.Instant.now().plusSeconds(60))
+                .sign(com.auth0.jwt.algorithms.Algorithm.HMAC256("unit-test-secret-key-super-secure-12345"));
+        assertEquals("42", jwtService.validatePasswordResetTokenAndGetUserId(token));
+        assertNull(jwtService.getPasswordResetTokenIssuedAt(token));
+    }
+
     private JwtService jwtService;
 
     @BeforeEach

@@ -73,6 +73,26 @@ docker stop sonarfy-task2-tests
 
 Relatórios: `target/surefire-reports`. A senha acima é exclusiva do banco temporário.
 
+## Uso único dos tokens de alteração de senha
+
+A troca autenticada e a recuperação de senha bloqueiam a linha do usuário até o fim
+da transação. Após obter o bloqueio, o estado é recarregado antes de validar o token
+e a senha atual. Senha e horário de alteração são confirmados juntos; rollback
+preserva os valores anteriores e permite uma nova tentativa com o token válido.
+
+A biblioteca `java-jwt:4.4.0` serializa `iat` em segundos inteiros. Um token só é
+aceito se sua emissão for estritamente posterior à última alteração de senha.
+Igualdade é rejeitada: um token novo emitido no mesmo segundo da alteração (ou do
+cadastro) também pode ser recusado. Tokens sem `iat`, expirados ou com outra
+finalidade são rejeitados.
+
+O controle por horário pressupõe relógios coerentes entre instâncias e invalida
+os tokens anteriores ou iguais ao corte; ele não revoga sessões de login.
+`PasswordResetIntegrationTest` verifica reutilização com senhas diferentes,
+concorrência nos dois fluxos, estado previamente carregado, limites temporais e
+rollback com JWTs reais e banco. Pode ser executado com H2 ou com as propriedades
+de PostgreSQL descritas acima.
+
 ## Status do projeto
 
 O projeto está em desenvolvimento, com foco inicial na modelagem de funcionalidades, experiência do usuário e prototipação das principais telas.

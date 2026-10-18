@@ -15,6 +15,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -35,6 +37,30 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
 
+    @org.junit.jupiter.api.BeforeEach
+    void injectPersistenceContext() {
+        org.springframework.test.util.ReflectionTestUtils.setField(userService, "entityManager", entityManager);
+    }
+
+    @Test
+    void shouldRejectNonNumericSubjectBeforeDatabaseAccess() {
+        when(jwtService.validatePasswordResetTokenAndGetUserId("bad-subject")).thenReturn("abc");
+        ResponseStatusException failure = assertThrows(ResponseStatusException.class,
+                () -> userService.resetPassword(new ResetPasswordDto("bad-subject", "New123!", "New123!")));
+        assertEquals("Invalid token format!", failure.getReason());
+        verifyNoInteractions(userRepository, entityManager, passwordEncoder);
+    }
+
+    @Test
+    void shouldRejectDeletedAccountBeforeRefresh() {
+        when(jwtService.validatePasswordResetTokenAndGetUserId("deleted")).thenReturn("999");
+        when(userRepository.findByIdForPasswordUpdate(999L)).thenReturn(Optional.empty());
+        assertEquals(HttpStatus.NOT_FOUND, assertThrows(ResponseStatusException.class,
+                () -> userService.resetPassword(new ResetPasswordDto("deleted", "New123!", "New123!")))
+                .getStatusCode());
+        verifyNoInteractions(entityManager, passwordEncoder);
+    }
+
     @Mock
     private UserRepository userRepository;
 
@@ -52,6 +78,9 @@ class UserServiceTest {
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
+
+    @Mock
+    private EntityManager entityManager;
 
     @InjectMocks
     private UserService userService;
@@ -295,13 +324,19 @@ class UserServiceTest {
         user.setPassword("encodedOldPassword");
 
         when(jwtService.validatePasswordResetTokenAndGetUserId("token-jwt")).thenReturn("1");
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForPasswordUpdate(1L)).thenReturn(Optional.of(user));
+        when(jwtService.getPasswordResetTokenIssuedAt("token-jwt")).thenReturn(Instant.now().minusSeconds(5));
         when(passwordEncoder.matches("Old123!", "encodedOldPassword")).thenReturn(true);
         when(passwordEncoder.matches("New123!", "encodedOldPassword")).thenReturn(false);
         when(passwordEncoder.encode("New123!")).thenReturn("encodedNewPassword");
 
         userService.changePassword("pablo@sonarfy.com", dto);
 
+        var order = inOrder(userRepository, entityManager, jwtService, passwordEncoder);
+        order.verify(userRepository).findByIdForPasswordUpdate(1L);
+        order.verify(entityManager).refresh(user, LockModeType.PESSIMISTIC_WRITE);
+        order.verify(jwtService).getPasswordResetTokenIssuedAt("token-jwt");
+        order.verify(passwordEncoder).matches("Old123!", "encodedOldPassword");
         assertEquals("encodedNewPassword", user.getPassword());
         verify(userRepository, times(1)).save(user);
     }
@@ -344,7 +379,8 @@ class UserServiceTest {
         user.setEmail("outro@sonarfy.com");
 
         when(jwtService.validatePasswordResetTokenAndGetUserId("token-jwt")).thenReturn("2");
-        when(userRepository.findById(2L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForPasswordUpdate(2L)).thenReturn(Optional.of(user));
+        when(jwtService.getPasswordResetTokenIssuedAt("token-jwt")).thenReturn(Instant.now().minusSeconds(5));
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
                 userService.changePassword("pablo@sonarfy.com", dto)
@@ -366,7 +402,8 @@ class UserServiceTest {
         user.setPassword("encodedOldPassword");
 
         when(jwtService.validatePasswordResetTokenAndGetUserId("token-jwt")).thenReturn("1");
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForPasswordUpdate(1L)).thenReturn(Optional.of(user));
+        when(jwtService.getPasswordResetTokenIssuedAt("token-jwt")).thenReturn(Instant.now().minusSeconds(5));
         when(passwordEncoder.matches("Wrong123!", "encodedOldPassword")).thenReturn(false);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
@@ -389,7 +426,8 @@ class UserServiceTest {
         user.setPassword("encodedOldPassword");
 
         when(jwtService.validatePasswordResetTokenAndGetUserId("token-jwt")).thenReturn("1");
-        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForPasswordUpdate(1L)).thenReturn(Optional.of(user));
+        when(jwtService.getPasswordResetTokenIssuedAt("token-jwt")).thenReturn(Instant.now().minusSeconds(5));
         when(passwordEncoder.matches("Same123!", "encodedOldPassword")).thenReturn(true);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
@@ -415,7 +453,8 @@ class UserServiceTest {
         user.setEmail("pablo@sonarfy.com");
 
         when(jwtService.validatePasswordResetTokenAndGetUserId("token-jwt")).thenReturn("5");
-        when(userRepository.findById(5L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForPasswordUpdate(5L)).thenReturn(Optional.of(user));
+        when(jwtService.getPasswordResetTokenIssuedAt("token-jwt")).thenReturn(Instant.now().minusSeconds(5));
         when(passwordEncoder.encode("NewPass123!")).thenReturn("encodedNewPassword");
 
         userService.resetPassword(dto);
@@ -435,7 +474,8 @@ class UserServiceTest {
         user.setPassword("encodedOldPassword");
 
         when(jwtService.validatePasswordResetTokenAndGetUserId("token-jwt")).thenReturn("5");
-        when(userRepository.findById(5L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForPasswordUpdate(5L)).thenReturn(Optional.of(user));
+        when(jwtService.getPasswordResetTokenIssuedAt("token-jwt")).thenReturn(Instant.now().minusSeconds(5));
         when(passwordEncoder.matches("SamePass123!", "encodedOldPassword")).thenReturn(true);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
@@ -476,7 +516,7 @@ class UserServiceTest {
         Instant tokenIssuedAt = user.getPasswordLastUpdateDate().toInstant().minusSeconds(300);
 
         when(jwtService.validatePasswordResetTokenAndGetUserId("used-token")).thenReturn("7");
-        when(userRepository.findById(7L)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdForPasswordUpdate(7L)).thenReturn(Optional.of(user));
         when(jwtService.getPasswordResetTokenIssuedAt("used-token")).thenReturn(tokenIssuedAt);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->

@@ -1,7 +1,9 @@
 package br.com.pablohcarmo.sonarfy.repositories;
 
 import br.com.pablohcarmo.sonarfy.entities.User;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -33,4 +35,9 @@ public interface UserRepository extends JpaRepository<User,Long> {
             @Param("now") OffsetDateTime now,
             @Param("cutoff") OffsetDateTime cutoff
     );
+
+    // Serializa alterações de senha até o fim da transação; leituras comuns podem continuar.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from User u where u.id = :id")
+    Optional<User> findByIdForPasswordUpdate(@Param("id") Long id);
 }

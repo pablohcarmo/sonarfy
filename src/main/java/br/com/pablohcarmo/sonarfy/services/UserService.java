@@ -7,6 +7,9 @@ import br.com.pablohcarmo.sonarfy.events.ActivationEmailRequested;
 import br.com.pablohcarmo.sonarfy.exceptions.EmailDeliveryException;
 import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.PersistenceContext;
 import jakarta.transaction.Transactional;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -28,6 +31,10 @@ import java.util.Optional;
 
 @Service
 public class UserService implements UserDetailsService {
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
     private final UserRepository userRepository;
     private final PermissionRepository permissionRepository;
     private final PasswordEncoder passwordEncoder;
@@ -296,8 +303,10 @@ public class UserService implements UserDetailsService {
     }
 
     private void updatePassword(User user, String newRawPassword) {
-        // Atualiza a senha do usuário com a nova senha codificada
         user.setPassword(passwordEncoder.encode(newRawPassword));
+
+        // Política compatível com os tokens emitidos pela biblioteca atual.
+        // Igualdade é rejeitada na validação: token novo no mesmo segundo também será rejeitado.
         user.setPasswordLastUpdateDate(OffsetDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS)); // Trunca para segundos para evitar problemas de precisão
         userRepository.save(user);
     }
@@ -310,27 +319,33 @@ public class UserService implements UserDetailsService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid or expired token!");
         }
 
+        final Long userId;
+
         try {
-            Long userId = Long.parseLong(userIdStr);
-            User user = userRepository.findById(userId)
-                    // Retorna HTTP 404 se o usuário não for encontrado
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found!"));
-
-            // Validação anti-replay
-            if (user.getPasswordLastUpdateDate() != null) {
-                Instant tokenIssuedAt = jwtService.getPasswordResetTokenIssuedAt(token);
-
-                // se o token foi gerado antes ou no mesmo instante da última atualização de senha, ele já foi utilizado
-                if (tokenIssuedAt == null || !tokenIssuedAt.isAfter(user.getPasswordLastUpdateDate().toInstant())) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token has already been used or is invalid!");
-                }
-            }
-
-            return user;
+            userId = Long.parseLong(userIdStr);
         } catch (NumberFormatException e) {
             // Retorna HTTP 400 se o ID se o token for inválido
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid token format!");
         }
+
+        User user = userRepository.findByIdForPasswordUpdate(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found!"));
+
+        // O usuário pode ter sido carregado antes, por ex. durante a autenticação.
+        // Recarrega os campos enquanto mantém o bloqueio, evitando comparar um estado antigo.
+        entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE);
+
+        Instant tokenIssuedAt = jwtService.getPasswordResetTokenIssuedAt(token);
+        if (tokenIssuedAt == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token issuance date is required!");
+        }
+
+        if (user.getPasswordLastUpdateDate() != null && !tokenIssuedAt.isAfter(user.getPasswordLastUpdateDate().toInstant())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Token has already been used or is invalid!");
+        }
+
+        // Continua gerenciado e bloqueado até terminar o método público transacional.
+        return user;
     }
 
     private void validatePasswordConfirmation(String newPassword, String confirmPassword) {

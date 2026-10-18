@@ -76,7 +76,12 @@ public class JwtService {
 
     public Instant getPasswordResetTokenIssuedAt(String token) {
         DecodedJWT jwt = verify(token, PURPOSE_PASSWORD_RESET);
-        return jwt == null ? null : jwt.getIssuedAt().toInstant();
+
+        if(jwt == null || jwt.getIssuedAt() == null) {
+            return null;
+        }
+
+        return jwt.getIssuedAt().toInstant();
     }
 
     private DecodedJWT verify(String token, String expectedPurpose) {
