@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{email/fragments :: head}"></head>
+<body bgcolor="#ffffff" style="margin: 0; padding: 0; background-color: #ffffff; color: #1a1a1a; color-scheme: light;">
+<table role="presentation" width="100%" bgcolor="#ffffff" style="table-layout: fixed; width: 100%; background-color: #ffffff; color: #1a1a1a;"><tr><td class="email-shell" align="center" bgcolor="#ffffff" style="background-color: #ffffff; color: #1a1a1a;">
+    <table class="email-card" role="presentation" width="100%" bgcolor="#ffffff" style="max-width: 600px; background-color: #ffffff; color: #1a1a1a; border: 1px solid #ebecef; border-radius: 8px; border-spacing: 0; overflow: hidden;">
+        <tr th:replace="~{email/fragments :: header}"></tr>
+        <tr><td class="email-content" bgcolor="#ffffff" style="padding-top: 40px; padding-bottom: 40px; background-color: #ffffff; color: #1a1a1a;">
+            <table role="presentation" width="100%" bgcolor="#ffffff" style="background-color: #ffffff; color: #1a1a1a;">
+                <tr><td><table th:replace="~{email/fragments :: status('statusIcon')}"></table></td></tr>
+                <tr><td class="email-title" style="padding-top: 24px; color: #1a1a1a; font-family: Arial, sans-serif; font-size: 32px; font-weight: 700; line-height: 1.2;">Cadastro confirmado!<br>Seja bem-vindo(a)</td></tr>
+                <tr><td style="padding-top: 24px; color: #1a1a1a; font-family: Arial, sans-serif; font-size: 16px; font-weight: 600; line-height: 1.6;" th:text="|Olá, ${fullName}|">Olá, Pablo Carmo</td></tr>
+                <tr><td style="padding-top: 16px; color: #65676b; font-family: Arial, sans-serif; font-size: 16px; line-height: 1.6;">Seu e-mail foi confirmado e sua conta já está ativa. O Sonarfy é a sua nova rede social de música: um lugar para descobrir, compartilhar e se conectar.</td></tr>
+                <tr><td style="padding-top: 24px;"><a class="primary-button" th:href="${accountUrl}" style="display: inline-block; border: 1px solid #1a1a1a; border-radius: 8px; background: #27a9f5; color: #1a1a1a; font-family: Arial, sans-serif; font-size: 14px; font-weight: 600; line-height: 18px; padding: 14px 24px; text-decoration: none;">Acessar minha conta</a></td></tr>
+                <tr><td style="padding-top: 16px;"><div style="border-top: 1px solid #ebecef;"></div></td></tr>
+                <tr><td style="padding-top: 24px; color: #1a1a1a; font-family: Arial, sans-serif; font-size: 16px; font-weight: 600; line-height: 1.6;">Sua próxima descoberta começa aqui</td></tr>
+                <tr><td style="padding-top: 24px;"><table role="presentation" width="100%"><tr>
+                    <td width="24" valign="top"><img src="cid:albumIcon" alt="" width="24" height="24"></td>
+                    <td style="padding-left: 16px; font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;"><strong style="color: #1a1a1a;">Avalie seus álbuns favoritos</strong><br><span style="color: #65676b;">Compartilhe o que você anda ouvindo.</span></td>
+                </tr></table></td></tr>
+                <tr><td style="padding-top: 24px;"><table role="presentation" width="100%"><tr>
+                    <td width="24" valign="top"><img src="cid:audioIcon" alt="" width="24" height="24"></td>
+                    <td style="padding-left: 16px; font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;"><strong style="color: #1a1a1a;">Descubra novos artistas</strong><br><span style="color: #65676b;">Sincronize com seu Spotify e explore novos sons.</span></td>
+                </tr></table></td></tr>
+                <tr><td style="padding-top: 24px;"><table role="presentation" width="100%"><tr>
+                    <td width="24" valign="top"><img src="cid:communityIcon" alt="" width="24" height="24"></td>
+                    <td style="padding-left: 16px; font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;"><strong style="color: #1a1a1a;">Encontre sua comunidade</strong><br><span style="color: #65676b;">Conecte-se com quem tem o mesmo gosto musical.</span></td>
+                </tr></table></td></tr>
+                <tr><td style="padding-top: 16px;"><table th:replace="~{email/fragments :: signature}"></table></td></tr>
+            </table>
+        </td></tr>
+    </table>
+    <table th:replace="~{email/fragments :: footer}"></table>
+</td></tr></table>
+</body>
+</html>

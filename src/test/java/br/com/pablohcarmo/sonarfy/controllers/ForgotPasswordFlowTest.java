@@ -6,6 +6,7 @@ import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import br.com.pablohcarmo.sonarfy.services.AuthEmailService;
 import br.com.pablohcarmo.sonarfy.services.EmailService;
 import br.com.pablohcarmo.sonarfy.services.EmailCooldownService;
+import br.com.pablohcarmo.sonarfy.services.EmailTemplateService;
 import org.springframework.context.ApplicationEventPublisher;
 import br.com.pablohcarmo.sonarfy.services.JwtService;
 import br.com.pablohcarmo.sonarfy.services.UserService;
@@ -63,7 +64,12 @@ class ForgotPasswordFlowTest {
         JwtService jwtService = new JwtService();
         ReflectionTestUtils.setField(jwtService, "secretKey", "local-test-secret-not-for-production");
 
-        AuthEmailService authEmailService = new AuthEmailService(emailService, userRepository, jwtService, new EmailCooldownService(userRepository, 30));
+        AuthEmailService authEmailService = new AuthEmailService(
+                emailService,
+                mock(EmailTemplateService.class),
+                userRepository,
+                jwtService,
+                new EmailCooldownService(userRepository, 30));
         ReflectionTestUtils.setField(authEmailService, "frontendUrl", "http://localhost:3000");
 
 

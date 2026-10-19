@@ -16,6 +16,7 @@ import org.springframework.mail.MailSendException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
+import org.thymeleaf.exceptions.TemplateInputException;
 
 import java.time.OffsetDateTime;
 import java.util.Optional;
@@ -36,6 +37,9 @@ class AuthEmailServiceTest {
     private EmailService emailService;
 
     @Mock
+    private EmailTemplateService emailTemplateService;
+
+    @Mock
     private JwtService jwtService;
 
     @Mock
@@ -49,6 +53,13 @@ class AuthEmailServiceTest {
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(authEmailService, "frontendUrl", "http://localhost:3000");
+
+        lenient().when(emailTemplateService.activation(any(), any()))
+                .thenReturn(new EmailContent("activation-html", "activation-text", java.util.Map.of()));
+        lenient().when(emailTemplateService.activationResend(any(), any()))
+                .thenReturn(new EmailContent("resend-html", "resend-text", java.util.Map.of()));
+        lenient().when(emailTemplateService.welcome(any(), any()))
+                .thenReturn(new EmailContent("welcome-html", "welcome-text", java.util.Map.of()));
 
         sampleUser = new User();
         sampleUser.setId(1L);
@@ -71,14 +82,17 @@ class AuthEmailServiceTest {
 
         authEmailService.sendActivationEmail(sampleUser, token);
 
-        InOrder inOrder = inOrder(emailCooldownService, emailService);
+        InOrder inOrder = inOrder(emailTemplateService, emailCooldownService, emailService);
+        inOrder.verify(emailTemplateService).activation(
+                sampleUser, "http://localhost:3000/verify.html?token=" + token);
         inOrder.verify(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), sampleUser.isVerified());
-        inOrder.verify(emailService, times(1)).sendEmail(
+        inOrder.verify(emailService, times(1)).sendHtmlEmail(
                 eq("pablo@sonarfy.com"),
                 eq("Ative sua conta no Sonarfy!"),
-                argThat(body -> body.contains("http://localhost:3000/verify.html?token=" + token)
-                        && body.contains("Pablo Carmo"))
+                argThat(content -> content.htmlBody().equals("activation-html"))
         );
+        verify(emailTemplateService).activation(
+                sampleUser, "http://localhost:3000/verify.html?token=" + token);
         verify(userRepository, never()).save(any());
     }
 
@@ -91,7 +105,7 @@ class AuthEmailServiceTest {
 
         InOrder inOrder = inOrder(emailCooldownService, emailService);
         inOrder.verify(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), sampleUser.isVerified());
-        inOrder.verify(emailService, times(1)).sendEmail(eq("pablo@sonarfy.com"), any(), any());
+        inOrder.verify(emailService, times(1)).sendHtmlEmail(eq("pablo@sonarfy.com"), any(), any());
     }
 
     @Test
@@ -106,7 +120,7 @@ class AuthEmailServiceTest {
 
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, ex.getStatusCode());
         assertEquals("Cooldown active", ex.getReason());
-        verify(emailService, never()).sendEmail(any(), any(), any());
+        verify(emailService, never()).sendHtmlEmail(any(), any(), any());
         verify(userRepository, never()).save(any());
     }
 
@@ -114,7 +128,7 @@ class AuthEmailServiceTest {
     @DisplayName("Deve lançar RuntimeException quando falhar o transporte do e-mail de ativação")
     void shouldThrowRuntimeExceptionWhenEmailTransportFailsOnActivation() {
         doThrow(new RuntimeException("SMTP offline"))
-                .when(emailService).sendEmail(any(), any(), any());
+                .when(emailService).sendHtmlEmail(any(), any(), any());
 
         RuntimeException ex = assertThrows(RuntimeException.class, () ->
                 authEmailService.sendActivationEmail(sampleUser, "token-fail")
@@ -124,12 +138,38 @@ class AuthEmailServiceTest {
 
         InOrder inOrder = inOrder(emailCooldownService, emailService);
         inOrder.verify(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), sampleUser.isVerified());
-        inOrder.verify(emailService).sendEmail(any(), any(), any());
+        inOrder.verify(emailService).sendHtmlEmail(any(), any(), any());
     }
 
     // ==========================================
     // 2. resendActivationEmail
     // ==========================================
+
+    @Test
+    @DisplayName("Falha de renderização da ativação não deve reservar nem enviar e-mail")
+    void shouldNotReserveOrSendWhenActivationRenderingFails() {
+        TemplateInputException failure = new TemplateInputException("Activation template unavailable");
+        when(emailTemplateService.activation(any(), any())).thenThrow(failure);
+
+        assertSame(failure, assertThrows(TemplateInputException.class,
+                () -> authEmailService.sendActivationEmail(sampleUser, "confirmation")));
+
+        verifyNoInteractions(emailCooldownService, emailService);
+    }
+
+    @Test
+    @DisplayName("Falha de renderização do reenvio não deve reservar nem enviar e-mail")
+    void shouldNotReserveOrSendWhenResendRenderingFails() {
+        when(userRepository.findByEmailIgnoreCase(sampleUser.getEmail())).thenReturn(Optional.of(sampleUser));
+        when(jwtService.generateEmailConfirmationToken("1")).thenReturn("confirmation");
+        TemplateInputException failure = new TemplateInputException("Resend template unavailable");
+        when(emailTemplateService.activationResend(any(), any())).thenThrow(failure);
+
+        assertSame(failure, assertThrows(TemplateInputException.class,
+                () -> authEmailService.resendActivationEmail(sampleUser.getEmail())));
+
+        verifyNoInteractions(emailCooldownService, emailService);
+    }
 
     @Test
     @DisplayName("Deve reenviar e-mail de ativação com novo token quando usuário for válido e não verificado")
@@ -141,8 +181,12 @@ class AuthEmailServiceTest {
 
         assertEquals("Confirmation email request processed. Please check your inbox.", result);
         verify(jwtService, times(1)).generateEmailConfirmationToken("1");
-        verify(emailService, times(1)).sendEmail(eq("pablo@sonarfy.com"), any(), any());
-        verify(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), false);
+        InOrder order = inOrder(emailTemplateService, emailCooldownService, emailService);
+        order.verify(emailTemplateService).activationResend(
+                sampleUser, "http://localhost:3000/verify.html?token=new-confirmation-token");
+        order.verify(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), false);
+        order.verify(emailService).sendHtmlEmail(
+                eq("pablo@sonarfy.com"), eq("Seu novo link de ativação no Sonarfy"), any());
     }
 
     @Test
@@ -172,7 +216,7 @@ class AuthEmailServiceTest {
         );
 
         verify(jwtService, never()).generateEmailConfirmationToken(any());
-        verify(emailService, never()).sendEmail(any(), any(), any());
+        verify(emailService, never()).sendHtmlEmail(any(), any(), any());
     }
 
     @Test
@@ -185,7 +229,7 @@ class AuthEmailServiceTest {
 
         assertEquals("User already verified. You can log in.", result);
         verify(jwtService, never()).generateEmailConfirmationToken(any());
-        verify(emailService, never()).sendEmail(any(), any(), any());
+        verify(emailService, never()).sendHtmlEmail(any(), any(), any());
     }
 
     @Test
@@ -200,7 +244,7 @@ class AuthEmailServiceTest {
         );
 
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, ex.getStatusCode());
-        verify(emailService, never()).sendEmail(any(), any(), any());
+        verify(emailService, never()).sendHtmlEmail(any(), any(), any());
     }
 
     // ==========================================
@@ -212,18 +256,19 @@ class AuthEmailServiceTest {
     void shouldSendWelcomeEmailSuccessfully() {
         authEmailService.sendWelcomeEmail(sampleUser);
 
-        verify(emailService, times(1)).sendEmail(
+        verify(emailService, times(1)).sendHtmlEmail(
                 eq("pablo@sonarfy.com"),
                 eq("Bem-vindo ao Sonarfy!"),
-                argThat(body -> body.contains("Pablo Carmo") && body.contains("Sua conta foi ativada com sucesso!"))
+                argThat(content -> content.htmlBody().equals("welcome-html"))
         );
+        verify(emailTemplateService).welcome(sampleUser, "http://localhost:3000/login.html");
     }
 
     @Test
     @DisplayName("Não deve lançar exceção se envio do e-mail de boas-vindas falhar (tratamento silencioso)")
     void shouldNotThrowExceptionWhenWelcomeEmailFails() {
         doThrow(new RuntimeException("Mail server down"))
-                .when(emailService).sendEmail(any(), any(), any());
+                .when(emailService).sendHtmlEmail(any(), any(), any());
 
         assertDoesNotThrow(() -> authEmailService.sendWelcomeEmail(sampleUser));
     }
@@ -315,12 +360,12 @@ class AuthEmailServiceTest {
     void shouldPreserveDeliveryFailureOnActivation() {
         EmailDeliveryException failure = new EmailDeliveryException("Delivery failed",
                 new MailSendException("SMTP offline"));
-        doThrow(failure).when(emailService).sendEmail(any(), any(), any());
+        doThrow(failure).when(emailService).sendHtmlEmail(any(), any(), any());
         assertSame(failure, assertThrows(EmailDeliveryException.class,
                 () -> authEmailService.sendActivationEmail(sampleUser, "confirmation")));
         InOrder order = inOrder(emailCooldownService, emailService);
         order.verify(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), false);
-        order.verify(emailService).sendEmail(any(), any(), any());
+        order.verify(emailService).sendHtmlEmail(any(), any(), any());
         verify(userRepository, never()).save(any());
     }
 

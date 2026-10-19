@@ -1,0 +1,15 @@
+Cadastro confirmado! Seja bem-vindo(a)
+
+Olá, [(${fullName})]
+
+Seu e-mail foi confirmado e sua conta já está ativa. O Sonarfy é a sua nova rede social de música: um lugar para descobrir, compartilhar e se conectar.
+
+Acesse sua conta: [(${accountUrl})]
+
+Sua próxima descoberta começa aqui:
+- Avalie seus álbuns favoritos e compartilhe o que você anda ouvindo.
+- Descubra novos artistas, sincronize com seu Spotify e explore novos sons.
+- Encontre sua comunidade e conecte-se com quem tem o mesmo gosto musical.
+
+Até a próxima música,
+Equipe Sonarfy

@@ -20,35 +20,44 @@ public class AuthEmailService {
 
     private final UserRepository userRepository;
     private final EmailService emailService;
+    private final EmailTemplateService emailTemplateService;
     private final JwtService jwtService;
     private final EmailCooldownService emailCooldownService;
     private static final Logger logger = LoggerFactory.getLogger(AuthEmailService.class);
 
-    public AuthEmailService(EmailService emailService, UserRepository userRepository, JwtService jwtService, EmailCooldownService emailCooldownService) {
+    public AuthEmailService(EmailService emailService,
+                            EmailTemplateService emailTemplateService,
+                            UserRepository userRepository,
+                            JwtService jwtService,
+                            EmailCooldownService emailCooldownService) {
         this.userRepository = userRepository;
         this.emailService = emailService;
+        this.emailTemplateService = emailTemplateService;
         this.jwtService = jwtService;
         this.emailCooldownService = emailCooldownService;
     }
 
     public void sendActivationEmail(User user, String jwtToken) {
+        sendActivationEmail(user, jwtToken, false);
+    }
+
+    private void sendActivationEmail(User user, String jwtToken, boolean resend) {
         // Se o usuário já estiver verificado, não envia o e-mail de ativação
         if (user.isVerified()) {
             return;
         }
-        emailCooldownService.reserveOrThrow(user.getId(), user.getEmail(), false);
-
         String activationLink = frontendUrl + "/verify.html?token=" + jwtToken;
 
-        String subject = "Ative sua conta no Sonarfy!";
-        String body = "Olá " + user.getName() + " " + user.getSurname() +
-                ".\n\nPara concluir o seu cadastro e ativar a sua conta, por favor clique no link abaixo:\n" +
-                activationLink + "\n\n" +
-                "\nSe o link não funcionar, copie e cole no seu navegador.\n\n" +
-                "Atenciosamente,\nEquipe Sonarfy";
+        EmailContent content = resend
+                ? emailTemplateService.activationResend(user, activationLink)
+                : emailTemplateService.activation(user, activationLink);
+        String subject = resend
+                ? "Seu novo link de ativação no Sonarfy"
+                : "Ative sua conta no Sonarfy!";
 
-        // Dispara o e-mail de ativação
-        this.emailService.sendEmail(user.getEmail(), subject, body);
+        // Falhas de renderização não consomem o cooldown; a reserva segue anterior ao SMTP.
+        emailCooldownService.reserveOrThrow(user.getId(), user.getEmail(), false);
+        emailService.sendHtmlEmail(user.getEmail(), subject, content);
     }
 
     public String resendActivationEmail(String email){
@@ -68,18 +77,14 @@ public class AuthEmailService {
 
         // Gera um novo token JWT para o e-mail do usuário
         String token = jwtService.generateEmailConfirmationToken(user.getId().toString());
-        sendActivationEmail(user, token);
+        sendActivationEmail(user, token, true);
         return "Confirmation email request processed. Please check your inbox.";
     }
 
     public void sendWelcomeEmail(User user) {
-        String subject = "Bem-vindo ao Sonarfy!";
-        String body = "Olá " + user.getName() + " " + user.getSurname() +
-                ".\n\nSua conta foi ativada com sucesso!\nEstamos felizes em tê-lo conosco." +
-                "\nVocê já pode fazer login no Sonarfy e começar a avaliar seus álbuns favoritos!\n\n" +
-                "Atenciosamente,\nEquipe Sonarfy";
         try {
-            this.emailService.sendEmail(user.getEmail(), subject, body);
+            EmailContent content = emailTemplateService.welcome(user, frontendUrl + "/login.html");
+            emailService.sendHtmlEmail(user.getEmail(), "Bem-vindo ao Sonarfy!", content);
         } catch (Exception e) {
             logger.error("Failed to send welcome email: ", e);
         }

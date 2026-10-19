@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt-BR" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{email/fragments :: head}"></head>
+<body bgcolor="#ffffff" style="margin: 0; padding: 0; background-color: #ffffff; color: #1a1a1a; color-scheme: light;">
+<table role="presentation" width="100%" bgcolor="#ffffff" style="table-layout: fixed; width: 100%; background-color: #ffffff; color: #1a1a1a;"><tr><td class="email-shell" align="center" bgcolor="#ffffff" style="background-color: #ffffff; color: #1a1a1a;">
+    <table class="email-card" role="presentation" width="100%" bgcolor="#ffffff" style="max-width: 600px; background-color: #ffffff; color: #1a1a1a; border: 1px solid #ebecef; border-radius: 8px; border-spacing: 0; overflow: hidden;">
+        <tr th:replace="~{email/fragments :: header}"></tr>
+        <tr><td class="email-content" bgcolor="#ffffff" style="padding-top: 40px; padding-bottom: 40px; background-color: #ffffff; color: #1a1a1a;">
+            <table role="presentation" width="100%" bgcolor="#ffffff" style="background-color: #ffffff; color: #1a1a1a;">
+                <tr><td><table th:replace="~{email/fragments :: status('statusIcon')}"></table></td></tr>
+                <tr><td class="email-title" style="padding-top: 24px; color: #1a1a1a; font-family: Arial, sans-serif; font-size: 32px; font-weight: 700; line-height: 1.2;">Confirme seu e-mail</td></tr>
+                <tr><td style="padding-top: 24px; color: #1a1a1a; font-family: Arial, sans-serif; font-size: 16px; font-weight: 600; line-height: 1.6;" th:text="|Olá, ${fullName}|">Olá, Pablo Carmo</td></tr>
+                <tr><td style="padding-top: 16px; color: #65676b; font-family: Arial, sans-serif; font-size: 16px; line-height: 1.6;">Obrigado por se cadastrar no Sonarfy! Para ativar sua conta e começar a compartilhar sua paixão por música, confirme seu e-mail no botão abaixo.</td></tr>
+                <tr><td style="padding-top: 24px;"><a class="primary-button" th:href="${activationLink}" style="display: inline-block; border: 1px solid #1a1a1a; border-radius: 8px; background: #27a9f5; color: #1a1a1a; font-family: Arial, sans-serif; font-size: 14px; font-weight: 600; line-height: 18px; padding: 14px 24px; text-decoration: none;">Confirmar meu e-mail</a></td></tr>
+                <tr><td style="padding-top: 16px;"><div style="border-top: 1px solid #ebecef;"></div></td></tr>
+                <tr><td style="padding-top: 24px; color: #65676b; font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;">Se o botão não funcionar, clique <a th:href="${activationLink}" style="color: #1a1a1a; font-weight: 600; text-decoration: underline;">aqui</a> para ativar sua conta.</td></tr>
+                <tr><td style="padding-top: 24px; color: #65676b; font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;">Não solicitou este cadastro? Ignore este e-mail. Sua conta só será ativada após a confirmação.</td></tr>
+                <tr><td style="padding-top: 16px;"><table th:replace="~{email/fragments :: signature}"></table></td></tr>
+            </table>
+        </td></tr>
+    </table>
+    <table th:replace="~{email/fragments :: footer}"></table>
+</td></tr></table>
+</body>
+</html>

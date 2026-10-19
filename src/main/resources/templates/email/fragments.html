@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-BR" xmlns:th="http://www.thymeleaf.org">
+<head th:fragment="head">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
+    <meta name="supported-color-schemes" content="light">
+    <style>
+        :root { color-scheme: light; supported-color-schemes: light; }
+        body, table, td, a { box-sizing: border-box; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+        table, td { mso-table-lspace: 0; mso-table-rspace: 0; }
+        table { border-collapse: collapse !important; }
+        img { -ms-interpolation-mode: bicubic; border: 0; display: block; outline: none; }
+        body { height: 100% !important; margin: 0 !important; padding: 0 !important; width: 100% !important; }
+        .email-shell { padding: 64px 0 32px; }
+        .email-card { width: 100%; max-width: 600px; border-collapse: separate !important; border-spacing: 0; }
+        .email-header, .email-content { padding-left: 40px; padding-right: 40px; }
+        .email-title { font-size: 32px !important; }
+        .primary-button { width: auto; }
+        @media screen and (max-width: 600px) {
+            .email-shell { padding-top: 32px !important; }
+            .email-card { width: calc(100% - 32px) !important; }
+            .email-header, .email-content { padding-left: 24px !important; padding-right: 24px !important; }
+            .email-title { font-size: 28px !important; }
+            .primary-button { display: block !important; width: 100% !important; box-sizing: border-box !important; text-align: center !important; }
+        }
+    </style>
+</head>
+<body>
+<table role="presentation" width="100%">
+    <tr th:fragment="header">
+        <td class="email-header" bgcolor="#ffffff" style="background-color: #ffffff; color: #1a1a1a; border-bottom: 1px solid #ebecef; padding-top: 24px; padding-bottom: 24px;">
+            <table role="presentation" bgcolor="#ffffff" style="background-color: #ffffff; color: #1a1a1a;">
+                <tr>
+                    <td bgcolor="#27a9f5" style="width: 32px; height: 32px; border-radius: 50%; background-color: #27a9f5; color: #1a1a1a; font-family: Arial, sans-serif; font-size: 25px; font-style: italic; font-weight: 700; line-height: 32px; text-align: center;">S</td>
+                    <td style="padding-left: 8px; color: #1a1a1a; font-family: Arial, sans-serif; font-size: 20px; font-weight: 700;">Sonarfy</td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+</table>
+
+<table th:fragment="status(iconCid)" role="presentation" align="center" bgcolor="#ffffff" style="background-color: #ffffff; color: #1a1a1a;">
+    <tr>
+        <td style="width: 40px;"><img th:src="|cid:${iconCid}|" alt="" width="40" height="40"></td>
+        <td style="padding-left: 16px;">
+            <table role="presentation" style="height: 32px;">
+                <tr>
+                    <td style="vertical-align: middle;"><span style="display: block; width: 4px; height: 12px; border-radius: 4px; background: #27a9f5;"></span></td>
+                    <td style="padding-left: 4px; vertical-align: middle;"><span style="display: block; width: 4px; height: 24px; border-radius: 4px; background: #27a9f5;"></span></td>
+                    <td style="padding-left: 4px; vertical-align: middle;"><span style="display: block; width: 4px; height: 32px; border-radius: 4px; background: #27a9f5;"></span></td>
+                    <td style="padding-left: 4px; vertical-align: middle;"><span style="display: block; width: 4px; height: 24px; border-radius: 4px; background: #27a9f5;"></span></td>
+                    <td style="padding-left: 4px; vertical-align: middle;"><span style="display: block; width: 4px; height: 12px; border-radius: 4px; background: #27a9f5;"></span></td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+</table>
+
+<table th:fragment="signature" role="presentation" width="100%" bgcolor="#ffffff" style="background-color: #ffffff; color: #1a1a1a;">
+    <tr><td style="padding-top: 8px; color: #65676b; font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;">Até a próxima música,</td></tr>
+    <tr><td style="padding-top: 4px; color: #1a1a1a; font-family: Arial, sans-serif; font-size: 14px; font-weight: 600; line-height: 1.6;">Equipe Sonarfy</td></tr>
+</table>
+
+<table th:fragment="footer" role="presentation" width="100%" bgcolor="#ffffff" style="max-width: 600px; background-color: #ffffff; color: #65676b;">
+    <tr><td style="padding-top: 24px; color: #65676b; font-family: Arial, sans-serif; font-size: 12px; line-height: 1.6; text-align: center;">Sonarfy · A sua rede social de Música</td></tr>
+    <tr><td style="padding-top: 8px; color: #65676b; font-family: Arial, sans-serif; font-size: 12px; line-height: 1.6; text-align: center;">© <span th:text="${year}">2026</span> Sonarfy</td></tr>
+</table>
+</body>
+</html>

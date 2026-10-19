@@ -1,6 +1,9 @@
 package br.com.pablohcarmo.sonarfy.services;
 
 import br.com.pablohcarmo.sonarfy.exceptions.EmailDeliveryException;
+import jakarta.mail.Multipart;
+import jakarta.mail.Session;
+import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -13,6 +16,9 @@ import org.springframework.mail.MailSendException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.util.ReflectionTestUtils;
+
+import java.util.Map;
+import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -66,5 +72,36 @@ class EmailServiceTest {
 
         assertSame(failure, assertThrows(IllegalStateException.class,
                 () -> emailService.sendEmail("user@example.com", "Subject", "Body")));
+    }
+
+    @Test
+    @DisplayName("Envia HTML e texto alternativo em UTF-8 com recursos incorporados")
+    void shouldSendMultipartHtmlMessageWithInlineResources() throws Exception {
+        MimeMessage mimeMessage = new MimeMessage(Session.getInstance(new Properties()));
+        when(javaMailSender.createMimeMessage()).thenReturn(mimeMessage);
+
+        EmailContent content = new EmailContent(
+                "<html><body><img src=\"cid:statusIcon\">Olá</body></html>",
+                "Olá",
+                Map.of("statusIcon", "email-assets/mail.png")
+        );
+
+        emailService.sendHtmlEmail("user@example.com", "Ativação", content);
+
+        verify(javaMailSender).send(mimeMessage);
+        assertEquals("Ativação", mimeMessage.getSubject());
+        assertEquals("user@example.com", mimeMessage.getAllRecipients()[0].toString());
+        assertTrue(mimeMessage.getContent() instanceof Multipart);
+        String rawMessage = mimeMessageToString(mimeMessage);
+        assertTrue(rawMessage.contains("Content-Type: multipart/mixed"));
+        assertTrue(rawMessage.contains("Content-ID: <statusIcon>"));
+        assertTrue(rawMessage.contains("Content-Type: text/plain"));
+        assertTrue(rawMessage.contains("Content-Type: text/html"));
+    }
+
+    private static String mimeMessageToString(MimeMessage message) throws Exception {
+        java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+        message.writeTo(output);
+        return output.toString(java.nio.charset.StandardCharsets.UTF_8);
     }
 }
