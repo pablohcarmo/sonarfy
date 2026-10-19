@@ -1,0 +1,13 @@
+Seu novo link de ativação
+
+Olá, [(${fullName})]
+
+Recebemos seu pedido de reenvio. Use o novo link deste e-mail para confirmar seu cadastro e ativar sua conta no Sonarfy:
+[(${activationLink})]
+
+Use o link mais recente. Se ele estiver inválido ou expirado, solicite um novo na página de cadastro do Sonarfy.
+
+Não solicitou um novo link? Ignore esta mensagem. Se você não fez o cadastro, não confirme a ativação.
+
+Até a próxima música,
+Equipe Sonarfy

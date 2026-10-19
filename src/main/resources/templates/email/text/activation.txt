@@ -1,0 +1,11 @@
+Confirme seu e-mail
+
+Olá, [(${fullName})]
+
+Obrigado por se cadastrar no Sonarfy! Para ativar sua conta e começar a compartilhar sua paixão por música, acesse:
+[(${activationLink})]
+
+Não solicitou este cadastro? Ignore este e-mail. Sua conta só será ativada após a confirmação.
+
+Até a próxima música,
+Equipe Sonarfy
