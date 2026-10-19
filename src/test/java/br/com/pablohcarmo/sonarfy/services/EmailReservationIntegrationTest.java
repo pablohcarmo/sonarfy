@@ -78,6 +78,7 @@ class EmailReservationIntegrationTest {
             return new JpaTransactionManager(factory);
         }
         @Bean EmailService emailService() { return mock(EmailService.class); }
+        @Bean EmailTemplateService emailTemplateService() { return mock(EmailTemplateService.class); }
         @Bean JavaMailSender javaMailSender() { return mock(JavaMailSender.class); }
         @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(4); }
         @Bean JwtService jwtService() {
@@ -92,6 +93,7 @@ class EmailReservationIntegrationTest {
     @Autowired EmailCooldownService cooldown;
     @Autowired AuthEmailService authEmails;
     @Autowired EmailService transport;
+    @Autowired EmailTemplateService templates;
     @Autowired UserService userService;
     @Autowired JwtService jwt;
     @Autowired ApplicationEventPublisher publisher;
@@ -101,7 +103,9 @@ class EmailReservationIntegrationTest {
 
     @BeforeEach
     void prepare() {
-        reset(transport);
+        reset(transport, templates);
+        when(templates.activation(any(User.class), anyString())).thenAnswer(call ->
+                new EmailContent("activation-html", call.getArgument(1), Map.of()));
         users.deleteAll();
         permission = permissions.findByName("ROLE_USER").orElseGet(() -> {
             Permission role = new Permission();
@@ -226,7 +230,7 @@ class EmailReservationIntegrationTest {
         users.saveAndFlush(user);
         assertThrows(ResponseStatusException.class,
                 () -> authEmails.sendPasswordResetEmail(user, "reset"));
-        verify(transport, times(1)).sendEmail(anyString(), anyString(), anyString());
+        verify(transport, times(1)).sendHtmlEmail(anyString(), anyString(), any(EmailContent.class));
     }
 
     @Test
@@ -244,40 +248,40 @@ class EmailReservationIntegrationTest {
 
     @Test
     void registrationCommitsBeforeSendingAndUsesValidConfirmationToken() {
-        when(transport.sendEmail(anyString(), anyString(), anyString())).thenAnswer(call -> {
+        when(transport.sendHtmlEmail(anyString(), anyString(), any(EmailContent.class))).thenAnswer(call -> {
             assertFalse(TransactionSynchronizationManager.isActualTransactionActive());
             User saved = users.findByEmailIgnoreCase(call.getArgument(0)).orElseThrow();
             assertNotNull(saved.getLastEmailSentAt());
-            String body = call.getArgument(2);
+            String body = call.getArgument(2, EmailContent.class).textBody();
             String token = body.substring(body.indexOf("?token=") + 7).split("\\s")[0];
             assertEquals(saved.getId().toString(), jwt.validateTokenAndGetEmail(token));
             return "accepted";
         });
         var response = userService.newUser(registration());
         assertNotNull(jwt.validateRegistrationTokenAndGetUserId(response.registrationToken()));
-        verify(transport).sendEmail(eq("new@example.com"), anyString(), anyString());
+        verify(transport).sendHtmlEmail(eq("new@example.com"), anyString(), any(EmailContent.class));
     }
 
     @Test
     void failedActivationDoesNotUndoRegistration() {
-        when(transport.sendEmail(anyString(), anyString(), anyString()))
+        when(transport.sendHtmlEmail(anyString(), anyString(), any(EmailContent.class)))
                 .thenThrow(new EmailDeliveryException("SMTP offline", new IllegalStateException()));
         assertDoesNotThrow(() -> userService.newUser(registration()));
         User saved = users.findByEmailIgnoreCase("new@example.com").orElseThrow();
         assertNotNull(saved.getLastEmailSentAt());
-        verify(transport).sendEmail(eq("new@example.com"), anyString(), anyString());
+        verify(transport).sendHtmlEmail(eq("new@example.com"), anyString(), any(EmailContent.class));
     }
 
     @Test
     void pendingEmailChangeIsCommittedBeforeDelivery() {
         User user = persistedUser(false);
-        when(transport.sendEmail(anyString(), anyString(), anyString())).thenAnswer(call -> {
+        when(transport.sendHtmlEmail(anyString(), anyString(), any(EmailContent.class))).thenAnswer(call -> {
             assertFalse(TransactionSynchronizationManager.isActualTransactionActive());
             assertEquals("changed@example.com", users.findById(user.getId()).orElseThrow().getEmail());
             return "accepted";
         });
         userService.updatePendingEmail(user.getId(), "changed@example.com");
-        verify(transport).sendEmail(eq("changed@example.com"), anyString(), anyString());
+        verify(transport).sendHtmlEmail(eq("changed@example.com"), anyString(), any(EmailContent.class));
     }
 
     private User persistedUser(boolean verified) {
