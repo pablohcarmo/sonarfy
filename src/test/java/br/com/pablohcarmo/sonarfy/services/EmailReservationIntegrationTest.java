@@ -11,6 +11,8 @@ import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import jakarta.persistence.EntityManagerFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.*;
@@ -32,6 +34,7 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
+import org.thymeleaf.exceptions.TemplateInputException;
 import javax.sql.DataSource;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -41,7 +44,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 /**
- * Real Spring proxies, JPA and database transactions; only email transport is mocked.
+ * Real Spring proxies, JPA and database transactions; email rendering and transport are mocked.
  * Defaults to an isolated H2 database. For PostgreSQL, supply sonarfy.test.jdbc-url,
  * sonarfy.test.db-user and sonarfy.test.db-password targeting a disposable database:
  * the mapped tables are created and dropped by this context.
@@ -106,6 +109,8 @@ class EmailReservationIntegrationTest {
         reset(transport, templates);
         when(templates.activation(any(User.class), anyString())).thenAnswer(call ->
                 new EmailContent("activation-html", call.getArgument(1), Map.of()));
+        when(templates.activationResend(any(User.class), anyString())).thenAnswer(call ->
+                new EmailContent("resend-html", call.getArgument(1), Map.of()));
         users.deleteAll();
         permission = permissions.findByName("ROLE_USER").orElseGet(() -> {
             Permission role = new Permission();
@@ -153,6 +158,60 @@ class EmailReservationIntegrationTest {
         assertEquals(429, assertThrows(ResponseStatusException.class,
                 () -> authEmails.sendPasswordResetEmail(user, "retry")).getStatusCode().value());
         verify(transport, times(1)).sendEmail(anyString(), anyString(), anyString());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void renderingFailureDoesNotReserveAndAllowsImmediateRetry(boolean resend) {
+        User user = persistedUser(false);
+        TemplateInputException failure = new TemplateInputException("Template unavailable");
+        EmailContent rendered = new EmailContent("html", "text", Map.of());
+        if (resend) {
+            when(templates.activationResend(any(User.class), anyString()))
+                    .thenThrow(failure).thenReturn(rendered);
+        } else {
+            when(templates.activation(any(User.class), anyString()))
+                    .thenThrow(failure).thenReturn(rendered);
+        }
+        Runnable request = resend
+                ? () -> authEmails.resendActivationEmail(user.getEmail())
+                : () -> authEmails.sendActivationEmail(user, "confirmation");
+
+        assertSame(failure, assertThrows(TemplateInputException.class, request::run));
+        assertNull(users.findById(user.getId()).orElseThrow().getLastEmailSentAt());
+        verifyNoInteractions(transport);
+
+        assertDoesNotThrow(request::run);
+        assertNotNull(users.findById(user.getId()).orElseThrow().getLastEmailSentAt());
+        verify(transport).sendHtmlEmail(eq(user.getEmail()), anyString(), same(rendered));
+    }
+
+    @Test
+    void simultaneousActivationRequestsProduceOneReservationAndOneDelivery() throws Exception {
+        User user = persistedUser(false);
+        CyclicBarrier renderedTogether = new CyclicBarrier(2);
+        when(templates.activation(any(User.class), anyString())).thenAnswer(call -> {
+            renderedTogether.await(10, TimeUnit.SECONDS);
+            return new EmailContent("html", "text", Map.of());
+        });
+        try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
+            Callable<Boolean> request = () -> {
+                try {
+                    authEmails.sendActivationEmail(user, "confirmation");
+                    return true;
+                } catch (ResponseStatusException rejected) {
+                    assertEquals(429, rejected.getStatusCode().value());
+                    return false;
+                }
+            };
+            Future<Boolean> first = pool.submit(request);
+            Future<Boolean> second = pool.submit(request);
+            int accepted = (first.get(15, TimeUnit.SECONDS) ? 1 : 0)
+                    + (second.get(15, TimeUnit.SECONDS) ? 1 : 0);
+            assertEquals(1, accepted);
+        }
+        verify(transport).sendHtmlEmail(eq(user.getEmail()), anyString(), any(EmailContent.class));
+        assertNotNull(users.findById(user.getId()).orElseThrow().getLastEmailSentAt());
     }
 
     @Test
@@ -269,7 +328,26 @@ class EmailReservationIntegrationTest {
         assertDoesNotThrow(() -> userService.newUser(registration()));
         User saved = users.findByEmailIgnoreCase("new@example.com").orElseThrow();
         assertNotNull(saved.getLastEmailSentAt());
+        assertEquals(429, assertThrows(ResponseStatusException.class,
+                () -> authEmails.resendActivationEmail(saved.getEmail())).getStatusCode().value());
         verify(transport).sendHtmlEmail(eq("new@example.com"), anyString(), any(EmailContent.class));
+    }
+
+    @Test
+    void renderingFailureAfterCommitKeepsRegistrationAndAllowsImmediateResend() {
+        when(templates.activation(any(User.class), anyString()))
+                .thenThrow(new TemplateInputException("Template unavailable"));
+
+        var response = assertDoesNotThrow(() -> userService.newUser(registration()));
+        User saved = users.findByEmailIgnoreCase("new@example.com").orElseThrow();
+        assertNotNull(jwt.validateRegistrationTokenAndGetUserId(response.registrationToken()));
+        assertNull(saved.getLastEmailSentAt());
+        verifyNoInteractions(transport);
+
+        assertDoesNotThrow(() -> authEmails.resendActivationEmail(saved.getEmail()));
+        assertNotNull(users.findById(saved.getId()).orElseThrow().getLastEmailSentAt());
+        verify(transport).sendHtmlEmail(eq(saved.getEmail()),
+                eq("Seu novo link de ativação no Sonarfy"), any(EmailContent.class));
     }
 
     @Test

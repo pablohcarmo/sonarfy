@@ -16,6 +16,7 @@ import org.springframework.mail.MailSendException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
+import org.thymeleaf.exceptions.TemplateInputException;
 
 import java.time.OffsetDateTime;
 import java.util.Optional;
@@ -81,7 +82,9 @@ class AuthEmailServiceTest {
 
         authEmailService.sendActivationEmail(sampleUser, token);
 
-        InOrder inOrder = inOrder(emailCooldownService, emailService);
+        InOrder inOrder = inOrder(emailTemplateService, emailCooldownService, emailService);
+        inOrder.verify(emailTemplateService).activation(
+                sampleUser, "http://localhost:3000/verify.html?token=" + token);
         inOrder.verify(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), sampleUser.isVerified());
         inOrder.verify(emailService, times(1)).sendHtmlEmail(
                 eq("pablo@sonarfy.com"),
@@ -143,6 +146,32 @@ class AuthEmailServiceTest {
     // ==========================================
 
     @Test
+    @DisplayName("Falha de renderização da ativação não deve reservar nem enviar e-mail")
+    void shouldNotReserveOrSendWhenActivationRenderingFails() {
+        TemplateInputException failure = new TemplateInputException("Activation template unavailable");
+        when(emailTemplateService.activation(any(), any())).thenThrow(failure);
+
+        assertSame(failure, assertThrows(TemplateInputException.class,
+                () -> authEmailService.sendActivationEmail(sampleUser, "confirmation")));
+
+        verifyNoInteractions(emailCooldownService, emailService);
+    }
+
+    @Test
+    @DisplayName("Falha de renderização do reenvio não deve reservar nem enviar e-mail")
+    void shouldNotReserveOrSendWhenResendRenderingFails() {
+        when(userRepository.findByEmailIgnoreCase(sampleUser.getEmail())).thenReturn(Optional.of(sampleUser));
+        when(jwtService.generateEmailConfirmationToken("1")).thenReturn("confirmation");
+        TemplateInputException failure = new TemplateInputException("Resend template unavailable");
+        when(emailTemplateService.activationResend(any(), any())).thenThrow(failure);
+
+        assertSame(failure, assertThrows(TemplateInputException.class,
+                () -> authEmailService.resendActivationEmail(sampleUser.getEmail())));
+
+        verifyNoInteractions(emailCooldownService, emailService);
+    }
+
+    @Test
     @DisplayName("Deve reenviar e-mail de ativação com novo token quando usuário for válido e não verificado")
     void shouldResendActivationEmailSuccessfully() {
         when(userRepository.findByEmailIgnoreCase("pablo@sonarfy.com")).thenReturn(Optional.of(sampleUser));
@@ -152,11 +181,12 @@ class AuthEmailServiceTest {
 
         assertEquals("Confirmation email request processed. Please check your inbox.", result);
         verify(jwtService, times(1)).generateEmailConfirmationToken("1");
-        verify(emailTemplateService).activationResend(
+        InOrder order = inOrder(emailTemplateService, emailCooldownService, emailService);
+        order.verify(emailTemplateService).activationResend(
                 sampleUser, "http://localhost:3000/verify.html?token=new-confirmation-token");
-        verify(emailService).sendHtmlEmail(
+        order.verify(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), false);
+        order.verify(emailService).sendHtmlEmail(
                 eq("pablo@sonarfy.com"), eq("Seu novo link de ativação no Sonarfy"), any());
-        verify(emailCooldownService).reserveOrThrow(1L, sampleUser.getEmail(), false);
     }
 
     @Test

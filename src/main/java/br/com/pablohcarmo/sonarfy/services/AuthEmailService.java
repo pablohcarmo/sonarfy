@@ -46,8 +46,6 @@ public class AuthEmailService {
         if (user.isVerified()) {
             return;
         }
-        emailCooldownService.reserveOrThrow(user.getId(), user.getEmail(), false);
-
         String activationLink = frontendUrl + "/verify.html?token=" + jwtToken;
 
         EmailContent content = resend
@@ -56,6 +54,9 @@ public class AuthEmailService {
         String subject = resend
                 ? "Seu novo link de ativação no Sonarfy"
                 : "Ative sua conta no Sonarfy!";
+
+        // Falhas de renderização não consomem o cooldown; a reserva segue anterior ao SMTP.
+        emailCooldownService.reserveOrThrow(user.getId(), user.getEmail(), false);
         emailService.sendHtmlEmail(user.getEmail(), subject, content);
     }
 
