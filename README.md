@@ -45,6 +45,12 @@ O Sonarfy busca criar um espaço em que fãs de música, críticos e colecionado
 - acompanhar tendências e gostos da comunidade;
 - construir uma identidade musical própria dentro da plataforma.
 
+## Integração com Spotify
+
+A entrega atual prepara a troca de códigos de autorização por tokens, com testes
+HTTP locais. A conexão completa de contas e a consulta de álbuns e artistas ainda
+estão pendentes. Consulte a [configuração e o escopo desta fase](docs/integrations/spotify.md).
+
 ## Contrato da API de senhas
 
 O projeto usa Java 21, Spring Boot 4.1.0 e java-jwt 4.4.0.
