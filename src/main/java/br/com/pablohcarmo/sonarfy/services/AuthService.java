@@ -9,6 +9,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.charset.StandardCharsets;
+
 @Service
 public class AuthService {
 
@@ -40,8 +42,10 @@ public class AuthService {
                 ? user.getPassword()
                 : dummyPasswordHash;
 
-        boolean validPassword =
-                passwordEncoder.matches(dto.getPassword(), passwordHash);
+        boolean supportedLength = dto.getPassword().getBytes(StandardCharsets.UTF_8).length <= 72;
+        // Preserve the BCrypt comparison without passing an overlong password to it.
+        boolean validPassword = passwordEncoder.matches(
+                supportedLength ? dto.getPassword() : "", passwordHash) && supportedLength;
 
         if (user == null || !validPassword || !user.isEnabled()) {
             throw new ResponseStatusException(

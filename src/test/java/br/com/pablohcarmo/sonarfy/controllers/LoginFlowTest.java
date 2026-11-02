@@ -7,6 +7,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -106,5 +107,34 @@ class LoginFlowTest {
         user.setVerified(true);
         user.setPassword(encoder.encode("Correct123!"));
         return user;
+    }
+
+    @ParameterizedTest
+    @CsvSource({"true,a,73", "false,a,73", "true,é,37", "false,é,37"})
+    void shouldRejectPasswordsExceeding72Utf8Bytes(boolean exists, String character, int count) throws Exception {
+        User user = eligibleUser();
+        int bytesPerCharacter = character.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        user.setPassword(encoder.encode(character.repeat(72 / bytesPerCharacter)));
+        when(repository.findByEmailIgnoreCaseOrHandleIgnoreCase("pablo", "pablo"))
+                .thenReturn(exists ? Optional.of(user) : Optional.empty());
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"login\":\"pablo\",\"password\":\"" + character.repeat(count) + "\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.accessToken").doesNotExist())
+                .andExpect(result -> assertEquals("Invalid login or password.",
+                        ((ResponseStatusException) result.getResolvedException()).getReason()));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"a,72", "é,36"})
+    void shouldAcceptPasswordsWithExactly72Utf8Bytes(String character, int count) throws Exception {
+        String password = character.repeat(count);
+        User user = eligibleUser();
+        user.setPassword(encoder.encode(password));
+        when(repository.findByEmailIgnoreCaseOrHandleIgnoreCase("pablo", "pablo"))
+                .thenReturn(Optional.of(user));
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"login\":\"pablo\",\"password\":\"" + password + "\"}"))
+                .andExpect(status().isOk());
     }
 }

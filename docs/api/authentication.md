@@ -25,6 +25,10 @@ maiúsculas e minúsculas.
 
 Ambos os campos são obrigatórios e não podem ser vazios ou conter somente espaços.
 O login exige que a conta esteja ativa e que o e-mail tenha sido confirmado.
+No cadastro persistido, `User.onCreate()` define `active=true` por `@PrePersist`.
+A confirmação altera `verified`; não é necessário atualizar o banco manualmente.
+Para respeitar o limite do BCrypt, o serviço recusa senhas acima de 72 bytes em
+UTF-8 com o mesmo `401` genérico, sem truncá-las para autenticar o usuário.
 
 Exemplo com curl (shell Bash):
 
@@ -78,4 +82,8 @@ A issue #22 permanece aberta; a integração Spotify aguarda sua conclusão.
 
 Os testes de login integram controller, serviço, BCrypt e JWT com repositório
 simulado; não comprovam acesso autenticado pela cadeia de segurança HTTP.
+Um teste adicional em `EmailReservationIntegrationTest` cobre cadastro pelo
+controller, persistência JPA, login recusado antes da confirmação, confirmação
+com o token do e-mail e login aceito, sem alterar flags diretamente no banco.
+O banco padrão desse teste é H2; renderização e transporte de e-mail são simulados.
 Veja também o [contrato de recuperação e troca de senha](passwords.md).
