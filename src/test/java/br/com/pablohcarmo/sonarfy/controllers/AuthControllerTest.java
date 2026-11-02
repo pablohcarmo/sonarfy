@@ -2,6 +2,7 @@ package br.com.pablohcarmo.sonarfy.controllers;
 
 import br.com.pablohcarmo.sonarfy.dto.*;
 import br.com.pablohcarmo.sonarfy.services.AuthEmailService;
+import br.com.pablohcarmo.sonarfy.services.AuthService;
 import br.com.pablohcarmo.sonarfy.services.JwtService;
 import br.com.pablohcarmo.sonarfy.services.UserService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -41,6 +42,9 @@ class AuthControllerTest {
 
     @Mock
     private AuthEmailService authEmailService;
+
+    @Mock
+    private AuthService authService;
 
 
     @InjectMocks
