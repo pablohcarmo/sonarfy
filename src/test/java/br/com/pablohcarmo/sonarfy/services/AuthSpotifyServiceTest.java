@@ -1,7 +1,7 @@
 package br.com.pablohcarmo.sonarfy.services;
 
-import br.com.pablohcarmo.sonarfy.client.AuthSpotifyClient;
-import br.com.pablohcarmo.sonarfy.dto.LoginSpotifyResponseDto;
+import br.com.pablohcarmo.sonarfy.client.SpotifyTokenClient;
+import br.com.pablohcarmo.sonarfy.dto.SpotifyTokenResponseDto;
 import br.com.pablohcarmo.sonarfy.exceptions.SpotifyIntegrationException;
 import br.com.pablohcarmo.sonarfy.exceptions.SpotifyIntegrationException.Category;
 import feign.FeignException;
@@ -44,7 +44,7 @@ class AuthSpotifyServiceTest {
     private static final String REDIRECT_URI = "https://example.com/spotify/callback";
 
     @Mock
-    private AuthSpotifyClient client;
+    private SpotifyTokenClient client;
 
     @ParameterizedTest(name = "Rejects missing credential: [{0}]")
     @NullAndEmptySource
@@ -91,7 +91,7 @@ class AuthSpotifyServiceTest {
                 "code", "test-code", "redirect_uri", redirectUri);
         // Basic test-client:test-secret, usando apenas credenciais fictícias.
         String authorization = "Basic dGVzdC1jbGllbnQ6dGVzdC1zZWNyZXQ=";
-        var response = new LoginSpotifyResponseDto("access", "Bearer", 3600L, "refresh", "user-library-read");
+        var response = new SpotifyTokenResponseDto("access", "Bearer", 3600L, "refresh", "user-library-read");
         when(client.exchangeCode(authorization, form)).thenReturn(response);
 
         assertSame(response, service.exchangeCode("test-code"));

@@ -6,7 +6,7 @@ import tools.jackson.databind.annotation.JsonNaming;
 
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record LoginSpotifyResponseDto(
+public record SpotifyTokenResponseDto(
         String accessToken,
         String tokenType,
         Long expiresIn,
@@ -15,6 +15,6 @@ public record LoginSpotifyResponseDto(
 ) {
     @Override
     public String toString() {
-        return "LoginSpotifyResponseDto[hidden tokens]";
+        return "SpotifyTokenResponseDto[hidden tokens]";
     }
 }

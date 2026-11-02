@@ -32,12 +32,12 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SpringJUnitConfig(AuthSpotifyClientTest.Config.class)
+@SpringJUnitConfig(SpotifyTokenClientTest.Config.class)
 @Timeout(10)
-class AuthSpotifyClientTest {
+class SpotifyTokenClientTest {
 
     @Configuration
-    @EnableFeignClients(clients = AuthSpotifyClient.class)
+    @EnableFeignClients(clients = SpotifyTokenClient.class)
     @ImportAutoConfiguration({FeignAutoConfiguration.class,
             HttpMessageConvertersAutoConfiguration.class, JacksonAutoConfiguration.class})
     static class Config {}
@@ -53,7 +53,7 @@ class AuthSpotifyClientTest {
                            String contentType, String body) {}
 
     @Autowired
-    private AuthSpotifyClient client;
+    private SpotifyTokenClient client;
 
     @Autowired
     private FeignClientFactory clientFactory;
@@ -176,7 +176,7 @@ class AuthSpotifyClientTest {
 
     @Test
     void shouldTimeOutWhenServerWithholdsResponse() {
-        var options = clientFactory.getInstance("AuthSpotifyClient", Options.class);
+        var options = clientFactory.getInstance("SpotifyTokenClient", Options.class);
         assertNotNull(options);
         assertEquals(5000, options.connectTimeoutMillis());
         assertEquals(5000, options.readTimeoutMillis());

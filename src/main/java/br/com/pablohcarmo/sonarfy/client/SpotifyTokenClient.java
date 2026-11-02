@@ -1,6 +1,6 @@
 package br.com.pablohcarmo.sonarfy.client;
 
-import br.com.pablohcarmo.sonarfy.dto.LoginSpotifyResponseDto;
+import br.com.pablohcarmo.sonarfy.dto.SpotifyTokenResponseDto;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -11,18 +11,18 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import java.util.Map;
 
 @FeignClient(
-        name = "AuthSpotifyClient",
+        name = "SpotifyTokenClient",
         url = "${spotify.auth-url:https://accounts.spotify.com}",
-        configuration = AuthSpotifyClientConfig.class
+        configuration = SpotifyTokenClientConfig.class
 )
 
-public interface AuthSpotifyClient {
+public interface SpotifyTokenClient {
 
     @PostMapping (
             value = "/api/token",
             consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE
     )
-    LoginSpotifyResponseDto exchangeCode(
+    SpotifyTokenResponseDto exchangeCode(
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
             @RequestBody Map<String, String> form
     );

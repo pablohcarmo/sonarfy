@@ -1,7 +1,7 @@
 package br.com.pablohcarmo.sonarfy.services;
 
-import br.com.pablohcarmo.sonarfy.client.AuthSpotifyClient;
-import br.com.pablohcarmo.sonarfy.dto.LoginSpotifyResponseDto;
+import br.com.pablohcarmo.sonarfy.client.SpotifyTokenClient;
+import br.com.pablohcarmo.sonarfy.dto.SpotifyTokenResponseDto;
 import br.com.pablohcarmo.sonarfy.exceptions.SpotifyIntegrationException;
 import br.com.pablohcarmo.sonarfy.exceptions.SpotifyIntegrationException.Category;
 import feign.FeignException;
@@ -21,14 +21,14 @@ import java.util.Map;
 @Service
 public class AuthSpotifyService {
 
-    private final AuthSpotifyClient authSpotifyClient;
+    private final SpotifyTokenClient spotifyTokenClient;
 
     private final String clientId;
     private final String clientSecret;
     private final String redirectUri;
 
     public AuthSpotifyService(
-            AuthSpotifyClient authSpotifyClient,
+            SpotifyTokenClient spotifyTokenClient,
             @Value("${SPOTIFY_CLIENT_ID}") String clientId,
             @Value("${SPOTIFY_CLIENT_SECRET}") String clientSecret,
             @Value("${SPOTIFY_REDIRECT_URI}") String redirectUri
@@ -42,13 +42,13 @@ public class AuthSpotifyService {
         }
         validateRedirectUri(redirectUri);
 
-        this.authSpotifyClient = authSpotifyClient;
+        this.spotifyTokenClient = spotifyTokenClient;
         this.clientId = clientId;
         this.clientSecret = clientSecret;
         this.redirectUri = redirectUri;
     }
 
-    public LoginSpotifyResponseDto exchangeCode(String code) {
+    public SpotifyTokenResponseDto exchangeCode(String code) {
         if (code == null || code.isBlank()) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
@@ -68,7 +68,7 @@ public class AuthSpotifyService {
 
         // Solicita ao Spotify a troca do código de autorização por token
         try {
-            return authSpotifyClient.exchangeCode(
+            return spotifyTokenClient.exchangeCode(
                     headers.getFirst(HttpHeaders.AUTHORIZATION), form);
         } catch (FeignException e) {
             // Retry-After pode gerar RetryableException até para 4xx: o status tem prioridade.

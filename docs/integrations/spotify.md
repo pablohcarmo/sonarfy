@@ -1,10 +1,30 @@
-# Spotify — troca de código por tokens
+# Spotify — preparação da autorização e troca de tokens
 
 ## Estado atual
 
-O backend prepara a troca de um código de autorização por tokens por meio de
-`POST https://accounts.spotify.com/api/token`. Esta entrega ainda não permite
-conectar contas pelo Sonarfy: redirecionamento e callback não estão implementados.
+O backend monta a URL de autorização e prepara a troca de um código por tokens
+por meio de `POST https://accounts.spotify.com/api/token`. Ainda não é possível
+conectar contas pelo Sonarfy: a rota de início e o callback não estão implementados.
+
+## Preparação da autorização
+
+`SpotifyAuthorizationService.startAuthorization(userId)` registra uma tentativa
+e retorna uma URI para `https://accounts.spotify.com/authorize`, com `response_type=code`,
+`client_id`, `redirect_uri`, `scope=user-library-read` e `state`, codificados como
+parâmetros. Não envia requisição HTTP nem inclui o Client Secret na URL.
+
+`SpotifyAuthorizationStateService` gera states com 32 bytes de `SecureRandom`
+e Base64 URL-safe sem padding. Guarda o vínculo com o usuário e uma expiração
+de cinco minutos em memória, com limite de 1.000 tentativas por instância.
+Registros vencidos são removidos ao criar uma nova tentativa; não há limpeza agendada.
+Reiniciar a aplicação perde as tentativas e o armazenamento não é compartilhado
+entre instâncias. O acesso ao mapa é sincronizado.
+
+O ID deverá vir da identidade autenticada quando a rota for implementada;
+o service atual só verifica se ele é positivo, sem consultar usuário ou autenticação.
+A exposição da rota depende da [issue #22](https://github.com/pablohcarmo/sonarfy/issues/22).
+O callback deverá validar a expiração e consumir o state uma única vez, operações
+ainda não implementadas. Não registre o state ou a URL completa em logs.
 
 ## Configuração
 
@@ -31,10 +51,10 @@ O Spotify verifica as credenciais e a correspondência da URI com seu cadastro.
 
 - `AuthSpotifyService`: valida a configuração e o preenchimento do código,
   prepara Basic Auth e o formulário de troca.
-- `AuthSpotifyClient`: envia o POST com `application/x-www-form-urlencoded`.
+- `SpotifyTokenClient`: envia o POST com `application/x-www-form-urlencoded`.
   A URL base padrão é `https://accounts.spotify.com`; o teste HTTP substitui
   a propriedade `spotify.auth-url` pelo endereço do servidor local simulado.
-- `LoginSpotifyResponseDto`: mapeia `access_token`, `token_type`, `expires_in`, `scope`
+- `SpotifyTokenResponseDto`: mapeia `access_token`, `token_type`, `expires_in`, `scope`
   e `refresh_token` com `@JsonNaming`. Seu `toString()` oculta os tokens.
 
 O formulário contém `grant_type=authorization_code`, `code` e `redirect_uri`.
@@ -53,7 +73,7 @@ credenciais. Rejeição não significa necessariamente código expirado ou invá
 O client mantém as exceções do Feign; a tradução ocorre apenas no service.
 O mapeamento dessas categorias para respostas HTTP será definido com o callback.
 
-`AuthSpotifyClientConfig` define 5 segundos para estabelecer a conexão e
+`SpotifyTokenClientConfig` define 5 segundos para estabelecer a conexão e
 5 segundos para leitura da resposta, exclusivamente neste client. A configuração
 é versionada e não depende do `application.properties` local. Esses limites não
 representam um prazo total da operação. O Spring Cloud OpenFeign não faz novas
@@ -76,20 +96,26 @@ No PowerShell:
 `AuthSpotifyServiceTest` cobre credenciais ausentes, URIs aceitas e rejeitadas,
 código ausente, argumentos enviados ao client simulado e tradução das falhas externas,
 incluindo ausência de detalhes sensíveis nas mensagens e stack traces resultantes.
-`AuthSpotifyClientTest` usa Feign real e servidor HTTP local, em porta dinâmica,
+`SpotifyTokenClientTest` usa Feign real e servidor HTTP local, em porta dinâmica,
 para verificar caminho, método, cabeçalho, codificação do formulário,
 conversão do JSON, propagação de uma resposta 400 e timeout de leitura quando
 o servidor retém a resposta. O teste também verifica os dois limites configurados;
 não simula timeout de conexão TCP.
 Esses testes usam dados fictícios e não exigem credenciais do Spotify.
 
-Na execução local de 02/11/2026, `mvn -o test` concluiu com 196 testes,
-sem falhas, erros ou testes ignorados. Esse resultado não comprova autenticação
-com uma conta real nem o funcionamento do fluxo completo de conexão.
+`SpotifyAuthorizationServiceTest` verifica os parâmetros e a codificação da URL.
+`SpotifyAuthorizationStateServiceTest` cobre associação ao usuário, formato e geração
+de states distintos, limite de capacidade, limpeza no vencimento e inicialização
+Spring sem bean `Clock`. A expiração é testada com relógio controlado, sem espera real.
+
+Os relatórios da execução ficam em `target/surefire-reports`; registre o resultado
+correspondente à versão entregue na descrição do PR e consulte também a CI.
+Os testes locais não comprovam autenticação com uma conta real nem o funcionamento
+do fluxo completo de conexão.
 
 ## Próximas entregas
 
-- Redirecionamento para autorização, callback e validação de `state`.
+- Rota autenticada de início após a #22, redirecionamento e callback com validação e consumo de `state`.
 - Associação dos tokens ao usuário do Sonarfy, armazenamento, renovação
   e desconexão da conta.
 - Consulta de álbuns e artistas em PR separado.
