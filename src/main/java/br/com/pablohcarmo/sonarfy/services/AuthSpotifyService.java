@@ -2,6 +2,10 @@ package br.com.pablohcarmo.sonarfy.services;
 
 import br.com.pablohcarmo.sonarfy.client.AuthSpotifyClient;
 import br.com.pablohcarmo.sonarfy.dto.LoginSpotifyResponseDto;
+import br.com.pablohcarmo.sonarfy.exceptions.SpotifyIntegrationException;
+import br.com.pablohcarmo.sonarfy.exceptions.SpotifyIntegrationException.Category;
+import feign.FeignException;
+import feign.RetryableException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -10,6 +14,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.SocketTimeoutException;
+import java.net.http.HttpTimeoutException;
 import java.util.Map;
 
 @Service
@@ -61,10 +67,25 @@ public class AuthSpotifyService {
         );
 
         // Solicita ao Spotify a troca do código de autorização por token
-        return authSpotifyClient.exchangeCode(
-                headers.getFirst(HttpHeaders.AUTHORIZATION),
-                form
-        );
+        try {
+            return authSpotifyClient.exchangeCode(
+                    headers.getFirst(HttpHeaders.AUTHORIZATION), form);
+        } catch (FeignException e) {
+            // Retry-After pode gerar RetryableException até para 4xx: o status tem prioridade.
+            if (e.status() >= 400) {
+                boolean rejected = e.status() < 500 && e.status() != 429;
+                throw new SpotifyIntegrationException(rejected ? Category.REJECTED : Category.UNAVAILABLE);
+            }
+            // Só interpreta timeout de transporte quando não há status de erro HTTP.
+            if (e instanceof RetryableException) {
+                for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+                    if (cause instanceof SocketTimeoutException || cause instanceof HttpTimeoutException) {
+                        throw new SpotifyIntegrationException(Category.TIMEOUT);
+                    }
+                }
+            }
+            throw new SpotifyIntegrationException(Category.UNAVAILABLE);
+        }
     }
 
     private static void validateRedirectUri(String redirectUri) {

@@ -34,7 +34,7 @@ O Spotify verifica as credenciais e a correspondência da URI com seu cadastro.
 - `AuthSpotifyClient`: envia o POST com `application/x-www-form-urlencoded`.
   A URL base padrão é `https://accounts.spotify.com`; o teste HTTP substitui
   a propriedade `spotify.auth-url` pelo endereço do servidor local simulado.
-- `LoginSpotifyResponseDto`: mapeia `access_token`, `token_type`, `expires_in`
+- `LoginSpotifyResponseDto`: mapeia `access_token`, `token_type`, `expires_in`, `scope`
   e `refresh_token` com `@JsonNaming`. Seu `toString()` oculta os tokens.
 
 O formulário contém `grant_type=authorization_code`, `code` e `redirect_uri`.
@@ -42,8 +42,16 @@ Client ID e Secret são enviados no cabeçalho de autenticação Basic, sob HTTP
 Não há endpoint público funcional do Sonarfy para essa troca nesta fase.
 
 Código nulo ou em branco gera `ResponseStatusException` com status 400 antes
-da chamada ao client. Falhas HTTP externas são propagadas como `FeignException`;
-ainda não há tradução dessas falhas para um contrato público da integração.
+da chamada ao client. O service traduz falhas do Feign para `SpotifyIntegrationException`:
+`REJECTED` para HTTP 4xx (exceto 429), `UNAVAILABLE` para 429, erros do servidor,
+falhas de conexão e demais falhas do Feign, e `TIMEOUT` para causas de timeout.
+O status de erro HTTP tem prioridade, inclusive quando `Retry-After` faz o Feign
+criar uma `RetryableException`. A classificação de timeout é usada na ausência
+de status de erro HTTP; não há reenvio automático do código.
+As mensagens são fixas e não carregam a exceção externa como causa, corpo ou
+credenciais. Rejeição não significa necessariamente código expirado ou inválido.
+O client mantém as exceções do Feign; a tradução ocorre apenas no service.
+O mapeamento dessas categorias para respostas HTTP será definido com o callback.
 
 `AuthSpotifyClientConfig` define 5 segundos para estabelecer a conexão e
 5 segundos para leitura da resposta, exclusivamente neste client. A configuração
@@ -66,7 +74,8 @@ No PowerShell:
 ```
 
 `AuthSpotifyServiceTest` cobre credenciais ausentes, URIs aceitas e rejeitadas,
-código ausente e os argumentos enviados ao client simulado.
+código ausente, argumentos enviados ao client simulado e tradução das falhas externas,
+incluindo ausência de detalhes sensíveis nas mensagens e stack traces resultantes.
 `AuthSpotifyClientTest` usa Feign real e servidor HTTP local, em porta dinâmica,
 para verificar caminho, método, cabeçalho, codificação do formulário,
 conversão do JSON, propagação de uma resposta 400 e timeout de leitura quando
@@ -74,7 +83,7 @@ o servidor retém a resposta. O teste também verifica os dois limites configura
 não simula timeout de conexão TCP.
 Esses testes usam dados fictícios e não exigem credenciais do Spotify.
 
-Na execução local de 02/11/2026, `mvn -o test` concluiu com 174 testes,
+Na execução local de 02/11/2026, `mvn -o test` concluiu com 196 testes,
 sem falhas, erros ou testes ignorados. Esse resultado não comprova autenticação
 com uma conta real nem o funcionamento do fluxo completo de conexão.
 
