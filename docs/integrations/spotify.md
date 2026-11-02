@@ -1,10 +1,30 @@
-# Spotify — troca de código por tokens
+# Spotify — preparação da autorização e troca de tokens
 
 ## Estado atual
 
-O backend prepara a troca de um código de autorização por tokens por meio de
-`POST https://accounts.spotify.com/api/token`. Esta entrega ainda não permite
-conectar contas pelo Sonarfy: redirecionamento e callback não estão implementados.
+O backend monta a URL de autorização e prepara a troca de um código por tokens
+por meio de `POST https://accounts.spotify.com/api/token`. Ainda não é possível
+conectar contas pelo Sonarfy: a rota de início e o callback não estão implementados.
+
+## Preparação da autorização
+
+`SpotifyAuthorizationService.startAuthorization(userId)` registra uma tentativa
+e retorna uma URI para `https://accounts.spotify.com/authorize`, com `response_type=code`,
+`client_id`, `redirect_uri`, `scope=user-library-read` e `state`, codificados como
+parâmetros. Não envia requisição HTTP nem inclui o Client Secret na URL.
+
+`SpotifyAuthorizationStateService` gera states com 32 bytes de `SecureRandom`
+e Base64 URL-safe sem padding. Guarda o vínculo com o usuário e uma expiração
+de cinco minutos em memória, com limite de 1.000 tentativas por instância.
+Registros vencidos são removidos ao criar uma nova tentativa; não há limpeza agendada.
+Reiniciar a aplicação perde as tentativas e o armazenamento não é compartilhado
+entre instâncias. O acesso ao mapa é sincronizado.
+
+O ID deverá vir da identidade autenticada quando a rota for implementada;
+o service atual só verifica se ele é positivo, sem consultar usuário ou autenticação.
+A exposição da rota depende da [issue #22](https://github.com/pablohcarmo/sonarfy/issues/22).
+O callback deverá validar a expiração e consumir o state uma única vez, operações
+ainda não implementadas. Não registre o state ou a URL completa em logs.
 
 ## Configuração
 
@@ -83,13 +103,19 @@ o servidor retém a resposta. O teste também verifica os dois limites configura
 não simula timeout de conexão TCP.
 Esses testes usam dados fictícios e não exigem credenciais do Spotify.
 
-Na execução local de 02/11/2026, `mvn -o test` concluiu com 196 testes,
-sem falhas, erros ou testes ignorados. Esse resultado não comprova autenticação
-com uma conta real nem o funcionamento do fluxo completo de conexão.
+`SpotifyAuthorizationServiceTest` verifica os parâmetros e a codificação da URL.
+`SpotifyAuthorizationStateServiceTest` cobre associação ao usuário, formato e geração
+de states distintos, limite de capacidade, limpeza no vencimento e inicialização
+Spring sem bean `Clock`. A expiração é testada com relógio controlado, sem espera real.
+
+Os relatórios da execução ficam em `target/surefire-reports`; registre o resultado
+correspondente à versão entregue na descrição do PR e consulte também a CI.
+Os testes locais não comprovam autenticação com uma conta real nem o funcionamento
+do fluxo completo de conexão.
 
 ## Próximas entregas
 
-- Redirecionamento para autorização, callback e validação de `state`.
+- Rota autenticada de início após a #22, redirecionamento e callback com validação e consumo de `state`.
 - Associação dos tokens ao usuário do Sonarfy, armazenamento, renovação
   e desconexão da conta.
 - Consulta de álbuns e artistas em PR separado.
