@@ -71,7 +71,7 @@ class AuthSpotifyServiceTest {
                 "code", "test-code", "redirect_uri", redirectUri);
         // Basic test-client:test-secret, usando apenas credenciais fictícias.
         String authorization = "Basic dGVzdC1jbGllbnQ6dGVzdC1zZWNyZXQ=";
-        var response = new LoginSpotifyResponseDto("access", "Bearer", 3600L, "refresh");
+        var response = new LoginSpotifyResponseDto("access", "Bearer", 3600L, "refresh", "user-library-read");
         when(client.exchangeCode(authorization, form)).thenReturn(response);
 
         assertSame(response, service.exchangeCode("test-code"));
