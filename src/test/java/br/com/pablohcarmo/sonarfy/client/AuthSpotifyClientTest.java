@@ -16,6 +16,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.net.InetSocketAddress;
 import java.net.SocketTimeoutException;
@@ -44,6 +46,7 @@ class AuthSpotifyClientTest {
     private static final LinkedBlockingQueue<Request> requests = new LinkedBlockingQueue<>();
     private static volatile int responseStatus;
     private static volatile CountDownLatch responseGate;
+    private static volatile String successBody;
     private static final String AUTHORIZATION = "Basic dGVzdC1jbGllbnQ6dGVzdC1zZWNyZXQ=";
 
     private record Request(String method, String path, String authorization,
@@ -54,6 +57,9 @@ class AuthSpotifyClientTest {
 
     @Autowired
     private FeignClientFactory clientFactory;
+
+    @Autowired
+    private JsonMapper jsonMapper;
 
     @BeforeAll
     static void startServer() throws Exception {
@@ -76,10 +82,7 @@ class AuthSpotifyClientTest {
                         return;
                     }
                 }
-                String body = responseStatus == 200 ? """
-                        {"access_token":"test-access", "token_type":"Bearer",
-                         "expires_in":3600, "refresh_token":"test-refresh"}
-                        """ : "{\"error\":\"invalid_grant\"}";
+                String body = responseStatus == 200 ? successBody : "{\"error\":\"invalid_grant\"}";
                 byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
                 exchange.sendResponseHeaders(responseStatus, bytes.length);
@@ -92,6 +95,7 @@ class AuthSpotifyClientTest {
     @DynamicPropertySource
     static void configureUrl(DynamicPropertyRegistry registry) {
         registry.add("spotify.auth-url", () -> "http://127.0.0.1:" + server.getAddress().getPort());
+        registry.add("spring.jackson.deserialization.fail-on-unknown-properties", () -> "true");
     }
 
     @BeforeEach
@@ -99,6 +103,11 @@ class AuthSpotifyClientTest {
         requests.clear();
         responseStatus = 200;
         responseGate = null;
+        successBody = """
+                {"access_token":"test-access", "token_type":"Bearer",
+                 "expires_in":3600, "refresh_token":"test-refresh",
+                 "scope":"user-library-read user-read-private", "future_metadata":{"version":2}}
+                """;
     }
 
     @AfterAll
@@ -108,6 +117,8 @@ class AuthSpotifyClientTest {
 
     @Test
     void shouldSendFormAndDeserializeSpotifyResponse() throws Exception {
+        // Com modo estrito ativo, a anotação da DTO deve tolerar future_metadata.
+        assertTrue(jsonMapper.isEnabled(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES));
         // Caracteres especiais detectam erros de codificação ou dupla codificação.
         var form = Map.of("grant_type", "authorization_code", "code", "code+&= ç",
                 "redirect_uri", "https://example.com/callback?source=sonarfy&mode=test");
@@ -126,6 +137,27 @@ class AuthSpotifyClientTest {
                 .collect(Collectors.toMap(pair -> URLDecoder.decode(pair[0], StandardCharsets.UTF_8),
                         pair -> URLDecoder.decode(pair[1], StandardCharsets.UTF_8)));
         assertEquals(form, decodedForm);
+        assertEquals("test-access", response.accessToken());
+        assertEquals("Bearer", response.tokenType());
+        assertEquals(3600L, response.expiresIn());
+        assertEquals("test-refresh", response.refreshToken());
+        assertEquals("user-library-read user-read-private", response.scope());
+        assertFalse(response.toString().contains(response.accessToken()));
+        assertFalse(response.toString().contains(response.refreshToken()));
+    }
+
+    @Test
+    void shouldAcceptResponseWithoutScope() {
+        successBody = """
+                {"access_token":"test-access", "token_type":"Bearer",
+                 "expires_in":3600, "refresh_token":"test-refresh"}
+                """;
+
+        var response = client.exchangeCode(AUTHORIZATION, Map.of(
+                "grant_type", "authorization_code", "code", "test-code",
+                "redirect_uri", "https://example.com/callback"));
+
+        assertNull(response.scope());
         assertEquals("test-access", response.accessToken());
         assertEquals("Bearer", response.tokenType());
         assertEquals(3600L, response.expiresIn());
