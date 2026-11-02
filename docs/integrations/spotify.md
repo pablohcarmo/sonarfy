@@ -45,6 +45,9 @@ Código nulo ou em branco gera `ResponseStatusException` com status 400 antes
 da chamada ao client. O service traduz falhas do Feign para `SpotifyIntegrationException`:
 `REJECTED` para HTTP 4xx (exceto 429), `UNAVAILABLE` para 429, erros do servidor,
 falhas de conexão e demais falhas do Feign, e `TIMEOUT` para causas de timeout.
+O status de erro HTTP tem prioridade, inclusive quando `Retry-After` faz o Feign
+criar uma `RetryableException`. A classificação de timeout é usada na ausência
+de status de erro HTTP; não há reenvio automático do código.
 As mensagens são fixas e não carregam a exceção externa como causa, corpo ou
 credenciais. Rejeição não significa necessariamente código expirado ou inválido.
 O client mantém as exceções do Feign; a tradução ocorre apenas no service.
@@ -80,7 +83,7 @@ o servidor retém a resposta. O teste também verifica os dois limites configura
 não simula timeout de conexão TCP.
 Esses testes usam dados fictícios e não exigem credenciais do Spotify.
 
-Na execução local de 02/11/2026, `mvn -o test` concluiu com 187 testes,
+Na execução local de 02/11/2026, `mvn -o test` concluiu com 196 testes,
 sem falhas, erros ou testes ignorados. Esse resultado não comprova autenticação
 com uma conta real nem o funcionamento do fluxo completo de conexão.
 

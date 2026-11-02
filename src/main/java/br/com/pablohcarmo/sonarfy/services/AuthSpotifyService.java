@@ -70,18 +70,21 @@ public class AuthSpotifyService {
         try {
             return authSpotifyClient.exchangeCode(
                     headers.getFirst(HttpHeaders.AUTHORIZATION), form);
-        } catch (RetryableException e) {
-            // O tipo RetryableException não significa que faremos uma nova tentativa.
-            for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-                if (cause instanceof SocketTimeoutException || cause instanceof HttpTimeoutException) {
-                    throw new SpotifyIntegrationException(Category.TIMEOUT);
+        } catch (FeignException e) {
+            // Retry-After pode gerar RetryableException até para 4xx: o status tem prioridade.
+            if (e.status() >= 400) {
+                boolean rejected = e.status() < 500 && e.status() != 429;
+                throw new SpotifyIntegrationException(rejected ? Category.REJECTED : Category.UNAVAILABLE);
+            }
+            // Só interpreta timeout de transporte quando não há status de erro HTTP.
+            if (e instanceof RetryableException) {
+                for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+                    if (cause instanceof SocketTimeoutException || cause instanceof HttpTimeoutException) {
+                        throw new SpotifyIntegrationException(Category.TIMEOUT);
+                    }
                 }
             }
             throw new SpotifyIntegrationException(Category.UNAVAILABLE);
-        } catch (FeignException e) {
-            // 429 indica limite externo; um 401 externo não autentica o usuário do Sonarfy.
-            boolean rejected = e.status() >= 400 && e.status() < 500 && e.status() != 429;
-            throw new SpotifyIntegrationException(rejected ? Category.REJECTED : Category.UNAVAILABLE);
         }
     }
 

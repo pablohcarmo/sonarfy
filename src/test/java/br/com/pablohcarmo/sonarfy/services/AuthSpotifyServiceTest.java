@@ -9,6 +9,7 @@ import feign.Request;
 import feign.RequestTemplate;
 import feign.Response;
 import feign.RetryableException;
+import feign.codec.ErrorDecoder;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -127,6 +128,26 @@ class AuthSpotifyServiceTest {
         return Stream.of(new SocketTimeoutException("external-secret"),
                 new HttpTimeoutException("external-secret"),
                 new IOException("external-secret", new SocketTimeoutException("external-secret")));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"400,REJECTED", "401,REJECTED", "403,REJECTED", "422,REJECTED",
+            "429,UNAVAILABLE", "503,UNAVAILABLE"})
+    void shouldClassifyRetryAfterResponsesByHttpStatus(int status, Category category) {
+        var response = Response.builder().status(status).reason("external-secret")
+                .request(sensitiveRequest()).headers(Map.of("Retry-After", List.of("1")))
+                .body("external-secret access-token refresh-token", StandardCharsets.UTF_8).build();
+
+        // Exercita o decoder real: Retry-After transforma o erro HTTP em RetryableException.
+        var failure = new ErrorDecoder.Default().decode("exchangeCode", response);
+        assertSanitizedFailure(assertInstanceOf(RetryableException.class, failure), category);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"400,REJECTED", "429,UNAVAILABLE", "503,UNAVAILABLE"})
+    void shouldPrioritizeHttpStatusOverTimeoutCause(int status, Category category) {
+        assertSanitizedFailure(new RetryableException(status, "external-secret", Request.HttpMethod.POST,
+                new SocketTimeoutException("external-secret"), (Long) null, sensitiveRequest()), category);
     }
 
     @ParameterizedTest
