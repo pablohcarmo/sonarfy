@@ -45,6 +45,12 @@ Código nulo ou em branco gera `ResponseStatusException` com status 400 antes
 da chamada ao client. Falhas HTTP externas são propagadas como `FeignException`;
 ainda não há tradução dessas falhas para um contrato público da integração.
 
+`AuthSpotifyClientConfig` define 5 segundos para estabelecer a conexão e
+5 segundos para leitura da resposta, exclusivamente neste client. A configuração
+é versionada e não depende do `application.properties` local. Esses limites não
+representam um prazo total da operação. O Spring Cloud OpenFeign não faz novas
+tentativas automaticamente por padrão, inclusive após timeout na troca do código.
+
 ## Testes e limites da validação
 
 Execute a suíte completa na raiz do repositório:
@@ -63,10 +69,12 @@ No PowerShell:
 código ausente e os argumentos enviados ao client simulado.
 `AuthSpotifyClientTest` usa Feign real e servidor HTTP local, em porta dinâmica,
 para verificar caminho, método, cabeçalho, codificação do formulário,
-conversão do JSON e propagação de uma resposta 400.
+conversão do JSON, propagação de uma resposta 400 e timeout de leitura quando
+o servidor retém a resposta. O teste também verifica os dois limites configurados;
+não simula timeout de conexão TCP.
 Esses testes usam dados fictícios e não exigem credenciais do Spotify.
 
-Na execução local de 29/10/2026, `mvn -o test` concluiu com 173 testes,
+Na execução local de 02/11/2026, `mvn -o test` concluiu com 174 testes,
 sem falhas, erros ou testes ignorados. Esse resultado não comprova autenticação
 com uma conta real nem o funcionamento do fluxo completo de conexão.
 

@@ -2,6 +2,8 @@ package br.com.pablohcarmo.sonarfy.client;
 
 import com.sun.net.httpserver.HttpServer;
 import feign.FeignException;
+import feign.Request.Options;
+import feign.RetryableException;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
@@ -9,17 +11,20 @@ import org.springframework.boot.http.converter.autoconfigure.HttpMessageConverte
 import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.cloud.openfeign.FeignAutoConfiguration;
+import org.springframework.cloud.openfeign.FeignClientFactory;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
 import java.net.InetSocketAddress;
+import java.net.SocketTimeoutException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -38,6 +43,7 @@ class AuthSpotifyClientTest {
     private static HttpServer server;
     private static final LinkedBlockingQueue<Request> requests = new LinkedBlockingQueue<>();
     private static volatile int responseStatus;
+    private static volatile CountDownLatch responseGate;
     private static final String AUTHORIZATION = "Basic dGVzdC1jbGllbnQ6dGVzdC1zZWNyZXQ=";
 
     private record Request(String method, String path, String authorization,
@@ -45,6 +51,9 @@ class AuthSpotifyClientTest {
 
     @Autowired
     private AuthSpotifyClient client;
+
+    @Autowired
+    private FeignClientFactory clientFactory;
 
     @BeforeAll
     static void startServer() throws Exception {
@@ -57,6 +66,16 @@ class AuthSpotifyClientTest {
                         exchange.getRequestHeaders().getFirst("Authorization"),
                         exchange.getRequestHeaders().getFirst("Content-Type"),
                         new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)));
+                // Retém a resposta para exercitar o timeout real, sem Thread.sleep.
+                var gate = responseGate;
+                if (gate != null) {
+                    try {
+                        gate.await(8, TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
                 String body = responseStatus == 200 ? """
                         {"access_token":"test-access", "token_type":"Bearer",
                          "expires_in":3600, "refresh_token":"test-refresh"}
@@ -79,6 +98,7 @@ class AuthSpotifyClientTest {
     void resetResponse() {
         requests.clear();
         responseStatus = 200;
+        responseGate = null;
     }
 
     @AfterAll
@@ -120,5 +140,26 @@ class AuthSpotifyClientTest {
                         "redirect_uri", "https://example.com/callback")));
         assertEquals(400, exception.status());
         assertEquals(1, requests.size());
+    }
+
+    @Test
+    void shouldTimeOutWhenServerWithholdsResponse() {
+        var options = clientFactory.getInstance("AuthSpotifyClient", Options.class);
+        assertNotNull(options);
+        assertEquals(5000, options.connectTimeoutMillis());
+        assertEquals(5000, options.readTimeoutMillis());
+        var gate = new CountDownLatch(1);
+        responseGate = gate;
+
+        try {
+            var exception = assertThrows(RetryableException.class, () -> client.exchangeCode(
+                    AUTHORIZATION, Map.of("grant_type", "authorization_code", "code", "test-code",
+                            "redirect_uri", "https://example.com/callback")));
+            assertInstanceOf(SocketTimeoutException.class, exception.getCause());
+            // O código OAuth não é reenviado automaticamente após um timeout.
+            assertEquals(1, requests.size());
+        } finally {
+            gate.countDown();
+        }
     }
 }

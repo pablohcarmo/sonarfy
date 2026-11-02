@@ -12,7 +12,8 @@ import java.util.Map;
 
 @FeignClient(
         name = "AuthSpotifyClient",
-        url = "${spotify.auth-url:https://accounts.spotify.com}"
+        url = "${spotify.auth-url:https://accounts.spotify.com}",
+        configuration = AuthSpotifyClientConfig.class
 )
 
 public interface AuthSpotifyClient {
