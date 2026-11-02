@@ -31,10 +31,10 @@ O Spotify verifica as credenciais e a correspondência da URI com seu cadastro.
 
 - `AuthSpotifyService`: valida a configuração e o preenchimento do código,
   prepara Basic Auth e o formulário de troca.
-- `AuthSpotifyClient`: envia o POST com `application/x-www-form-urlencoded`.
+- `SpotifyTokenClient`: envia o POST com `application/x-www-form-urlencoded`.
   A URL base padrão é `https://accounts.spotify.com`; o teste HTTP substitui
   a propriedade `spotify.auth-url` pelo endereço do servidor local simulado.
-- `LoginSpotifyResponseDto`: mapeia `access_token`, `token_type`, `expires_in`, `scope`
+- `SpotifyTokenResponseDto`: mapeia `access_token`, `token_type`, `expires_in`, `scope`
   e `refresh_token` com `@JsonNaming`. Seu `toString()` oculta os tokens.
 
 O formulário contém `grant_type=authorization_code`, `code` e `redirect_uri`.
@@ -53,7 +53,7 @@ credenciais. Rejeição não significa necessariamente código expirado ou invá
 O client mantém as exceções do Feign; a tradução ocorre apenas no service.
 O mapeamento dessas categorias para respostas HTTP será definido com o callback.
 
-`AuthSpotifyClientConfig` define 5 segundos para estabelecer a conexão e
+`SpotifyTokenClientConfig` define 5 segundos para estabelecer a conexão e
 5 segundos para leitura da resposta, exclusivamente neste client. A configuração
 é versionada e não depende do `application.properties` local. Esses limites não
 representam um prazo total da operação. O Spring Cloud OpenFeign não faz novas
@@ -76,7 +76,7 @@ No PowerShell:
 `AuthSpotifyServiceTest` cobre credenciais ausentes, URIs aceitas e rejeitadas,
 código ausente, argumentos enviados ao client simulado e tradução das falhas externas,
 incluindo ausência de detalhes sensíveis nas mensagens e stack traces resultantes.
-`AuthSpotifyClientTest` usa Feign real e servidor HTTP local, em porta dinâmica,
+`SpotifyTokenClientTest` usa Feign real e servidor HTTP local, em porta dinâmica,
 para verificar caminho, método, cabeçalho, codificação do formulário,
 conversão do JSON, propagação de uma resposta 400 e timeout de leitura quando
 o servidor retém a resposta. O teste também verifica os dois limites configurados;

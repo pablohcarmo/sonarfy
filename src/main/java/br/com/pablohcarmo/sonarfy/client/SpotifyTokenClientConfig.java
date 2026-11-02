@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Bean;
 import java.util.concurrent.TimeUnit;
 
 // Registrada somente pelo @FeignClient, sem configuração global por component scan.
-public class AuthSpotifyClientConfig {
+public class SpotifyTokenClientConfig {
 
     @Bean
     public Request.Options spotifyRequestOptions() {
