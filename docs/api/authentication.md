@@ -29,6 +29,8 @@ No cadastro persistido, `User.onCreate()` define `active=true` por `@PrePersist`
 A confirmação altera `verified`; não é necessário atualizar o banco manualmente.
 Para respeitar o limite do BCrypt, o serviço recusa senhas acima de 72 bytes em
 UTF-8 com o mesmo `401` genérico, sem truncá-las para autenticar o usuário.
+O cadastro também rejeita senhas acima desse limite com `400`, antes de criar
+a conta, mantendo o mínimo de oito caracteres já exigido pela entrada de cadastro.
 
 Exemplo com curl (shell Bash):
 
@@ -86,4 +88,6 @@ Um teste adicional em `EmailReservationIntegrationTest` cobre cadastro pelo
 controller, persistência JPA, login recusado antes da confirmação, confirmação
 com o token do e-mail e login aceito, sem alterar flags diretamente no banco.
 O banco padrão desse teste é H2; renderização e transporte de e-mail são simulados.
+Essa cobertura inclui cadastro e login com senhas de exatamente 72 bytes e
+rejeição do cadastro acima desse limite, com ASCII e caracteres multibyte.
 Veja também o [contrato de recuperação e troca de senha](passwords.md).

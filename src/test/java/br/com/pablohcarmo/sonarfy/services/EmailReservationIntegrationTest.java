@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.*;
@@ -389,20 +390,22 @@ class EmailReservationIntegrationTest {
         return dto;
     }
 
-    @Test
-    void registeredUserCanLoginAfterEmailConfirmationWithoutDatabaseUpdates() throws Exception {
+    @ParameterizedTest
+    @CsvSource({"TestPassword123!,1", "a,72", "é,36"})
+    void registeredUserCanLoginAfterEmailConfirmationWithoutDatabaseUpdates(String character, int count) throws Exception {
+        String password = character.repeat(count);
         var mvc = MockMvcBuilders.standaloneSetup(new AuthController(userService, jwt, authEmails,
                 new AuthService(users, new BCryptPasswordEncoder(4), jwt))).build();
         mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
                 {"name":"New","surname":"Account","handle":"new-account",
-                 "email":"new@example.com","password":"TestPassword123!",
+                 "email":"new@example.com","password":"%s",
                  "city":"Brasilia","country":"Brasil","birthDate":"2000-01-01"}
-                """))
+                """.formatted(password)))
                 .andExpect(status().isCreated());
         User saved = users.findByEmailIgnoreCase("new@example.com").orElseThrow();
         assertTrue(saved.isActive(), "JPA @PrePersist must activate new accounts");
         assertFalse(saved.isVerified());
-        String login = "{\"login\":\"new@example.com\",\"password\":\"TestPassword123!\"}";
+        String login = "{\"login\":\"new@example.com\",\"password\":\"" + password + "\"}";
         mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content(login))
                 .andExpect(status().isUnauthorized());
 
@@ -418,5 +421,22 @@ class EmailReservationIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
                 .andExpect(jsonPath("$.accessToken").isNotEmpty());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"a,73", "é,37"})
+    void registrationRejectsPasswordsOver72Utf8BytesWithoutCreatingAccount(String character, int count) throws Exception {
+        var mvc = MockMvcBuilders.standaloneSetup(new AuthController(userService, jwt, authEmails,
+                new AuthService(users, new BCryptPasswordEncoder(4), jwt))).build();
+        mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
+                {"name":"New","surname":"Account","handle":"new-account",
+                 "email":"new@example.com","password":"%s",
+                 "city":"Brasilia","country":"Brasil","birthDate":"2000-01-01"}
+                """.formatted(character.repeat(count))))
+                .andExpect(status().isBadRequest())
+                .andExpect(result -> assertEquals("Password must not exceed 72 bytes in UTF-8.",
+                        ((ResponseStatusException) result.getResolvedException()).getReason()));
+        assertEquals(0, users.count());
+        verifyNoInteractions(transport);
     }
 }
