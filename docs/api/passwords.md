@@ -99,22 +99,23 @@ Sucesso: HTTP 200, texto `Password updated successfully.`
 Após a autenticação, erros previstos incluem 400 por campos/senhas/token inválidos,
 403 se o token pertencer a outra conta e 404 se o usuário do token não existir.
 
-### Limitação atual da autenticação HTTP
+### Autenticação HTTP
 
 O `SecurityConfig` libera `/api/auth/**` e exige autenticação nas demais rotas,
-com sessões stateless. Entretanto, não configura filtro de JWT de acesso,
-HTTP Basic, form login ou outro mecanismo que estabeleça o principal HTTP.
-Assim, o fluxo autenticado ainda não pode ser apresentado como executável de ponta
-a ponta na aplicação atual.
+com sessões stateless. Faça login e envie o JWT de acesso como
+`Authorization: Bearer <accessToken>` nas requisições autenticadas.
+O filtro estabelece o principal com o e-mail da conta ativa e verificada.
+Veja o [contrato de autenticação](authentication.md).
 
 O token no JSON autoriza a alteração da senha, mas não autentica a requisição HTTP.
 O uso de Bearer em `/api/auth/update-pending-email` é uma validação específica
 de token de cadastro nesse controller; não constitui login para `/api/users/**`.
 
-A coleção mantém as requisições protegidas em uma pasta separada, sem inventar
-credenciais ou cabeçalho Bearer. Executar esses exemplos com sucesso depende de
-implementar/configurar a autenticação HTTP, fora desta atualização documental.
-Os testes de controller fornecem um principal simulado; não comprovam login real.
+A coleção mantém as requisições protegidas em uma pasta separada; adicione o
+Bearer de acesso ao executá-las. O token de autorização da operação continua
+necessário no corpo dos endpoints de troca de senha. Os testes isolados de
+controller usam principal simulado; `SecurityChainIntegrationTest` verifica
+a autenticação HTTP com a cadeia real do Spring Security.
 
 ## Cenários e evidências
 
