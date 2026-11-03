@@ -3,6 +3,7 @@ package br.com.pablohcarmo.sonarfy.repositories;
 import br.com.pablohcarmo.sonarfy.entities.User;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -12,6 +13,9 @@ import java.time.OffsetDateTime;
 import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<User,Long> {
+    @EntityGraph(attributePaths = "permission")
+    Optional<User> findWithPermissionById(Long id);
+
     Optional<User> findByEmailIgnoreCaseOrHandleIgnoreCase(String email, String handle);
 
     Optional<User> findByHandleIgnoreCase(String handle);

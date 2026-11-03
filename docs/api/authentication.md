@@ -1,7 +1,7 @@
 # Contrato de login e emissão de token de acesso
 
-Primeira entrega da [issue #22](https://github.com/pablohcarmo/sonarfy/issues/22).
-Base local dos exemplos: `http://localhost:8081`; ajuste para seu ambiente.
+Contrato de login e acesso Bearer da [issue #22](https://github.com/pablohcarmo/sonarfy/issues/22).
+Base local dos exemplos: `http://localhost:8080`; ajuste para seu ambiente.
 Use uma conta de teste cadastrada, ativa e com o e-mail confirmado.
 
 ## Login
@@ -35,7 +35,7 @@ a conta, mantendo o mínimo de oito caracteres já exigido pela entrada de cadas
 Exemplo com curl (shell Bash):
 
 ```bash
-curl -i -X POST 'http://localhost:8081/api/auth/login' \
+curl -i -X POST 'http://localhost:8080/api/auth/login' \
   -H 'Content-Type: application/json' \
   -d '{"login":"conta-teste@example.com","password":"SenhaDeTeste123!"}'
 ```
@@ -74,13 +74,31 @@ define um formato próprio de JSON de erro nem garante que o motivo apareça no
 corpo da resposta em todas as configurações. O cliente deve tratar o status `401`
 de forma uniforme, sem distinguir existência da conta ou situação da ativação.
 
-## Limite desta entrega
+## Acesso às rotas protegidas
 
-O endpoint emite a credencial, mas a aplicação ainda não implementa o filtro
-Bearer que valida esse token e estabelece o `Principal` das requisições.
-Assim, obter um token ainda não permite executar `/api/users/**` de ponta a ponta.
-O consumo da credencial nas rotas protegidas será implementado no próximo PR.
-A issue #22 permanece aberta; a integração Spotify aguarda sua conclusão.
+Após o login, envie o token no cabeçalho de cada requisição:
+
+```bash
+curl -i 'http://localhost:8080/api/users/me' \
+  -H 'Authorization: Bearer SUBSTITUA_PELO_TOKEN_DE_ACESSO'
+```
+
+O filtro exige assinatura e emissor válidos, `purpose: "access"`, `exp` presente
+e ainda válido e `sub` representando um ID positivo compatível com `long`.
+O usuário é consultado novamente, com sua permissão, e precisa continuar ativo
+e verificado. Sua identidade é estabelecida no `Principal`; `getName()` retorna
+o e-mail. `/api/users/me` retorna `200` com o cadastro correspondente.
+
+Credencial ausente, inválida, expirada, de outro propósito ou vinculada a usuário
+removido, inativo ou não verificado resulta em `401` nas rotas protegidas.
+O filtro não cria sessão: cada nova requisição precisa enviar seu Bearer.
+Não há revogação automática por troca de senha nesta entrega; o token continua
+sujeito à expiração e à situação atual da conta.
+
+`/api/auth/update-pending-email` continua validando seu Bearer de cadastro no
+controller; esse token não autentica acesso a `/api/users/**`.
+O `SecurityConfig` ainda libera `/api/auth/**`; a revisão da lista de rotas
+públicas fica na próxima entrega da #22. A integração Spotify aguarda sua conclusão.
 
 Os testes de login integram controller, serviço, BCrypt e JWT com repositório
 simulado; não comprovam acesso autenticado pela cadeia de segurança HTTP.
@@ -91,3 +109,8 @@ O banco padrão desse teste é H2; renderização e transporte de e-mail são si
 Essa cobertura inclui cadastro e login com senhas de exatamente 72 bytes e
 rejeição do cadastro acima desse limite, com ASCII e caracteres multibyte.
 Veja também o [contrato de recuperação e troca de senha](passwords.md).
+
+`SecurityChainIntegrationTest` usa a cadeia real do Spring Security, controllers,
+serviços, BCrypt, JWT e persistência JPA em H2, com e-mail simulado. Cobre login
+seguido de acesso ao próprio perfil, rejeição de credenciais e contas inválidas,
+ausência de sessão e preservação do Bearer de cadastro na correção de e-mail.

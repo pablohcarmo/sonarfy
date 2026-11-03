@@ -107,6 +107,18 @@ public class JwtService {
         return jwt == null ? null : jwt.getSubject();
     }
 
+    public String validateAccessTokenAndGetUserId(String token) {
+        DecodedJWT jwt = verify(token, PURPOSE_ACCESS);
+        if (jwt == null || jwt.getExpiresAt() == null) {
+            return null;
+        }
+        try {
+            return Long.parseLong(jwt.getSubject()) > 0 ? jwt.getSubject() : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
     public Instant getPasswordResetTokenIssuedAt(String token) {
         return getIssuedAt(token, PURPOSE_PASSWORD_RESET);
     }
