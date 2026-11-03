@@ -30,7 +30,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.http.MediaType;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -91,9 +90,8 @@ class EmailReservationIntegrationTest {
         @Bean JavaMailSender javaMailSender() { return mock(JavaMailSender.class); }
         @Bean PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(4); }
         @Bean JwtService jwtService() {
-            JwtService jwt = new JwtService();
-            ReflectionTestUtils.setField(jwt, "secretKey", "isolated-test-secret");
-            return jwt;
+            // O Spring injeta api.security.token.secret pelo @Value do servico.
+            return new JwtService();
         }
     }
 

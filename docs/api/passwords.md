@@ -114,8 +114,9 @@ Após a autenticação, erros previstos incluem 400 por campos/senhas/token inv�
 
 ### Autenticação HTTP
 
-O `SecurityConfig` libera `/api/auth/**` e exige autenticação nas demais rotas,
-com sessões stateless. Faça login e envie o JWT de acesso como
+O `SecurityConfig` libera somente os métodos e caminhos públicos listados no
+[contrato de autenticação](authentication.md) e exige autenticação nas demais
+requisições, com sessões stateless. Faça login e envie o JWT de acesso como
 `Authorization: Bearer <accessToken>` nas requisições autenticadas.
 O filtro estabelece o principal com o e-mail da conta ativa e verificada.
 Veja o [contrato de autenticação](authentication.md).

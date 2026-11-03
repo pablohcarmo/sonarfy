@@ -57,7 +57,7 @@ O projeto usa Java 21, Spring Boot 4.1.0 e java-jwt 4.4.0.
 Consulte o [contrato de recuperação e troca de senha](docs/api/passwords.md)
 para os campos obrigatórios, exemplos JSON, respostas e limites de autenticação.
 Importe a [coleção oficial do Postman](docs/api/sonarfy-passwords.postman_collection.json)
-e ajuste a variável `baseUrl` (exemplo local: `http://localhost:8081`).
+e ajuste a variável `baseUrl` (exemplo local: `http://localhost:8080`).
 
 | Operação | Endpoint | Campos JSON |
 | --- | --- | --- |
@@ -70,10 +70,11 @@ As requisições com corpo usam `Content-Type: application/json`. Na solicitaç�
 pública, o e-mail vai no JSON. Recuperação e troca usam DTOs separados:
 a recuperação não exige a senha esquecida; a troca exige a senha atual.
 
-As rotas `/api/users/**` exigem identidade autenticada, mas o código atual ainda
-não configura um mecanismo de autenticação HTTP que a estabeleça. O token enviado
-no JSON não substitui essa autenticação. A coleção documenta esse impedimento;
-não presume um JWT Bearer de acesso funcional.
+As rotas `/api/users/**` exigem o token de acesso retornado por `POST /api/auth/login`,
+enviado no cabeçalho `Authorization: Bearer <accessToken>`. O filtro estabelece a
+identidade da conta ativa e verificada. O token enviado no JSON autoriza a operação
+de senha e não substitui o Bearer. Consulte o [contrato de autenticação](docs/api/authentication.md)
+para a lista explícita de rotas públicas e a configuração de CORS.
 
 ## E-mails de conta e intervalo entre tentativas
 
