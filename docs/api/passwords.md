@@ -1,6 +1,6 @@
 # Contrato de recuperação e troca de senha
 
-Base local de exemplo: `http://localhost:8081` (porta da configuração local consultada).
+Base local de exemplo: `http://localhost:8080` (porta da configuração local consultada).
 Ajuste `baseUrl` para seu ambiente. O projeto declara Java 21, Spring Boot 4.1.0
 e java-jwt 4.4.0 no `pom.xml`.
 
@@ -8,6 +8,19 @@ A coleção oficial deste fluxo é [sonarfy-passwords.postman_collection.json](s
 Importe-a no Postman. As pastas locais `postman/` e `.postman/` não são a referência
 oficial deste fluxo e permanecem ignoradas pelo Git. Use somente contas de teste.
 Os valores e tokens da coleção são placeholders; substitua-os localmente.
+
+Para conferir o acesso HTTP, configure `baseUrl` (padrão `http://localhost:8080`),
+`email` e `currentPassword` de uma conta ativa e verificada e execute apenas a
+pasta **Autenticação HTTP**. Ela faz login, salva `accessToken` e verifica o perfil
+com Bearer, sem credencial e com token inválido. O teste de identidade compara
+o e-mail do perfil com a variável `email`; use e-mail no login dessa sequência.
+A coleção oficial usa `baseUrl`; a variável `app.base-url` de coleções locais
+independentes não altera essas requisições.
+
+As pastas de recuperação e troca de senha devem ser executadas separadamente,
+com os tokens do e-mail preenchidos. Elas podem alterar a senha da conta.
+O Bearer de acesso é herdado apenas pela pasta **Troca autenticada**; as rotas
+públicas usam **No Auth**. Não versione o `accessToken` capturado nem credenciais reais.
 
 ## Solicitar recuperação
 

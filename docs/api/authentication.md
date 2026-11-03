@@ -1,7 +1,7 @@
 # Contrato de login e emissão de token de acesso
 
 Contrato de login e acesso Bearer da [issue #22](https://github.com/pablohcarmo/sonarfy/issues/22).
-Base local dos exemplos: `http://localhost:8081`; ajuste para seu ambiente.
+Base local dos exemplos: `http://localhost:8080`; ajuste para seu ambiente.
 Use uma conta de teste cadastrada, ativa e com o e-mail confirmado.
 
 ## Login
@@ -35,7 +35,7 @@ a conta, mantendo o mínimo de oito caracteres já exigido pela entrada de cadas
 Exemplo com curl (shell Bash):
 
 ```bash
-curl -i -X POST 'http://localhost:8081/api/auth/login' \
+curl -i -X POST 'http://localhost:8080/api/auth/login' \
   -H 'Content-Type: application/json' \
   -d '{"login":"conta-teste@example.com","password":"SenhaDeTeste123!"}'
 ```
@@ -79,7 +79,7 @@ de forma uniforme, sem distinguir existência da conta ou situação da ativaç�
 Após o login, envie o token no cabeçalho de cada requisição:
 
 ```bash
-curl -i 'http://localhost:8081/api/users/me' \
+curl -i 'http://localhost:8080/api/users/me' \
   -H 'Authorization: Bearer SUBSTITUA_PELO_TOKEN_DE_ACESSO'
 ```
 
