@@ -97,8 +97,33 @@ sujeito à expiração e à situação atual da conta.
 
 `/api/auth/update-pending-email` continua validando seu Bearer de cadastro no
 controller; esse token não autentica acesso a `/api/users/**`.
-O `SecurityConfig` ainda libera `/api/auth/**`; a revisão da lista de rotas
-públicas fica na próxima entrega da #22. A integração Spotify aguarda sua conclusão.
+
+## Rotas públicas e CORS
+
+O `SecurityConfig` permite acesso sem login somente aos pares de método e caminho:
+
+| Método | Caminho |
+| --- | --- |
+| POST | `/api/auth/register` |
+| POST | `/api/auth/login` |
+| POST | `/api/auth/resend-activation-email` |
+| POST | `/api/auth/forgot-password` |
+| POST | `/api/auth/reset-password` |
+| GET | `/api/auth/verify` |
+| PATCH | `/api/auth/update-pending-email` |
+
+Esses endpoints mantêm suas validações de entrada e tokens específicos. Outros
+caminhos e métodos exigem autenticação, inclusive novos endpoints sob `/api/auth/`.
+Despachos internos `ERROR` são permitidos para preservar as respostas de erro;
+isso não libera o acesso direto anônimo a `/error`.
+
+O CORS é processado antes da autenticação com a política do `CorsConfig`:
+origens permitidas por `*`, métodos GET, POST, PUT, PATCH, DELETE e OPTIONS,
+cabeçalhos permitidos por `*` e credenciais de navegador desabilitadas.
+Um preflight válido com `Access-Control-Request-Headers: Authorization` recebe
+`200` sem Bearer. A requisição real à rota protegida continua exigindo o token.
+OPTIONS sem os cabeçalhos de preflight não recebe uma liberação genérica.
+Um método fora da política CORS, como TRACE, tem o preflight recusado com `403`.
 
 Os testes de login integram controller, serviço, BCrypt e JWT com repositório
 simulado; não comprovam acesso autenticado pela cadeia de segurança HTTP.
@@ -114,3 +139,7 @@ Veja também o [contrato de recuperação e troca de senha](passwords.md).
 serviços, BCrypt, JWT e persistência JPA em H2, com e-mail simulado. Cobre login
 seguido de acesso ao próprio perfil, rejeição de credenciais e contas inválidas,
 ausência de sessão e preservação do Bearer de cadastro na correção de e-mail.
+Também cobre a lista de rotas públicas, métodos não permitidos anonimamente,
+despachos de erro, preflight e respostas CORS em requisições autenticadas e anônimas.
+Os testes de claims conferem a assinatura dos tokens e incluem um controle positivo
+assinado com a chave configurada no contexto, evitando rejeições por chave divergente.

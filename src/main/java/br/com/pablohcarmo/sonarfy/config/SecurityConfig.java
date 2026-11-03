@@ -3,9 +3,12 @@ package br.com.pablohcarmo.sonarfy.config;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import br.com.pablohcarmo.sonarfy.security.BearerAuthenticationFilter;
 import br.com.pablohcarmo.sonarfy.services.JwtService;
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -22,7 +25,10 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtService jwtService, UserRepository userRepository) throws Exception {
         return http
-                // Desabilta o CSRF, pois APIs REST baseadas em tokens náo precisam dele
+                // Integra o CORS à segurança para processar o preflight antes da autenticação.
+                .cors(Customizer.withDefaults())
+
+                // Desabilita CSRF para a API stateless autenticada por Bearer no cabeçalho.
                 .csrf(AbstractHttpConfigurer::disable)
 
                 // Transforma a API em Stateless (náo guarda a sessão do usuário)
@@ -42,12 +48,30 @@ public class SecurityConfig {
 
                 // Configuração de rotas
                 .authorizeHttpRequests(req -> {
+                    // Permite o processamento interno das respostas de erro, sem liberar genericamente qualquer caminho /error/**.
+                    req.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
+
                     req.requestMatchers(
-                            "/api/auth/**", // Libera todos os endpoints de autenticação (registro e login)
-                            "/error/**" // Libera todos os endpoints de erro (para exibir mensagens de erro)
+                            HttpMethod.POST,
+                            "/api/auth/register",
+                            "/api/auth/login",
+                            "/api/auth/resend-activation-email",
+                            "/api/auth/forgot-password",
+                            "/api/auth/reset-password"
                     ).permitAll();
 
-                    // Qualquer outra rota do sistema exigirá um JWT válido para acesso
+                    req.requestMatchers(
+                            HttpMethod.GET,
+                            "/api/auth/verify"
+                    ).permitAll();
+
+                    // O controller exige o token de cadastro nesta rota.
+                    req.requestMatchers(
+                            HttpMethod.PATCH,
+                            "/api/auth/update-pending-email"
+                    ).permitAll();
+
+                    // As demais requisições exigem autenticação.
                     req.anyRequest().authenticated();
                 })
                 .build();
