@@ -2,6 +2,7 @@ package br.com.pablohcarmo.sonarfy.controllers;
 
 import br.com.pablohcarmo.sonarfy.dto.*;
 import br.com.pablohcarmo.sonarfy.services.AuthEmailService;
+import br.com.pablohcarmo.sonarfy.services.AuthService;
 import br.com.pablohcarmo.sonarfy.services.JwtService;
 import br.com.pablohcarmo.sonarfy.services.UserService;
 import jakarta.validation.Valid;
@@ -16,17 +17,24 @@ public class AuthController {
     private final UserService userService;
     private final JwtService jwtService;
     private final AuthEmailService authEmailService;
+    private final AuthService authService;
 
-    public AuthController(UserService userService, JwtService jwtService, AuthEmailService authEmailService) {
+    public AuthController(UserService userService, JwtService jwtService, AuthEmailService authEmailService, AuthService authService) {
         this.userService = userService;
         this.jwtService = jwtService;
         this.authEmailService = authEmailService;
+        this.authService = authService;
     }
 
     @PostMapping("/register")
     public ResponseEntity<RegisterResponseDto> registerUser(@Valid @RequestBody NewUserDto newUserDto) {
         RegisterResponseDto response = userService.newUser(newUserDto);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<LoginResponseDto> login(@Valid @RequestBody LoginDto dto) {
+        return ResponseEntity.ok(authService.login(dto));
     }
 
     @PostMapping("/resend-activation-email")

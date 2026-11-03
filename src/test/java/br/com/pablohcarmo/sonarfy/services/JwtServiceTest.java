@@ -10,6 +10,32 @@ import static org.junit.jupiter.api.Assertions.*;
 class JwtServiceTest {
 
     @Test
+    void shouldIssueSignedAccessTokenWithUserIdAndFifteenMinuteLifetime() {
+        String token = jwtService.generateAccessToken("42");
+        var jwt = com.auth0.jwt.JWT.require(com.auth0.jwt.algorithms.Algorithm.HMAC256(
+                        "unit-test-secret-key-super-secure-12345"))
+                .withIssuer("sonarfy-api")
+                .withClaim("purpose", "access")
+                .build().verify(token);
+
+        assertEquals("42", jwt.getSubject());
+        assertEquals(900, java.time.Duration.between(
+                jwt.getIssuedAtAsInstant(), jwt.getExpiresAtAsInstant()).getSeconds());
+        assertFalse(jwt.getIssuedAtAsInstant().isAfter(java.time.Instant.now()));
+        assertTrue(jwt.getExpiresAtAsInstant().isAfter(java.time.Instant.now()));
+        assertNull(jwtService.validateTokenAndGetEmail(token));
+        assertNull(jwtService.validateRegistrationTokenAndGetUserId(token));
+        assertNull(jwtService.validatePasswordResetTokenAndGetUserId(token));
+        assertNull(jwtService.validatePasswordChangeTokenAndGetUserId(token));
+    }
+
+    @Test
+    void shouldRejectMissingUserIdForAccessToken() {
+        assertThrows(IllegalArgumentException.class, () -> jwtService.generateAccessToken(null));
+        assertThrows(IllegalArgumentException.class, () -> jwtService.generateAccessToken("  "));
+    }
+
+    @Test
     void shouldSerializeIssuedAtWithWholeSecondPrecision() {
         java.time.Instant issuedAt = java.time.Instant.now().minusSeconds(60)
                 .truncatedTo(java.time.temporal.ChronoUnit.SECONDS).plusNanos(987654321);

@@ -17,10 +17,12 @@ public class JwtService {
     private static final String PURPOSE_PENDING_REGISTRATION = "pending_registration";
     private static final String PURPOSE_PASSWORD_RESET = "password_reset";
     private static final String PURPOSE_PASSWORD_CHANGE = "password_change";
+    private static final String PURPOSE_ACCESS = "access";
 
     public static final long EMAIL_CONFIRMATION_TTL_SECONDS = 900; // 15 minutes
-    public static final long PENDING_REGISTRATION_TTL_SECONDS = 900; // 15 minutes
-    public static final long PASSWORD_RESET_TTL_SECONDS = 900; // 15 minutes
+    public static final long PENDING_REGISTRATION_TTL_SECONDS = 900;
+    public static final long PASSWORD_RESET_TTL_SECONDS = 900;
+    public static final long ACCESS_TOKEN_TTL_SECONDS = 900;
 
     @Value("${api.security.token.secret}")
     private String secretKey;
@@ -83,6 +85,20 @@ public class JwtService {
                 .withClaim("purpose", PURPOSE_PASSWORD_CHANGE)
                 .withIssuedAt(Instant.now())
                 .withExpiresAt(Instant.now().plusSeconds(PASSWORD_RESET_TTL_SECONDS))
+                .sign(algorithm());
+    }
+
+    public String generateAccessToken(String userId) {
+        requireNotBlank(userId, "user ID");
+
+        Instant now = Instant.now();
+
+        return JWT.create()
+                .withIssuer(ISSUER)
+                .withSubject(userId)
+                .withClaim("purpose", PURPOSE_ACCESS)
+                .withIssuedAt(now)
+                .withExpiresAt(now.plusSeconds(ACCESS_TOKEN_TTL_SECONDS))
                 .sign(algorithm());
     }
 

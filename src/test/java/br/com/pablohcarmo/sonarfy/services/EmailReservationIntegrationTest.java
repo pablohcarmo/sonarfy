@@ -1,6 +1,7 @@
 package br.com.pablohcarmo.sonarfy.services;
 
 import br.com.pablohcarmo.sonarfy.dto.NewUserDto;
+import br.com.pablohcarmo.sonarfy.controllers.AuthController;
 import br.com.pablohcarmo.sonarfy.entities.Permission;
 import br.com.pablohcarmo.sonarfy.entities.User;
 import br.com.pablohcarmo.sonarfy.events.ActivationEmailListener;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.*;
@@ -29,6 +31,8 @@ import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.http.MediaType;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -42,6 +46,8 @@ import java.util.Map;
 import java.util.concurrent.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
  * Real Spring proxies, JPA and database transactions; email rendering and transport are mocked.
@@ -382,5 +388,55 @@ class EmailReservationIntegrationTest {
         dto.setPassword("TestPassword123!");
         dto.setBirthDate(LocalDate.now().minusYears(20));
         return dto;
+    }
+
+    @ParameterizedTest
+    @CsvSource({"TestPassword123!,1", "a,72", "é,36"})
+    void registeredUserCanLoginAfterEmailConfirmationWithoutDatabaseUpdates(String character, int count) throws Exception {
+        String password = character.repeat(count);
+        var mvc = MockMvcBuilders.standaloneSetup(new AuthController(userService, jwt, authEmails,
+                new AuthService(users, new BCryptPasswordEncoder(4), jwt))).build();
+        mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
+                {"name":"New","surname":"Account","handle":"new-account",
+                 "email":"new@example.com","password":"%s",
+                 "city":"Brasilia","country":"Brasil","birthDate":"2000-01-01"}
+                """.formatted(password)))
+                .andExpect(status().isCreated());
+        User saved = users.findByEmailIgnoreCase("new@example.com").orElseThrow();
+        assertTrue(saved.isActive(), "JPA @PrePersist must activate new accounts");
+        assertFalse(saved.isVerified());
+        String login = "{\"login\":\"new@example.com\",\"password\":\"" + password + "\"}";
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content(login))
+                .andExpect(status().isUnauthorized());
+
+        var content = org.mockito.ArgumentCaptor.forClass(EmailContent.class);
+        verify(transport).sendHtmlEmail(eq(saved.getEmail()), anyString(), content.capture());
+        String confirmationToken = content.getValue().textBody().split("\\?token=")[1].split("\\s")[0];
+        when(templates.welcome(any(User.class), anyString()))
+                .thenReturn(new EmailContent("welcome", "welcome", Map.of()));
+        mvc.perform(get("/api/auth/verify").param("token", confirmationToken))
+                .andExpect(status().isOk());
+        assertTrue(users.findById(saved.getId()).orElseThrow().isEnabled());
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content(login))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andExpect(jsonPath("$.accessToken").isNotEmpty());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"a,73", "é,37"})
+    void registrationRejectsPasswordsOver72Utf8BytesWithoutCreatingAccount(String character, int count) throws Exception {
+        var mvc = MockMvcBuilders.standaloneSetup(new AuthController(userService, jwt, authEmails,
+                new AuthService(users, new BCryptPasswordEncoder(4), jwt))).build();
+        mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
+                {"name":"New","surname":"Account","handle":"new-account",
+                 "email":"new@example.com","password":"%s",
+                 "city":"Brasilia","country":"Brasil","birthDate":"2000-01-01"}
+                """.formatted(character.repeat(count))))
+                .andExpect(status().isBadRequest())
+                .andExpect(result -> assertEquals("Password must not exceed 72 bytes in UTF-8.",
+                        ((ResponseStatusException) result.getResolvedException()).getReason()));
+        assertEquals(0, users.count());
+        verifyNoInteractions(transport);
     }
 }

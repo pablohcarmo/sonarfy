@@ -4,6 +4,7 @@ import br.com.pablohcarmo.sonarfy.entities.User;
 import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import br.com.pablohcarmo.sonarfy.services.AuthEmailService;
+import br.com.pablohcarmo.sonarfy.services.AuthService;
 import br.com.pablohcarmo.sonarfy.services.EmailService;
 import br.com.pablohcarmo.sonarfy.services.EmailCooldownService;
 import br.com.pablohcarmo.sonarfy.services.EmailTemplateService;
@@ -75,7 +76,8 @@ class ForgotPasswordFlowTest {
 
         UserService userService = new UserService(userRepository, mock(PermissionRepository.class),
                 mock(PasswordEncoder.class), jwtService, authEmailService, mock(ApplicationEventPublisher.class));
-        AuthController controller = new AuthController(userService, jwtService, authEmailService);
+        AuthController controller = new AuthController(userService, jwtService, authEmailService,
+                mock(AuthService.class));
 
         validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();

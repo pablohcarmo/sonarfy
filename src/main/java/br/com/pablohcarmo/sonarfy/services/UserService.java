@@ -23,6 +23,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -93,12 +94,20 @@ public class UserService implements UserDetailsService {
             );
         }
 
+        String password = newUserDto.getPassword();
+        if (password.getBytes(StandardCharsets.UTF_8).length > 72) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Password must not exceed 72 bytes in UTF-8."
+            );
+        }
+
         User user = new User();
         user.setName(newUserDto.getName());
         user.setSurname(newUserDto.getSurname());
         user.setHandle(cleanHandle);
         user.setEmail(newUserDto.getEmail());
-        user.setPassword(passwordEncoder.encode(newUserDto.getPassword()));
+        user.setPassword(passwordEncoder.encode(password));
         user.setCity(newUserDto.getCity());
         user.setCountry(newUserDto.getCountry());
         user.setBirthDate(newUserDto.getBirthDate());
