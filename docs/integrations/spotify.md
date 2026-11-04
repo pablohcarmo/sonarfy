@@ -1,10 +1,11 @@
-# Spotify — preparação da autorização e troca de tokens
+# Spotify — autorização, callback e troca de tokens
 
 ## Estado atual
 
 O backend expõe a rota autenticada `POST /api/spotify/authorization`, monta a URL
-de autorização e prepara a troca de um código por tokens. O callback ainda não
-está implementado, portanto a conexão completa de contas permanece pendente.
+de autorização e recebe o retorno em `GET /api/spotify/callback`, que valida o
+state e troca o código por tokens. Os tokens ainda não são persistidos nem
+retornados ao navegador; a conexão permanente de contas permanece pendente.
 
 A rota exige `Authorization: Bearer <accessToken>`, não recebe `userId` e resolve
 o usuário pelo e-mail do `Principal`. Retorna HTTP 200 com
@@ -30,8 +31,46 @@ entre instâncias. O acesso ao mapa é sincronizado.
 
 O controller obtém o ID pela identidade autenticada; o service verifica se ele
 é positivo e controla os limites no mesmo método sincronizado.
-O callback deverá validar a expiração e consumir o state uma única vez, operações
-ainda não implementadas. Não registre o state ou a URL completa em logs.
+`consume(state)` remove a tentativa e verifica a validade, retornando o ID
+associado. State ausente, desconhecido, expirado ou já utilizado resulta em 400.
+A operação é sincronizada: duas chamadas não podem consumir o mesmo state com
+sucesso. No instante exato da expiração, a tentativa já é inválida. O consumo
+libera uma vaga no limite de tentativas pendentes do usuário.
+Não registre códigos, states, tokens ou a URL completa em logs.
+
+## Callback
+
+`GET /api/spotify/callback` recebe os parâmetros de query `state` e exatamente
+um resultado: `code` preenchido ou `error=access_denied`. Parâmetros ausentes,
+em branco ou contraditórios, sem um resultado válido, e erros desconhecidos
+retornam 400 antes de consumir o state.
+
+Somente o GET desse caminho é público; o redirecionamento do navegador não
+envia o Bearer do Sonarfy. A rota de início continua exigindo autenticação.
+O callback não recebe `userId` nem depende de `Principal`: a identidade vem
+do state registrado no início da autorização.
+
+`SpotifyCallbackService` consome o state, verifica se o usuário ainda existe,
+está ativo e com e-mail confirmado, trata a recusa e reutiliza
+`AuthSpotifyService.exchangeCode(code)` quando há autorização.
+
+| HTTP | Resultado |
+| --- | --- |
+| 204 | Troca concluída, sem corpo e com `Cache-Control: no-store` |
+| 400 | Parâmetros inválidos ou state ausente, desconhecido, expirado ou consumido |
+| 403 | Recusa do usuário ou conta excluída, inativa ou não verificada |
+| 502 | Spotify rejeitou a solicitação de troca (`REJECTED`) |
+| 503 | Troca indisponível (`UNAVAILABLE`) |
+| 504 | Timeout na troca (`TIMEOUT`) |
+
+O state é consumido antes da verificação do usuário e da troca de tokens,
+inclusive no caso de recusa. Falhas posteriores não restauram a tentativa:
+é necessário iniciar outra autorização. Não há repetição automática da troca.
+Uma rejeição do Spotify também pode indicar configuração incorreta do backend.
+
+O 204 não carrega uma página nova no navegador. Ele confirma a troca, mas
+não representa uma conta conectada permanentemente: os tokens são descartados
+nesta entrega. Persistência e redirecionamento para o frontend ficam para depois.
 
 ## Configuração
 
@@ -44,8 +83,9 @@ Defina estas variáveis de ambiente na configuração de execução da aplicaç�
 | `SPOTIFY_CLIENT_SECRET` | Segredo do aplicativo, exclusivo do backend |
 | `SPOTIFY_REDIRECT_URI` | Endereço de callback cadastrado no painel do Spotify |
 
-Exemplo de URI local: `http://127.0.0.1:8081/api/spotify/callback`.
-Esse exemplo não cria a rota; ela será implementada em uma próxima entrega.
+Exemplo de URI local: `http://127.0.0.1:8080/api/spotify/callback`.
+Ajuste a porta à aplicação e cadastre exatamente a mesma URI no painel do Spotify.
+Inicie o backend antes de gerar a autorização; reiniciá-lo perde o state em memória.
 Não inclua credenciais reais ou tokens na documentação, no Git ou nos logs.
 
 As propriedades são obrigatórias na execução. O construtor do service rejeita
@@ -66,7 +106,7 @@ O Spotify verifica as credenciais e a correspondência da URI com seu cadastro.
 
 O formulário contém `grant_type=authorization_code`, `code` e `redirect_uri`.
 Client ID e Secret são enviados no cabeçalho de autenticação Basic, sob HTTPS.
-Não há endpoint público funcional do Sonarfy para essa troca nesta fase.
+A troca é executada pelo callback após a validação do state e do usuário.
 
 Código nulo ou em branco gera `ResponseStatusException` com status 400 antes
 da chamada ao client. O service traduz falhas do Feign para `SpotifyIntegrationException`:
@@ -78,7 +118,7 @@ de status de erro HTTP; não há reenvio automático do código.
 As mensagens são fixas e não carregam a exceção externa como causa, corpo ou
 credenciais. Rejeição não significa necessariamente código expirado ou inválido.
 O client mantém as exceções do Feign; a tradução ocorre apenas no service.
-O mapeamento dessas categorias para respostas HTTP será definido com o callback.
+O callback traduz essas categorias para os status HTTP descritos acima.
 
 `SpotifyTokenClientConfig` define 5 segundos para estabelecer a conexão e
 5 segundos para leitura da resposta, exclusivamente neste client. A configuração
@@ -119,16 +159,31 @@ Spring sem bean `Clock`. A expiração é testada com relógio controlado, sem e
 simulado, para verificar 401, resposta com URL e `no-store`, vínculo do state à
 identidade autenticada mesmo com `userId` enviado pelo cliente, 429 na quarta
 tentativa e independência entre usuários. O teste do state verifica também a
-liberação do limite por usuário após expiração.
+liberação do limite por usuário após expiração, consumo único, preservação de
+outras tentativas e consumo concorrente. Os testes HTTP do controller incluem
+callback sem Bearer, 204 sem corpo e com `no-store`, recusa, reutilização,
+parâmetros inválidos, falhas 502/503/504 e proteção dos demais métodos e rotas.
+Nesses testes, repositório e troca de tokens são simulados.
+
+`SpotifyCallbackServiceTest` verifica o usuário vinculado ao state, entradas
+inválidas sem consumo, usuário excluído/inativo/não verificado, recusa e tradução
+das falhas. O state é real; banco e troca de tokens são simulados. Após sucesso,
+recusa ou falha posterior ao consumo, outra chamada com o mesmo state é rejeitada.
 
 Os relatórios da execução ficam em `target/surefire-reports`; registre o resultado
 correspondente à versão entregue na descrição do PR e consulte também a CI.
-Os testes locais não comprovam autenticação com uma conta real nem o funcionamento
-do fluxo completo de conexão.
+Validação desta entrega: `344` testes automatizados passaram, sem falhas.
+Na aplicação local em execução, três verificações pelo Postman CLI confirmaram
+400 sem parâmetros, 400 com state desconhecido e 401 no início sem Bearer.
+O teste manual de recusa retornou 403 e, na repetição, 400.
+O relatório de rede do navegador confirmou duas autorizações com Spotify real,
+ambas com callback 204, corpo vazio e `Cache-Control: no-store`.
+Essas evidências não validam persistência, renovação de tokens ou o fluxo completo
+de conexão permanente, funcionalidades ainda não implementadas.
 
 ## Próximas entregas
 
-- Callback com validação e consumo de `state` e integração do frontend à rota de início.
+- Integração do frontend à rota de início e apresentação do resultado do callback.
 - Associação dos tokens ao usuário do Sonarfy, armazenamento, renovação
   e desconexão da conta.
 - Consulta de álbuns e artistas em PR separado.
