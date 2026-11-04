@@ -8,6 +8,8 @@ import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -80,8 +82,22 @@ class SpotifyAuthorizationStateServiceTest {
     }
 
     @Test
+    void shouldLimitEachUserAndAllowNewAttemptsAfterExpiration() {
+        for (int i = 0; i < 3; i++) service.create(42L);
+
+        var exception = assertThrows(ResponseStatusException.class, () -> service.create(42L));
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, exception.getStatusCode());
+        assertEquals(3, pending().size());
+        assertDoesNotThrow(() -> service.create(43L));
+
+        when(clock.instant()).thenReturn(NOW.plusSeconds(300));
+        assertDoesNotThrow(() -> service.create(42L));
+        assertEquals(1, pending().size());
+    }
+
+    @Test
     void shouldRejectAtCapacityAndAcceptAfterExpiration() {
-        for (int i = 0; i < 1000; i++) service.create(42L);
+        for (long id = 1; id <= 1000; id++) service.create(id);
 
         assertThrows(IllegalStateException.class, () -> service.create(43L));
         assertEquals(1000, pending().size());
