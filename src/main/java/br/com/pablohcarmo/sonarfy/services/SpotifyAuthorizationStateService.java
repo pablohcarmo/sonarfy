@@ -91,8 +91,33 @@ public class SpotifyAuthorizationStateService {
                 new PendingAuthorization(userId, now.plus(VALIDITY))
         );
 
-        // O futuro callback deverá validar e consumir o state uma única vez.
+        // O callback valida e consome este state uma única vez.
         return state;
+    }
+
+    // Sincroniza o consumo com a criação e com outras chamadas de consumo.
+    public synchronized Long consume(String state) {
+        // Sem state, não conseguimos identificar a tentativa de autorização.
+        if (state == null || state.isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Invalid or expired Spotify authorization state."
+            );
+        }
+
+        // Busca e remove a tentativa na mesma operação, uma segunda chamada com este state não encontrará mais o registro.
+        PendingAuthorization authorization = pending.remove(state);
+
+        // No instante exato da expiração, a tentativa já é inválida
+        if (authorization == null || !authorization.expiresAt().isAfter(clock.instant())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Invalid or expired Spotify authorization state."
+            );
+        }
+
+        // Recupera a identidade registrada no início da autorização, o ID não vem dos parâmetros enviados ao callback.
+        return authorization.userId();
     }
 
     // Dados imutáveis da tentativa pendente.
