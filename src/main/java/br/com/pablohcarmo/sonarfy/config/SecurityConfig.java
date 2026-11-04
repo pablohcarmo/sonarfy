@@ -62,7 +62,8 @@ public class SecurityConfig {
 
                     req.requestMatchers(
                             HttpMethod.GET,
-                            "/api/auth/verify"
+                            "/api/auth/verify",
+                            "/api/spotify/callback"
                     ).permitAll();
 
                     // O controller exige o token de cadastro nesta rota.

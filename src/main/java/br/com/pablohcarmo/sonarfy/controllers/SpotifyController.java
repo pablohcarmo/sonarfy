@@ -4,12 +4,11 @@ import br.com.pablohcarmo.sonarfy.dto.SpotifyAuthorizationResponseDto;
 import br.com.pablohcarmo.sonarfy.entities.User;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import br.com.pablohcarmo.sonarfy.services.SpotifyAuthorizationService;
+import br.com.pablohcarmo.sonarfy.services.SpotifyCallbackService;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.net.URI;
@@ -21,10 +20,12 @@ public class SpotifyController {
 
     private final UserRepository userRepository;
     private final SpotifyAuthorizationService spotifyAuthorizationService;
+    private final SpotifyCallbackService spotifyCallbackService;
 
-    public SpotifyController(UserRepository userRepository, SpotifyAuthorizationService spotifyAuthorizationService) {
+    public SpotifyController(UserRepository userRepository, SpotifyAuthorizationService spotifyAuthorizationService, SpotifyCallbackService spotifyCallbackService) {
         this.userRepository = userRepository;
         this.spotifyAuthorizationService = spotifyAuthorizationService;
+        this.spotifyCallbackService = spotifyCallbackService;
     }
 
     @PostMapping("/authorization")
@@ -45,5 +46,21 @@ public class SpotifyController {
                 .body(new SpotifyAuthorizationResponseDto(
                         authorizationUrl.toString()
                 ));
+    }
+
+
+    @GetMapping("/callback")
+    public ResponseEntity<Void> callback(
+            @RequestParam(required = false) String code,
+            @RequestParam(required = false) String state,
+            @RequestParam(required = false) String error
+    ) {
+        // Delega a validação, o consumo do state e a troca do código
+        spotifyCallbackService.handleCallback(code, state, error);
+
+        // Confirma a conclusão sem expor tokens nem armazenar a resposta em cache.
+        return ResponseEntity.noContent()
+                .cacheControl(CacheControl.noStore())
+                .build();
     }
 }
