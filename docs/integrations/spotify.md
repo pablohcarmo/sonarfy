@@ -2,9 +2,16 @@
 
 ## Estado atual
 
-O backend monta a URL de autorização e prepara a troca de um código por tokens
-por meio de `POST https://accounts.spotify.com/api/token`. Ainda não é possível
-conectar contas pelo Sonarfy: a rota de início e o callback não estão implementados.
+O backend expõe a rota autenticada `POST /api/spotify/authorization`, monta a URL
+de autorização e prepara a troca de um código por tokens. O callback ainda não
+está implementado, portanto a conexão completa de contas permanece pendente.
+
+A rota exige `Authorization: Bearer <accessToken>`, não recebe `userId` e resolve
+o usuário pelo e-mail do `Principal`. Retorna HTTP 200 com
+`{"authorizationUrl":"https://accounts.spotify.com/authorize?..."}` e
+`Cache-Control: no-store`. O frontend deve abrir essa URL. Credenciais ausentes
+ou inválidas retornam 401; a quarta tentativa pendente do mesmo usuário retorna
+429. A rota não faz chamadas HTTP ao Spotify.
 
 ## Preparação da autorização
 
@@ -15,14 +22,14 @@ parâmetros. Não envia requisição HTTP nem inclui o Client Secret na URL.
 
 `SpotifyAuthorizationStateService` gera states com 32 bytes de `SecureRandom`
 e Base64 URL-safe sem padding. Guarda o vínculo com o usuário e uma expiração
-de cinco minutos em memória, com limite de 1.000 tentativas por instância.
+de cinco minutos em memória, com limite de três tentativas por usuário e
+1.000 tentativas por instância.
 Registros vencidos são removidos ao criar uma nova tentativa; não há limpeza agendada.
 Reiniciar a aplicação perde as tentativas e o armazenamento não é compartilhado
 entre instâncias. O acesso ao mapa é sincronizado.
 
-O ID deverá vir da identidade autenticada quando a rota for implementada;
-o service atual só verifica se ele é positivo, sem consultar usuário ou autenticação.
-A exposição da rota depende da [issue #22](https://github.com/pablohcarmo/sonarfy/issues/22).
+O controller obtém o ID pela identidade autenticada; o service verifica se ele
+é positivo e controla os limites no mesmo método sincronizado.
 O callback deverá validar a expiração e consumir o state uma única vez, operações
 ainda não implementadas. Não registre o state ou a URL completa em logs.
 
@@ -108,6 +115,12 @@ Esses testes usam dados fictícios e não exigem credenciais do Spotify.
 de states distintos, limite de capacidade, limpeza no vencimento e inicialização
 Spring sem bean `Clock`. A expiração é testada com relógio controlado, sem espera real.
 
+`SpotifyControllerTest` usa a cadeia Bearer e os serviços reais, com repositório
+simulado, para verificar 401, resposta com URL e `no-store`, vínculo do state à
+identidade autenticada mesmo com `userId` enviado pelo cliente, 429 na quarta
+tentativa e independência entre usuários. O teste do state verifica também a
+liberação do limite por usuário após expiração.
+
 Os relatórios da execução ficam em `target/surefire-reports`; registre o resultado
 correspondente à versão entregue na descrição do PR e consulte também a CI.
 Os testes locais não comprovam autenticação com uma conta real nem o funcionamento
@@ -115,7 +128,7 @@ do fluxo completo de conexão.
 
 ## Próximas entregas
 
-- Rota autenticada de início após a #22, redirecionamento e callback com validação e consumo de `state`.
+- Callback com validação e consumo de `state` e integração do frontend à rota de início.
 - Associação dos tokens ao usuário do Sonarfy, armazenamento, renovação
   e desconexão da conta.
 - Consulta de álbuns e artistas em PR separado.

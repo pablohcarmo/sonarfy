@@ -1,6 +1,8 @@
 package br.com.pablohcarmo.sonarfy.services;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -15,6 +17,7 @@ public class SpotifyAuthorizationStateService {
 
     private static final Duration VALIDITY = Duration.ofMinutes(5);
     private static final int MAX_PENDING_STATES = 1000;
+    private static final int MAX_PENDING_STATES_PER_USER = 3;
 
     // Gera states imprevisíveis.
     private final SecureRandom random = new SecureRandom();
@@ -46,6 +49,20 @@ public class SpotifyAuthorizationStateService {
         pending.entrySet().removeIf(
                 entry -> !entry.getValue().expiresAt().isAfter(now)
         );
+
+        // Conta somente as tentativas ainda válidas do usuário.
+        long userPendingStates = pending.values().stream()
+                .filter(pendingAuthorization -> pendingAuthorization.userId().equals(userId))
+                .count();
+
+        // Impede que o usuário acumule mais de três autorizações pendentes.
+        // A exceção encerra o método antes de gerar ou armazenar outro state.
+        if(userPendingStates >= MAX_PENDING_STATES_PER_USER) {
+            throw new ResponseStatusException(
+                    HttpStatus.TOO_MANY_REQUESTS,
+                    "Too many pending Spotify authorizations for this user."
+            );
+        }
 
         // Limita o número de tentativas em memória.
         if (pending.size() >= MAX_PENDING_STATES) {
