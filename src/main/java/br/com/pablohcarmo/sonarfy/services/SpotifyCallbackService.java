@@ -61,8 +61,23 @@ public class SpotifyCallbackService {
         }
 
         try {
-            // Reutiliza a troca já implementada.
-            authSpotifyService.exchangeCode(code);
+            // Guarda os dados devolvidos pela troca do código.
+            var response = authSpotifyService.exchangeCode(code);
+
+            // Uma resposta HTTP de sucesso do Spotify ainda pode estar incompleta,
+            // só consideramos a troca concluída se os campos essenciais forem válidos.
+            if (response == null
+                    || response.accessToken() == null
+                    || response.accessToken().isBlank()
+                    || !"Bearer".equalsIgnoreCase(response.tokenType())
+                    || response.expiresIn() == null
+                    || response.expiresIn() <= 0) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_GATEWAY,
+                        "Spotify returned an invalid token response."
+                );
+            }
+
         } catch (SpotifyIntegrationException exception) {
             // Traduz as categorias do serviço para respostas HTTP.
             HttpStatus status = switch (exception.getCategory()) {

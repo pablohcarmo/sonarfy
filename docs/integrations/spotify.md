@@ -59,7 +59,7 @@ está ativo e com e-mail confirmado, trata a recusa e reutiliza
 | 204 | Troca concluída, sem corpo e com `Cache-Control: no-store` |
 | 400 | Parâmetros inválidos ou state ausente, desconhecido, expirado ou consumido |
 | 403 | Recusa do usuário ou conta excluída, inativa ou não verificada |
-| 502 | Spotify rejeitou a solicitação de troca (`REJECTED`) |
+| 502 | Spotify rejeitou a troca (`REJECTED`) ou retornou dados de tokens inválidos |
 | 503 | Troca indisponível (`UNAVAILABLE`) |
 | 504 | Timeout na troca (`TIMEOUT`) |
 
@@ -67,6 +67,11 @@ O state é consumido antes da verificação do usuário e da troca de tokens,
 inclusive no caso de recusa. Falhas posteriores não restauram a tentativa:
 é necessário iniciar outra autorização. Não há repetição automática da troca.
 Uma rejeição do Spotify também pode indicar configuração incorreta do backend.
+Mesmo uma resposta HTTP de sucesso precisa conter um DTO não nulo,
+`access_token` preenchido, `token_type=Bearer` (sem distinção de maiúsculas) e
+`expires_in` positivo. Dados inválidos retornam 502 com mensagem fixa, sem
+expor tokens e sem restaurar o state. Esta validação não exige `refresh_token`
+ou `scope` e não comprova a validade do token em chamadas de catálogo.
 
 O 204 não carrega uma página nova no navegador. Ele confirma a troca, mas
 não representa uma conta conectada permanentemente: os tokens são descartados
@@ -169,10 +174,12 @@ Nesses testes, repositório e troca de tokens são simulados.
 inválidas sem consumo, usuário excluído/inativo/não verificado, recusa e tradução
 das falhas. O state é real; banco e troca de tokens são simulados. Após sucesso,
 recusa ou falha posterior ao consumo, outra chamada com o mesmo state é rejeitada.
+Os testes de regressão incluem resposta nula, campos essenciais ausentes ou
+inválidos, mensagem fixa de erro e retorno HTTP 502 sem reutilização do state.
 
 Os relatórios da execução ficam em `target/surefire-reports`; registre o resultado
 correspondente à versão entregue na descrição do PR e consulte também a CI.
-Validação desta entrega: `344` testes automatizados passaram, sem falhas.
+Validação desta entrega: `357` testes automatizados passaram, sem falhas.
 Na aplicação local em execução, três verificações pelo Postman CLI confirmaram
 400 sem parâmetros, 400 com state desconhecido e 401 no início sem Bearer.
 O teste manual de recusa retornou 403 e, na repetição, 400.

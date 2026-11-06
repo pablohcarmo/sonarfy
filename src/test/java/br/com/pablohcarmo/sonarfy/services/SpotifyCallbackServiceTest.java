@@ -128,6 +128,46 @@ class SpotifyCallbackServiceTest {
         verifyNoMoreInteractions(users, tokens);
     }
 
+    @ParameterizedTest
+    @NullSource
+    @MethodSource("invalidTokenResponses")
+    void shouldRejectMalformedTokensWithoutAllowingStateReuse(SpotifyTokenResponseDto response) {
+        when(users.findById(42L)).thenReturn(Optional.of(user));
+        when(tokens.exchangeCode("test-code")).thenReturn(response);
+
+        var exception = assertStatus("test-code", state, null, HttpStatus.BAD_GATEWAY);
+        assertEquals("Spotify returned an invalid token response.", exception.getReason());
+        assertNull(exception.getCause());
+        assertStatus("test-code", state, null, HttpStatus.BAD_REQUEST);
+        verify(users, times(1)).findById(42L);
+        verify(tokens, times(1)).exchangeCode("test-code");
+        verifyNoMoreInteractions(users, tokens);
+    }
+
+    static Stream<SpotifyTokenResponseDto> invalidTokenResponses() {
+        return Stream.of(
+                new SpotifyTokenResponseDto(null, "Bearer", 3600L, "private-refresh", null),
+                new SpotifyTokenResponseDto("", "Bearer", 3600L, null, null),
+                new SpotifyTokenResponseDto(" \t", "Bearer", 3600L, null, null),
+                new SpotifyTokenResponseDto("private-access", null, 3600L, null, null),
+                new SpotifyTokenResponseDto("private-access", "", 3600L, null, null),
+                new SpotifyTokenResponseDto("private-access", " ", 3600L, null, null),
+                new SpotifyTokenResponseDto("private-access", "Basic", 3600L, null, null),
+                new SpotifyTokenResponseDto("private-access", "Bearer", null, null, null),
+                new SpotifyTokenResponseDto("private-access", "Bearer", 0L, null, null),
+                new SpotifyTokenResponseDto("private-access", "Bearer", -1L, null, null));
+    }
+
+    @Test
+    void shouldAcceptBearerIgnoringCaseWithoutRequiringRefreshOrScope() {
+        when(users.findById(42L)).thenReturn(Optional.of(user));
+        when(tokens.exchangeCode("test-code")).thenReturn(
+                new SpotifyTokenResponseDto("test-access", "bearer", 1L, null, null));
+
+        assertDoesNotThrow(() -> service.handleCallback("test-code", state, null));
+        verify(tokens).exchangeCode("test-code");
+    }
+
     private ResponseStatusException assertStatus(String code, String callbackState, String error, HttpStatus expected) {
         var exception = assertThrows(ResponseStatusException.class,
                 () -> service.handleCallback(code, callbackState, error));

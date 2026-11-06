@@ -217,6 +217,25 @@ class SpotifyControllerTest {
         assertTrue(pending().isEmpty());
     }
 
+    @Test
+    void shouldReturn502ForIncompleteTokenResponseAndRejectReplay() throws Exception {
+        String state = states.create(42L);
+        when(users.findById(42L)).thenReturn(Optional.of(user));
+        when(tokens.exchangeCode("test-code")).thenReturn(
+                new SpotifyTokenResponseDto(null, "Bearer", 3600L, "private-refresh", null));
+
+        var result = mvc.perform(get("/api/spotify/callback").param("code", "test-code").param("state", state))
+                .andExpect(status().isBadGateway()).andReturn();
+        var exception = assertInstanceOf(org.springframework.web.server.ResponseStatusException.class,
+                result.getResolvedException());
+        assertEquals("Spotify returned an invalid token response.", exception.getReason());
+        assertFalse(result.getResponse().getContentAsString().contains("private-refresh"));
+        mvc.perform(get("/api/spotify/callback").param("code", "test-code").param("state", state))
+                .andExpect(status().isBadRequest());
+        verify(tokens, times(1)).exchangeCode("test-code");
+        assertTrue(pending().isEmpty());
+    }
+
     private Map<?, ?> pending() {
         // Inspeciona o state sem criar uma operação pública de consulta ou consumo.
         return assertInstanceOf(Map.class, ReflectionTestUtils.getField(states, "pending"));
