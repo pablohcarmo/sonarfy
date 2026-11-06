@@ -77,7 +77,7 @@ public class SpotifyCallbackService {
                     || !"Bearer".equalsIgnoreCase(response.tokenType())
                     || response.expiresIn() == null
                     || response.expiresIn() <= 0
-                    || response.expiresIn() > 315_537_897_599L // Aproximadamente 10 mil anos
+                    || response.expiresIn() > 3600L
             ) {
                 throw new ResponseStatusException(
                         HttpStatus.BAD_GATEWAY,

@@ -69,7 +69,12 @@ inclusive no caso de recusa. Falhas posteriores não restauram a tentativa:
 Uma rejeição do Spotify também pode indicar configuração incorreta do backend.
 Mesmo uma resposta HTTP de sucesso precisa conter um DTO não nulo,
 `access_token` preenchido, `token_type=Bearer` (sem distinção de maiúsculas) e
-`expires_in` positivo. Dados inválidos retornam 502 com mensagem fixa, sem
+`expires_in` entre 1 e 3.600 segundos, inclusive. Esse limite corresponde à
+validade usual de uma hora do access token; não representa a expiração da
+conexão nem do refresh token. Valores acima de uma hora são tratados como
+resposta inválida, mesmo que possam ser representados como data.
+Dados inválidos retornam 502 com a mensagem fixa
+`Spotify returned an invalid token response.`, sem
 expor tokens e sem restaurar o state. O refresh token é obrigatório para persistir
 a conexão; o escopo pode estar ausente e a validade do token ainda depende de
 uma chamada autorizada ao Spotify.
@@ -178,7 +183,9 @@ inválidas sem consumo, usuário excluído/inativo/não verificado, recusa e tra
 das falhas. O state é real; banco e troca de tokens são simulados. Após sucesso,
 recusa ou falha posterior ao consumo, outra chamada com o mesmo state é rejeitada.
 Os testes de regressão incluem resposta nula, campos essenciais ausentes ou
-inválidos, mensagem fixa de erro e retorno HTTP 502 sem reutilização do state.
+inválidos, mensagem fixa de erro e retorno HTTP 502 sem reutilização do state
+nem chamada à persistência. Para `expires_in`, aceitam 1 e 3.600 segundos e
+rejeitam nulo, zero, negativo e valores acima de 3.600 segundos.
 
 Os relatórios da execução ficam em `target/surefire-reports`; registre o resultado
 correspondente à versão entregue na descrição do PR e consulte também a CI.
