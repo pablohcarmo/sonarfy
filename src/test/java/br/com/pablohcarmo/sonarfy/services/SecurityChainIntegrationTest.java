@@ -77,6 +77,7 @@ class SecurityChainIntegrationTest {
         user.setHandle("security-test");
         user.setName("Security");
         user.setSurname("Test");
+        user.setDisplayName("Security Test");
         user.setEmail("user@example.com");
         user.setActive(true);
         user.setVerified(true);

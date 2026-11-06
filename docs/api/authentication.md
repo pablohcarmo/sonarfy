@@ -27,6 +27,11 @@ Ambos os campos são obrigatórios e não podem ser vazios ou conter somente esp
 O login exige que a conta esteja ativa e que o e-mail tenha sido confirmado.
 No cadastro persistido, `User.onCreate()` define `active=true` por `@PrePersist`.
 A confirmação altera `verified`; não é necessário atualizar o banco manualmente.
+O cadastro também preenche `displayName` com nome e sobrenome, removendo espaços
+nas extremidades de cada parte e limitando o resultado aos primeiros 60 caracteres
+Unicode. Esse valor é persistido em `users.display_name`, obrigatório no banco.
+O campo é gerado pelo backend nesta etapa; não foi acrescentado aos DTOs de entrada
+ou resposta. Veja a [documentação de persistência](../persistence.md).
 Para respeitar o limite do BCrypt, o serviço recusa senhas acima de 72 bytes em
 UTF-8 com o mesmo `401` genérico, sem truncá-las para autenticar o usuário.
 O cadastro também rejeita senhas acima desse limite com `400`, antes de criar

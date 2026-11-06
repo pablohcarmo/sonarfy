@@ -131,9 +131,12 @@ class EmailReservationIntegrationTest {
 
         User reloaded = users.findById(user.getId()).orElseThrow();
         assertEquals("Nome de exibição", reloaded.getDisplayName());
-        reloaded.setDisplayName("Outro nome");
+        reloaded.setDisplayName("A".repeat(60));
         users.saveAndFlush(reloaded);
-        assertEquals("Outro nome", users.findById(user.getId()).orElseThrow().getDisplayName());
+        assertEquals("A".repeat(60), users.findById(user.getId()).orElseThrow().getDisplayName());
+        reloaded.setDisplayName("A".repeat(61));
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                () -> users.saveAndFlush(reloaded));
     }
 
     @Test
@@ -384,6 +387,7 @@ class EmailReservationIntegrationTest {
         user.setPermission(permission);
         user.setName("Test");
         user.setSurname("Account");
+        user.setDisplayName("Test Account");
         user.setHandle("test-account");
         user.setEmail("user@example.com");
         user.setVerified(verified);

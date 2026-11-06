@@ -29,7 +29,7 @@ public class User implements UserDetails {
     @Column (name = "surname")
     private String surname;
 
-    @Column (name = "display_name")
+    @Column (name = "display_name", length = 60, nullable = false)
     private String displayName;
 
     @Column (name = "handle", unique = true, nullable = false)

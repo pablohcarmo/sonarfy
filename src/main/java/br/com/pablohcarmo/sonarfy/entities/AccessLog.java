@@ -5,7 +5,7 @@ import jakarta.persistence.*;
 import java.time.OffsetDateTime;
 
 @Entity
-@Table (name = "AccessLogs")
+@Table (name = "access_logs")
 public class AccessLog {
     @Id
     @GeneratedValue (strategy = GenerationType.IDENTITY)
@@ -19,7 +19,7 @@ public class AccessLog {
     @Column (name = "ip_address")
     private String ipAddress;
 
-    @Column (name = "date_time_access")
+    @Column (name = "logged_at")
     private OffsetDateTime dateTimeAccess;
 
     public AccessLog() {

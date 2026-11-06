@@ -1,0 +1,65 @@
+# Persistência das classes existentes
+
+`User` mantém uma associação com `Permission`, acessada por `getPermission()` e
+`setPermission()`. Uma permissão pode ser compartilhada por vários usuários; não
+há coleção inversa em `Permission`. Os campos técnicos de auditoria, senha e
+reserva de e-mail foram preservados.
+
+`User.displayName` corresponde a `users.display_name VARCHAR(60) NOT NULL`.
+No cadastro, o serviço combina nome e sobrenome e limita o nome de exibição a
+60 caracteres Unicode, sem dividir pares substitutos. Os nomes originais são
+preservados. A edição e a exposição desse campo por DTOs ficam para outra entrega.
+
+`AccessLog` mapeia explicitamente `access_logs`; seu atributo `dateTimeAccess`
+corresponde a `logged_at`. O construtor recebe usuário e IP, e `@PrePersist`
+preenche a data. O teste verifica a persistência do log pelo repositório; não
+estabelece que o login registre acessos automaticamente.
+
+## Banco inicializado pelo SQL local
+
+A infraestrutura em `src/main/infra`, incluindo `tables.sql`, é local e ignorada
+pelo Git. O fluxo utilizado nesta entrega recria o banco e importa esse SQL.
+Não há script incremental de atualização nesta branch.
+
+Recriar o volume não executa um arquivo SQL automaticamente sem uma configuração
+de inicialização correspondente no contêiner. Importe o SQL antes de iniciar a
+aplicação. Com `ddl-auto=none`, o Hibernate não cria nem atualiza as tabelas.
+O schema precisa conter também a permissão `ROLE_USER` para o cadastro.
+
+## Testes contra o schema existente
+
+A suíte padrão (`.\mvnw.cmd test`) usa H2 isolado. Os testes convencionais de
+integração criam e removem tabelas e não devem receber a conexão de um banco
+que precise ser preservado.
+
+`ExistingSchemaIntegrationTest` é uma verificação separada, habilitada
+explicitamente, com geração de schema desativada. Ela usa os serviços, JPA e
+controllers via MockMvc, com e-mail simulado. Execute somente essa classe ao
+apontar para o banco da aplicação:
+
+```powershell
+$env:SONARFY_TEST_JDBC_URL = 'jdbc:postgresql://localhost:5433/sonarfy'
+$env:SONARFY_TEST_DB_USER = '<usuario-do-banco>'
+$env:SONARFY_TEST_DB_PASSWORD = '<senha-do-banco>'
+.\mvnw.cmd test '-Dtest=ExistingSchemaIntegrationTest' '-Dsonarfy.test.existing-schema=true'
+```
+
+O teste verifica cadastro com nome comum e nome completo acima de 60 caracteres,
+login recusado para conta não verificada, emissão de token após marcar a conta
+como verificada e persistência do log. A marcação de verificação é feita pelo
+próprio teste; esse cenário não cobre a confirmação por e-mail nem HTTP via rede.
+
+Cada cenário usa transação com rollback. Usuários e logs de teste não permanecem
+no banco, mas sequências de IDs podem avançar, conforme o comportamento do PostgreSQL.
+
+## Evidências de 06/11/2026
+
+- Suíte padrão: 358 testes aprovados e uma classe opcional ignorada, sem falhas
+  ou erros; `BUILD SUCCESS`.
+- PostgreSQL 17.9, banco `sonarfy` com o SQL importado: dois cenários de
+  `ExistingSchemaIntegrationTest` aprovados, sem falhas ou erros.
+- `UserServiceTest` reexecutado após ampliar as asserções: 31 testes aprovados.
+- Após os testes no PostgreSQL: zero usuários, zero logs e três permissões,
+  confirmando o rollback dos dados criados.
+
+Os relatórios locais ficam em `target/surefire-reports` e não são versionados.

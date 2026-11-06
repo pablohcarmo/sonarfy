@@ -123,6 +123,7 @@ class UserServiceTest {
         assertEquals(JwtService.PENDING_REGISTRATION_TTL_SECONDS, response.expiresInSeconds());
 
         verify(eventPublisher).publishEvent(new ActivationEmailRequested(10L));
+        verify(userRepository).save(argThat(user -> "Pablo Carmo".equals(user.getDisplayName())));
         verifyNoInteractions(authEmailService);
         verify(jwtService, times(1)).generateRegistrationToken("10");
     }
