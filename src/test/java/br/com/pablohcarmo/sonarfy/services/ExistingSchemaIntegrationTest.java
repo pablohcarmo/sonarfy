@@ -114,12 +114,15 @@ class ExistingSchemaIntegrationTest {
         assertEquals("user-library-read", saved.getScopes());
 
         spotifyConnectionService.connect(user.getId(), new SpotifyTokenResponseDto(
-                "access-two", "Bearer", 7200L, "refresh-two", "user-library-read user-read-email"));
+                "access-two", "Bearer", 3600L, "refresh-two", null));
         entityManager.flush();
         entityManager.clear();
         var reconnected = spotifyConnections.findByUserId(user.getId()).orElseThrow();
         assertEquals(connectionId, reconnected.getId());
         assertEquals(connectedAt, reconnected.getConnectedAt());
+        assertNull(reconnected.getScopes());
+        assertEquals(3600L, java.time.Duration.between(
+                reconnected.getUpdatedAt(), reconnected.getAccessTokenExpiresAt()).getSeconds());
         assertEquals("access-two", tokenEncryption.decrypt(reconnected.getAccessTokenEncrypted(), user.getId(), "access"));
         assertEquals("refresh-two", tokenEncryption.decrypt(reconnected.getRefreshTokenEncrypted(), user.getId(), "refresh"));
         assertEquals(1, spotifyConnections.countByUserId(user.getId()));

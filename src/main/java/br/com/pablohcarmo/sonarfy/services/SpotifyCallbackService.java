@@ -69,21 +69,7 @@ public class SpotifyCallbackService {
 
             // Uma resposta HTTP de sucesso do Spotify ainda pode estar incompleta,
             // só consideramos a troca concluída se os campos essenciais forem válidos.
-            if (response == null
-                    || response.accessToken() == null
-                    || response.accessToken().isBlank()
-                    || response.refreshToken() == null
-                    || response.refreshToken().isBlank()
-                    || !"Bearer".equalsIgnoreCase(response.tokenType())
-                    || response.expiresIn() == null
-                    || response.expiresIn() <= 0
-                    || response.expiresIn() > 3600L
-            ) {
-                throw new ResponseStatusException(
-                        HttpStatus.BAD_GATEWAY,
-                        "Spotify returned an invalid token response."
-                );
-            }
+            SpotifyTokenResponseValidator.validate(response);
 
             connectionService.connect(userId, response);
 

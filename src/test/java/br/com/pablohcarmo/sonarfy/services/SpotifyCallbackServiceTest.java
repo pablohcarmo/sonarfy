@@ -180,6 +180,24 @@ class SpotifyCallbackServiceTest {
                 new SpotifyTokenResponseDto("test-access", "bearer", expiresIn, "test-refresh", null));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"database", "encryption"})
+    void shouldNotRestoreStateOrRetryAfterPersistenceFailure(String scenario) {
+        var response = new SpotifyTokenResponseDto("test-access", "Bearer", 3600L, "test-refresh", null);
+        when(users.findById(42L)).thenReturn(Optional.of(user));
+        when(tokens.exchangeCode("test-code")).thenReturn(response);
+        RuntimeException failure = scenario.equals("database")
+                ? new org.springframework.dao.DataAccessResourceFailureException("Test database unavailable")
+                : new IllegalStateException("Cannot encrypt Spotify token.");
+        doThrow(failure).when(connections).connect(42L, response);
+
+        assertSame(failure, assertThrows(RuntimeException.class,
+                () -> service.handleCallback("test-code", state, null)));
+        assertStatus("test-code", state, null, HttpStatus.BAD_REQUEST);
+        verify(tokens, times(1)).exchangeCode("test-code");
+        verify(connections, times(1)).connect(42L, response);
+    }
+
     private ResponseStatusException assertStatus(String code, String callbackState, String error, HttpStatus expected) {
         var exception = assertThrows(ResponseStatusException.class,
                 () -> service.handleCallback(code, callbackState, error));

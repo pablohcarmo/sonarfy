@@ -27,9 +27,10 @@ public class SpotifyConnectionService {
         this.encryption = encryption;
     }
 
-    // O callback fornece o ID recuperado do state e os tokens já validados.
+    // O callback fornece o ID recuperado do state; chamadas diretas seguem o mesmo contrato.
     @Transactional
     public void connect(Long userId, SpotifyTokenResponseDto tokens) {
+        SpotifyTokenResponseValidator.validate(tokens);
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
         // Revalida se a conta está ativa e verificada após a troca dos tokens com o Spotify.

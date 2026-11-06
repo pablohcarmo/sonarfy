@@ -8,6 +8,20 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: sonarfy_ci
+          POSTGRES_USER: sonarfy_ci
+          POSTGRES_PASSWORD: isolated-ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sonarfy_ci -d sonarfy_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 21
@@ -22,3 +36,19 @@ jobs:
 
       - name: Execute automated tests
         run: ./mvnw test
+
+      - name: Validate versioned schema and Spotify migration in disposable PostgreSQL
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec -i "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 < src/main/infra/tables.sql
+          # Only this disposable CI database: simulate the schema before the Spotify table.
+          docker exec "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 -c 'DROP TABLE spotify_connection'
+          docker exec -i "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 < db/migrations/001_create_spotify_connection.sql
+
+      - name: Execute PostgreSQL persistence and concurrency tests
+        env:
+          SONARFY_TEST_JDBC_URL: jdbc:postgresql://localhost:5432/sonarfy_ci
+          SONARFY_TEST_DB_USER: sonarfy_ci
+          SONARFY_TEST_DB_PASSWORD: isolated-ci-password
+        run: ./mvnw test -Dtest=ExistingSchemaIntegrationTest -Dsonarfy.test.existing-schema=true

@@ -53,6 +53,14 @@ A suíte padrão (`.\mvnw.cmd test`) usa H2 isolado. Os testes convencionais de
 integração criam e removem tabelas e não devem receber a conexão de um banco
 que precise ser preservado.
 
+Na CI, o job `test` também inicia um serviço PostgreSQL 17 descartável, importa
+`src/main/infra/tables.sql`, remove somente a tabela Spotify vazia desse banco
+de teste e aplica `db/migrations/001_create_spotify_connection.sql`. Em seguida,
+executa explicitamente `ExistingSchemaIntegrationTest` com a propriedade opt-in
+habilitada. Falhas de SQL, persistência, reconexão ou concorrência falham o mesmo
+job da suíte padrão. Isso valida o rollout em teste; a migração de cada ambiente
+de deploy continua manual e deve preceder a nova versão da aplicação.
+
 `ExistingSchemaIntegrationTest` é uma verificação separada, habilitada
 explicitamente, com geração de schema desativada. Ela usa os serviços, JPA e
 controllers via MockMvc, com e-mail simulado. Execute somente essa classe ao
@@ -76,6 +84,12 @@ Cada cenário usa transação com rollback. Usuários e logs de teste não perma
 no banco, mas sequências de IDs podem avançar, conforme o comportamento do PostgreSQL.
 
 ## Evidências de 06/11/2026
+
+- Após os ajustes do review: suíte padrão com 387 testes, zero falhas/erros e
+  quatro itens opt-in ignorados. Em execução separada contra PostgreSQL 17
+  temporário, os cinco cenários de `ExistingSchemaIntegrationTest` passaram
+  após importar o schema e reaplicar a tabela Spotify pelo script incremental,
+  incluindo reconexão com escopos ausentes e concorrência.
 
 - Schema versionado e migração Spotify validados em PostgreSQL 17 temporário:
   importação completa em banco vazio e aplicação incremental em schema sem
