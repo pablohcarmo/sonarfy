@@ -52,7 +52,7 @@ do state registrado no início da autorização.
 
 `SpotifyCallbackService` consome o state, verifica se o usuário ainda existe,
 está ativo e com e-mail confirmado, trata a recusa e reutiliza
-`AuthSpotifyService.exchangeCode(code)` quando há autorização.
+`AuthSpotifyService.exchangeCode(code)` quando há autorização. O callback exige access token, refresh token, tipo Bearer e validade positiva. `SpotifyConnectionService` criptografa os tokens com AES-GCM e grava tipo, escopos e expiração em `Spotify_Connection`, vinculado ao usuário do state. Uma nova autorização atualiza a conexão existente e preserva `connected_at`.
 
 | HTTP | Resultado |
 | --- | --- |
@@ -70,12 +70,13 @@ Uma rejeição do Spotify também pode indicar configuração incorreta do backe
 Mesmo uma resposta HTTP de sucesso precisa conter um DTO não nulo,
 `access_token` preenchido, `token_type=Bearer` (sem distinção de maiúsculas) e
 `expires_in` positivo. Dados inválidos retornam 502 com mensagem fixa, sem
-expor tokens e sem restaurar o state. Esta validação não exige `refresh_token`
-ou `scope` e não comprova a validade do token em chamadas de catálogo.
+expor tokens e sem restaurar o state. O refresh token é obrigatório para persistir
+a conexão; o escopo pode estar ausente e a validade do token ainda depende de
+uma chamada autorizada ao Spotify.
 
-O 204 não carrega uma página nova no navegador. Ele confirma a troca, mas
-não representa uma conta conectada permanentemente: os tokens são descartados
-nesta entrega. Persistência e redirecionamento para o frontend ficam para depois.
+O 204 não carrega uma página nova no navegador. Ele confirma a troca e a
+gravação da conexão. Renovação, desconexão, sincronização de escutas e
+redirecionamento para o frontend ficam para outras entregas.
 
 ## Configuração
 
@@ -87,11 +88,13 @@ Defina estas variáveis de ambiente na configuração de execução da aplicaç�
 | `SPOTIFY_CLIENT_ID` | Identificador do aplicativo no Spotify Developer Dashboard |
 | `SPOTIFY_CLIENT_SECRET` | Segredo do aplicativo, exclusivo do backend |
 | `SPOTIFY_REDIRECT_URI` | Endereço de callback cadastrado no painel do Spotify |
+| `SPOTIFY_TOKEN_ENCRYPTION_KEY` | Chave Base64 aleatória de 32 bytes para AES-GCM |
 
 Exemplo de URI local: `http://127.0.0.1:8080/api/spotify/callback`.
 Ajuste a porta à aplicação e cadastre exatamente a mesma URI no painel do Spotify.
-Inicie o backend antes de gerar a autorização; reiniciá-lo perde o state em memória.
 Não inclua credenciais reais ou tokens na documentação, no Git ou nos logs.
+Configure `spotify_token_encryption_key=${SPOTIFY_TOKEN_ENCRYPTION_KEY}` em
+`application.properties`; mantenha o valor da chave somente no ambiente local.
 
 As propriedades são obrigatórias na execução. O construtor do service rejeita
 valores em branco e verifica a estrutura da URI: exige HTTPS, permitindo HTTP

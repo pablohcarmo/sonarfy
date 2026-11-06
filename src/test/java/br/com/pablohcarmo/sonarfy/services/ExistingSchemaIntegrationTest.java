@@ -3,6 +3,8 @@ package br.com.pablohcarmo.sonarfy.services;
 import br.com.pablohcarmo.sonarfy.controllers.AuthController;
 import br.com.pablohcarmo.sonarfy.entities.AccessLog;
 import br.com.pablohcarmo.sonarfy.entities.User;
+import br.com.pablohcarmo.sonarfy.dto.SpotifyTokenResponseDto;
+import br.com.pablohcarmo.sonarfy.repositories.SpotifyConnectionRepository;
 import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -15,10 +17,14 @@ import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -27,6 +33,8 @@ import javax.sql.DataSource;
 import java.util.Map;
 import java.util.UUID;
 import java.time.LocalDate;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -38,11 +46,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = {
         "app.frontend-url=http://localhost:3000",
         "api.security.token.secret=isolated-test-secret",
-        "spring.mail.username=noreply@example.com"
+        "spring.mail.username=noreply@example.com",
+        "spotify_token_encryption_key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 })
 @Transactional
 class ExistingSchemaIntegrationTest {
     @Configuration
+    @Import({SpotifyConnectionService.class, SpotifyTokenEncryptionService.class})
     static class Config extends EmailReservationIntegrationTest.Config {
         @Bean
         @Override
@@ -60,6 +70,10 @@ class ExistingSchemaIntegrationTest {
     @Autowired AuthEmailService emails;
     @Autowired PasswordEncoder encoder;
     @Autowired PermissionRepository permissions;
+    @Autowired SpotifyConnectionRepository spotifyConnections;
+    @Autowired SpotifyConnectionService spotifyConnectionService;
+    @Autowired SpotifyTokenEncryptionService tokenEncryption;
+    @Autowired PlatformTransactionManager transactionManager;
     @PersistenceContext EntityManager entityManager;
 
     @Test
@@ -75,6 +89,80 @@ class ExistingSchemaIntegrationTest {
         entityManager.clear();
 
         assertEquals("Nome escolhido", users.findById(user.getId()).orElseThrow().getDisplayName());
+    }
+
+    @Test
+    void spotifyConnectionPersistsEncryptedTokensAndReconnectUpdatesSingleRow() {
+        var permission = permissions.findByName("ROLE_USER").orElseThrow();
+        String handle = "sp" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        User user = new User(null, permission, "Spotify", "Check", "Spotify Check", handle,
+                handle + "@example.com", "test-hash", true, true, "Brasilia", "Brasil",
+                null, null, null, LocalDate.of(2000, 1, 1), null, null, null, null);
+        users.saveAndFlush(user);
+
+        spotifyConnectionService.connect(user.getId(), new SpotifyTokenResponseDto(
+                "access-one", "Bearer", 3600L, "refresh-one", "user-library-read"));
+        entityManager.flush();
+        entityManager.clear();
+        var saved = spotifyConnections.findByUserId(user.getId()).orElseThrow();
+        Long connectionId = saved.getId();
+        var connectedAt = saved.getConnectedAt();
+        assertNotEquals("access-one", saved.getAccessTokenEncrypted());
+        assertNotEquals("refresh-one", saved.getRefreshTokenEncrypted());
+        assertEquals("access-one", tokenEncryption.decrypt(saved.getAccessTokenEncrypted(), user.getId(), "access"));
+        assertEquals("refresh-one", tokenEncryption.decrypt(saved.getRefreshTokenEncrypted(), user.getId(), "refresh"));
+        assertEquals("user-library-read", saved.getScopes());
+
+        spotifyConnectionService.connect(user.getId(), new SpotifyTokenResponseDto(
+                "access-two", "Bearer", 7200L, "refresh-two", "user-library-read user-read-email"));
+        entityManager.flush();
+        entityManager.clear();
+        var reconnected = spotifyConnections.findByUserId(user.getId()).orElseThrow();
+        assertEquals(connectionId, reconnected.getId());
+        assertEquals(connectedAt, reconnected.getConnectedAt());
+        assertEquals("access-two", tokenEncryption.decrypt(reconnected.getAccessTokenEncrypted(), user.getId(), "access"));
+        assertEquals("refresh-two", tokenEncryption.decrypt(reconnected.getRefreshTokenEncrypted(), user.getId(), "refresh"));
+        assertEquals(1, spotifyConnections.countByUserId(user.getId()));
+    }
+
+    @Test
+    void concurrentSpotifyConnectionsForOneUserAreSerialized() throws Exception {
+        var permission = permissions.findByName("ROLE_USER").orElseThrow();
+        String handle = "sc" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        User user = new User(null, permission, "Spotify", "Race", "Spotify Race", handle,
+                handle + "@example.com", "test-hash", true, true, "Brasilia", "Brasil",
+                null, null, null, LocalDate.of(2000, 1, 1), null, null, null, null);
+        TransactionTemplate requiresNew = new TransactionTemplate(transactionManager);
+        requiresNew.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        Long userId = requiresNew.execute(status -> users.saveAndFlush(user).getId());
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            CountDownLatch ready = new CountDownLatch(2);
+            CountDownLatch start = new CountDownLatch(1);
+            var first = executor.submit(() -> connectConcurrently(requiresNew, userId, "access-a", ready, start));
+            var second = executor.submit(() -> connectConcurrently(requiresNew, userId, "access-b", ready, start));
+            ready.await();
+            start.countDown();
+            first.get();
+            second.get();
+            assertEquals(1L, requiresNew.execute(status -> spotifyConnections.countByUserId(userId)).longValue());
+        } finally {
+            requiresNew.executeWithoutResult(status -> users.deleteById(userId));
+        }
+    }
+
+    private void connectConcurrently(TransactionTemplate transaction, Long userId, String accessToken,
+                                     CountDownLatch ready, CountDownLatch start) {
+        ready.countDown();
+        try {
+            start.await();
+            transaction.executeWithoutResult(status -> spotifyConnectionService.connect(userId,
+                    new SpotifyTokenResponseDto(accessToken, "Bearer", 3600L,
+                            "refresh-" + accessToken, "user-library-read")));
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Concurrent connection test interrupted.");
+        }
     }
 
     @ParameterizedTest

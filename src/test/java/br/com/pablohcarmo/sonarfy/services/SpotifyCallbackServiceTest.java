@@ -30,6 +30,7 @@ class SpotifyCallbackServiceTest {
     private SpotifyAuthorizationStateService states;
     private UserRepository users;
     private AuthSpotifyService tokens;
+    private SpotifyConnectionService connections;
     private SpotifyCallbackService service;
     private User user;
     private String state;
@@ -40,7 +41,8 @@ class SpotifyCallbackServiceTest {
                 Clock.fixed(Instant.parse("2026-11-04T10:00:00Z"), ZoneOffset.UTC));
         users = mock(UserRepository.class);
         tokens = mock(AuthSpotifyService.class);
-        service = new SpotifyCallbackService(states, users, tokens);
+        connections = mock(SpotifyConnectionService.class);
+        service = new SpotifyCallbackService(states, users, tokens, connections);
         user = new User();
         user.setId(42L);
         user.setActive(true);
@@ -59,6 +61,8 @@ class SpotifyCallbackServiceTest {
         assertStatus("test-code", state, null, HttpStatus.BAD_REQUEST);
         verify(users, times(1)).findById(42L);
         verify(tokens, times(1)).exchangeCode("test-code");
+        verify(connections).connect(42L, new SpotifyTokenResponseDto("test-access", "Bearer", 3600L,
+                "test-refresh", "user-library-read"));
         verifyNoMoreInteractions(users, tokens);
     }
 
@@ -155,14 +159,15 @@ class SpotifyCallbackServiceTest {
                 new SpotifyTokenResponseDto("private-access", "Basic", 3600L, null, null),
                 new SpotifyTokenResponseDto("private-access", "Bearer", null, null, null),
                 new SpotifyTokenResponseDto("private-access", "Bearer", 0L, null, null),
-                new SpotifyTokenResponseDto("private-access", "Bearer", -1L, null, null));
+                new SpotifyTokenResponseDto("private-access", "Bearer", -1L, null, null),
+                new SpotifyTokenResponseDto("private-access", "Bearer", 3600L, "", null));
     }
 
     @Test
-    void shouldAcceptBearerIgnoringCaseWithoutRequiringRefreshOrScope() {
+    void shouldAcceptBearerIgnoringCaseAndOptionalScopeWhenRefreshTokenExists() {
         when(users.findById(42L)).thenReturn(Optional.of(user));
         when(tokens.exchangeCode("test-code")).thenReturn(
-                new SpotifyTokenResponseDto("test-access", "bearer", 1L, null, null));
+                new SpotifyTokenResponseDto("test-access", "bearer", 1L, "test-refresh", null));
 
         assertDoesNotThrow(() -> service.handleCallback("test-code", state, null));
         verify(tokens).exchangeCode("test-code");

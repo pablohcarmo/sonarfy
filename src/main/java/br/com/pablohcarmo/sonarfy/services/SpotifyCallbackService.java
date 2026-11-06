@@ -13,11 +13,14 @@ public class SpotifyCallbackService {
     private final SpotifyAuthorizationStateService stateService;
     private final UserRepository userRepository;
     private final AuthSpotifyService authSpotifyService;
+    private final SpotifyConnectionService connectionService;
 
-    public SpotifyCallbackService(SpotifyAuthorizationStateService stateService, UserRepository userRepository, AuthSpotifyService authSpotifyService) {
+    public SpotifyCallbackService(SpotifyAuthorizationStateService stateService, UserRepository userRepository,
+                                  AuthSpotifyService authSpotifyService, SpotifyConnectionService connectionService) {
         this.stateService = stateService;
         this.userRepository = userRepository;
         this.authSpotifyService = authSpotifyService;
+        this.connectionService = connectionService;
     }
 
     public void handleCallback(String code, String state, String error) {
@@ -69,14 +72,20 @@ public class SpotifyCallbackService {
             if (response == null
                     || response.accessToken() == null
                     || response.accessToken().isBlank()
+                    || response.refreshToken() == null
+                    || response.refreshToken().isBlank()
                     || !"Bearer".equalsIgnoreCase(response.tokenType())
                     || response.expiresIn() == null
-                    || response.expiresIn() <= 0) {
+                    || response.expiresIn() <= 0
+                    || response.expiresIn() > 315_537_897_599L // Aproximadamente 10 mil anos
+            ) {
                 throw new ResponseStatusException(
                         HttpStatus.BAD_GATEWAY,
                         "Spotify returned an invalid token response."
                 );
             }
+
+            connectionService.connect(userId, response);
 
         } catch (SpotifyIntegrationException exception) {
             // Traduz as categorias do serviço para respostas HTTP.

@@ -8,6 +8,7 @@ import br.com.pablohcarmo.sonarfy.services.JwtService;
 import br.com.pablohcarmo.sonarfy.services.SpotifyAuthorizationService;
 import br.com.pablohcarmo.sonarfy.services.SpotifyAuthorizationStateService;
 import br.com.pablohcarmo.sonarfy.services.SpotifyCallbackService;
+import br.com.pablohcarmo.sonarfy.services.SpotifyConnectionService;
 import br.com.pablohcarmo.sonarfy.services.AuthSpotifyService;
 import br.com.pablohcarmo.sonarfy.dto.SpotifyTokenResponseDto;
 import br.com.pablohcarmo.sonarfy.exceptions.SpotifyIntegrationException;
@@ -55,6 +56,7 @@ class SpotifyControllerTest {
     static class Config {
         @Bean UserRepository users() { return mock(UserRepository.class); }
         @Bean AuthSpotifyService tokens() { return mock(AuthSpotifyService.class); }
+        @Bean SpotifyConnectionService connections() { return mock(SpotifyConnectionService.class); }
     }
 
     @Autowired WebApplicationContext context;
