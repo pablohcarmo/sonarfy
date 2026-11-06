@@ -78,7 +78,7 @@ class SpotifyControllerTest {
         user.setVerified(true);
         Permission permission = new Permission();
         permission.setName("ROLE_USER");
-        user.setPermissionId(permission);
+        user.setPermission(permission);
         when(users.findWithPermissionById(42L)).thenReturn(Optional.of(user));
         when(users.findByEmailIgnoreCase(user.getEmail())).thenReturn(Optional.of(user));
     }
@@ -131,7 +131,7 @@ class SpotifyControllerTest {
         other.setEmail("other@example.com");
         other.setActive(true);
         other.setVerified(true);
-        other.setPermissionId(user.getPermissionId());
+        other.setPermission(user.getPermission());
         when(users.findWithPermissionById(43L)).thenReturn(Optional.of(other));
         when(users.findByEmailIgnoreCase(other.getEmail())).thenReturn(Optional.of(other));
         mvc.perform(post("/api/spotify/authorization").header("Authorization", "Bearer " + jwt.generateAccessToken("43")))

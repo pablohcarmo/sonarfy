@@ -29,6 +29,9 @@ public class User implements UserDetails {
     @Column (name = "surname")
     private String surname;
 
+    @Column (name = "display_name")
+    private String displayName;
+
     @Column (name = "handle", unique = true, nullable = false)
     private String handle;
 
@@ -126,11 +129,11 @@ public class User implements UserDetails {
         this.id = id;
     }
 
-    public Permission getPermissionId() {
+    public Permission getPermission() {
         return permission;
     }
 
-    public void setPermissionId(Permission permission) {
+    public void setPermission(Permission permission) {
         this.permission = permission;
     }
 
@@ -148,6 +151,14 @@ public class User implements UserDetails {
 
     public void setSurname(String surname) {
         this.surname = surname;
+    }
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
     }
 
     public String getHandle() {
@@ -286,7 +297,7 @@ public class User implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority(this.getPermissionId().getName()));
+        return List.of(new SimpleGrantedAuthority(this.getPermission().getName()));
     }
 
     @Override

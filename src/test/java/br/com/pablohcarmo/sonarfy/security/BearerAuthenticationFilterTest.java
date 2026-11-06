@@ -82,7 +82,7 @@ class BearerAuthenticationFilterTest {
         user.setEmail("user@example.com");
         user.setActive(!scenario.equals("inactive"));
         user.setVerified(!scenario.equals("unverified"));
-        user.setPermissionId(new Permission(1L, "ROLE_USER"));
+        user.setPermission(new Permission(1L, "ROLE_USER"));
         when(users.findWithPermissionById(42L))
                 .thenReturn(scenario.equals("missing") ? Optional.empty() : Optional.of(user));
         filter.doFilter(request, response, chain);

@@ -124,6 +124,19 @@ class EmailReservationIntegrationTest {
     }
 
     @Test
+    void displayNameSurvivesPersistenceAndUpdate() {
+        User user = persistedUser(true);
+        user.setDisplayName("Nome de exibição");
+        users.saveAndFlush(user);
+
+        User reloaded = users.findById(user.getId()).orElseThrow();
+        assertEquals("Nome de exibição", reloaded.getDisplayName());
+        reloaded.setDisplayName("Outro nome");
+        users.saveAndFlush(reloaded);
+        assertEquals("Outro nome", users.findById(user.getId()).orElseThrow().getDisplayName());
+    }
+
+    @Test
     void simultaneousRequestsProduceOneReservationAndOneDelivery() throws Exception {
         User user = persistedUser(true);
         CyclicBarrier start = new CyclicBarrier(2);
@@ -368,7 +381,7 @@ class EmailReservationIntegrationTest {
 
     private User persistedUser(boolean verified) {
         User user = new User();
-        user.setPermissionId(permission);
+        user.setPermission(permission);
         user.setName("Test");
         user.setSurname("Account");
         user.setHandle("test-account");

@@ -22,6 +22,14 @@ public class AccessLog {
     @Column (name = "date_time_access")
     private OffsetDateTime dateTimeAccess;
 
+    public AccessLog() {
+    }
+
+    public AccessLog(User user, String ipAddress) {
+        this.user = user;
+        this.ipAddress = ipAddress;
+    }
+
     @PrePersist
     protected void onCreate() {
         dateTimeAccess = OffsetDateTime.now();

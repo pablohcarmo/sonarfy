@@ -80,7 +80,7 @@ class SecurityChainIntegrationTest {
         user.setEmail("user@example.com");
         user.setActive(true);
         user.setVerified(true);
-        user.setPermissionId(permissions.findByName("ROLE_USER").orElseGet(() -> {
+        user.setPermission(permissions.findByName("ROLE_USER").orElseGet(() -> {
             Permission role = new Permission();
             role.setName("ROLE_USER");
             return permissions.save(role);

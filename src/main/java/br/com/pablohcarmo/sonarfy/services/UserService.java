@@ -115,7 +115,7 @@ public class UserService implements UserDetailsService {
         // Define a permissão do usuário como "ROLE_USER" por padrão
         Permission defaultPermission = permissionRepository.findByName("ROLE_USER")
                 .orElseThrow(() -> new RuntimeException("Default permission not found!"));
-        user.setPermissionId(defaultPermission);
+        user.setPermission(defaultPermission);
 
         user = userRepository.save(user);
 
