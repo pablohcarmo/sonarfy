@@ -2,6 +2,11 @@ package br.com.pablohcarmo.sonarfy.services;
 
 import br.com.pablohcarmo.sonarfy.controllers.AuthController;
 import br.com.pablohcarmo.sonarfy.entities.AccessLog;
+import br.com.pablohcarmo.sonarfy.entities.User;
+import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import org.junit.jupiter.api.Test;
 import br.com.pablohcarmo.sonarfy.repositories.AccessLogRepository;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -21,6 +26,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import javax.sql.DataSource;
 import java.util.Map;
 import java.util.UUID;
+import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -53,6 +59,23 @@ class ExistingSchemaIntegrationTest {
     @Autowired JwtService jwt;
     @Autowired AuthEmailService emails;
     @Autowired PasswordEncoder encoder;
+    @Autowired PermissionRepository permissions;
+    @PersistenceContext EntityManager entityManager;
+
+    @Test
+    void fullConstructorPersistsDisplayNameWithImportedSchema() {
+        String handle = "ctor" + UUID.randomUUID().toString().replace("-", "").substring(0, 10);
+        var permission = permissions.findByName("ROLE_USER").orElseThrow();
+        User user = new User(null, permission, "Constructor", "Account", "Nome escolhido",
+                handle, handle + "@example.com", encoder.encode("TestPassword123!"), true, true,
+                "Brasilia", "Brasil", null, null, null, LocalDate.of(2000, 1, 1),
+                null, null, null, null);
+
+        users.saveAndFlush(user);
+        entityManager.clear();
+
+        assertEquals("Nome escolhido", users.findById(user.getId()).orElseThrow().getDisplayName());
+    }
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})

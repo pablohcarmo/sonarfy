@@ -81,6 +81,7 @@ public class User implements UserDetails {
                 Permission permission,
                 String name,
                 String surname,
+                String displayName,
                 String handle,
                 String email,
                 String passwordHashed,
@@ -101,6 +102,7 @@ public class User implements UserDetails {
         this.permission = permission;
         this.name = name;
         this.surname = surname;
+        this.displayName = displayName;
         this.handle = handle;
         this.email = email;
         this.password = passwordHashed;

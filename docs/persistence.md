@@ -10,6 +10,11 @@ No cadastro, o serviço combina nome e sobrenome e limita o nome de exibição a
 60 caracteres Unicode, sem dividir pares substitutos. Os nomes originais são
 preservados. A edição e a exposição desse campo por DTOs ficam para outra entrega.
 
+O construtor completo de `User` recebe `displayName` após `surname` e preserva
+o valor informado. Quem usar esse construtor deve fornecer um nome de exibição
+não nulo, com até 60 caracteres. O construtor vazio permanece disponível para o
+JPA e para os fluxos que preenchem os campos por setters.
+
 `AccessLog` mapeia explicitamente `access_logs`; seu atributo `dateTimeAccess`
 corresponde a `logged_at`. O construtor recebe usuário e IP, e `@PrePersist`
 preenche a data. O teste verifica a persistência do log pelo repositório; não
@@ -48,16 +53,20 @@ O teste verifica cadastro com nome comum e nome completo acima de 60 caracteres,
 login recusado para conta não verificada, emissão de token após marcar a conta
 como verificada e persistência do log. A marcação de verificação é feita pelo
 próprio teste; esse cenário não cobre a confirmação por e-mail nem HTTP via rede.
+Também verifica a persistência de um nome de exibição explícito, diferente do nome
+completo, informado pelo construtor de `User`, após limpar o contexto JPA.
 
 Cada cenário usa transação com rollback. Usuários e logs de teste não permanecem
 no banco, mas sequências de IDs podem avançar, conforme o comportamento do PostgreSQL.
 
 ## Evidências de 06/11/2026
 
-- Suíte padrão: 358 testes aprovados e uma classe opcional ignorada, sem falhas
+- Suíte padrão após a correção do construtor: 360 testes aprovados e dois itens
+  opcionais ignorados pelo Surefire, sem falhas
   ou erros; `BUILD SUCCESS`.
-- PostgreSQL 17.9, banco `sonarfy` com o SQL importado: dois cenários de
-  `ExistingSchemaIntegrationTest` aprovados, sem falhas ou erros.
+- PostgreSQL 17.9, banco `sonarfy` com o SQL importado: três cenários de
+  `ExistingSchemaIntegrationTest` aprovados, incluindo persistência pelo construtor
+  completo com nome de exibição explícito, sem falhas ou erros.
 - `UserServiceTest` reexecutado após ampliar as asserções: 31 testes aprovados.
 - Após os testes no PostgreSQL: zero usuários, zero logs e três permissões,
   confirmando o rollback dos dados criados.

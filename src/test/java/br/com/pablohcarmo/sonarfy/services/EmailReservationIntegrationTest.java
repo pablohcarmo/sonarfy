@@ -139,6 +139,20 @@ class EmailReservationIntegrationTest {
                 () -> users.saveAndFlush(reloaded));
     }
 
+    @ParameterizedTest
+    @ValueSource(ints = {1, 60})
+    void fullConstructorPersistsExplicitDisplayName(int length) {
+        String displayName = "N".repeat(length);
+        User user = new User(null, permission, "Constructor", "Account", displayName,
+                "constructor", "constructor@example.com", "hashed-password", true, true,
+                "Brasilia", "Brasil", null, null, null, LocalDate.of(2000, 1, 1),
+                null, null, null, null);
+
+        users.saveAndFlush(user);
+
+        assertEquals(displayName, users.findById(user.getId()).orElseThrow().getDisplayName());
+    }
+
     @Test
     void simultaneousRequestsProduceOneReservationAndOneDelivery() throws Exception {
         User user = persistedUser(true);
