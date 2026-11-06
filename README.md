@@ -76,6 +76,12 @@ identidade da conta ativa e verificada. O token enviado no JSON autoriza a opera
 de senha e não substitui o Bearer. Consulte o [contrato de autenticação](docs/api/authentication.md)
 para a lista explícita de rotas públicas e a configuração de CORS.
 
+## Modelo de persistência
+
+O cadastro gera o nome de exibição a partir de nome e sobrenome, limitado a 60
+caracteres. Consulte o [modelo de persistência e a validação do schema importado](docs/persistence.md)
+para os mapeamentos e o teste opcional contra o PostgreSQL existente.
+
 ## E-mails de conta e intervalo entre tentativas
 
 Ativação e recuperação de senha compartilham um intervalo mínimo de 30 segundos,

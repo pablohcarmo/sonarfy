@@ -56,7 +56,8 @@ class PasswordResetIntegrationTest {
             return permissions.save(p);
         });
         User user = new User();
-        user.setPermissionId(role);
+        user.setDisplayName("Password Test");
+        user.setPermission(role);
         user.setHandle("password-test");
         user.setEmail("password@example.com");
         user.setVerified(true);

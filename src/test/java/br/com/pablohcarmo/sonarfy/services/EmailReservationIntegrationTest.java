@@ -124,6 +124,36 @@ class EmailReservationIntegrationTest {
     }
 
     @Test
+    void displayNameSurvivesPersistenceAndUpdate() {
+        User user = persistedUser(true);
+        user.setDisplayName("Nome de exibição");
+        users.saveAndFlush(user);
+
+        User reloaded = users.findById(user.getId()).orElseThrow();
+        assertEquals("Nome de exibição", reloaded.getDisplayName());
+        reloaded.setDisplayName("A".repeat(60));
+        users.saveAndFlush(reloaded);
+        assertEquals("A".repeat(60), users.findById(user.getId()).orElseThrow().getDisplayName());
+        reloaded.setDisplayName("A".repeat(61));
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                () -> users.saveAndFlush(reloaded));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 60})
+    void fullConstructorPersistsExplicitDisplayName(int length) {
+        String displayName = "N".repeat(length);
+        User user = new User(null, permission, "Constructor", "Account", displayName,
+                "constructor", "constructor@example.com", "hashed-password", true, true,
+                "Brasilia", "Brasil", null, null, null, LocalDate.of(2000, 1, 1),
+                null, null, null, null);
+
+        users.saveAndFlush(user);
+
+        assertEquals(displayName, users.findById(user.getId()).orElseThrow().getDisplayName());
+    }
+
+    @Test
     void simultaneousRequestsProduceOneReservationAndOneDelivery() throws Exception {
         User user = persistedUser(true);
         CyclicBarrier start = new CyclicBarrier(2);
@@ -368,9 +398,10 @@ class EmailReservationIntegrationTest {
 
     private User persistedUser(boolean verified) {
         User user = new User();
-        user.setPermissionId(permission);
+        user.setPermission(permission);
         user.setName("Test");
         user.setSurname("Account");
+        user.setDisplayName("Test Account");
         user.setHandle("test-account");
         user.setEmail("user@example.com");
         user.setVerified(verified);

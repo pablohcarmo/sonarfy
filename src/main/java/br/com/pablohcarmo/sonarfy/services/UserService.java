@@ -105,6 +105,9 @@ public class UserService implements UserDetailsService {
         User user = new User();
         user.setName(newUserDto.getName());
         user.setSurname(newUserDto.getSurname());
+        String displayName = (newUserDto.getName().strip() + " " + newUserDto.getSurname().strip());
+        int displayNameLength = Math.min(60, displayName.codePointCount(0, displayName.length()));
+        user.setDisplayName(displayName.substring(0, displayName.offsetByCodePoints(0, displayNameLength)));
         user.setHandle(cleanHandle);
         user.setEmail(newUserDto.getEmail());
         user.setPassword(passwordEncoder.encode(password));
@@ -115,7 +118,7 @@ public class UserService implements UserDetailsService {
         // Define a permissão do usuário como "ROLE_USER" por padrão
         Permission defaultPermission = permissionRepository.findByName("ROLE_USER")
                 .orElseThrow(() -> new RuntimeException("Default permission not found!"));
-        user.setPermissionId(defaultPermission);
+        user.setPermission(defaultPermission);
 
         user = userRepository.save(user);
 

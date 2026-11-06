@@ -41,6 +41,13 @@ exclusivo. Os testes criam e removem tabelas; não use um banco com dados que de
 ser preservados. A senha demonstrativa do exemplo pertence somente ao container
 local temporário.
 
+Para verificar somente cadastro, login e logs sobre um schema já importado,
+use `ExistingSchemaIntegrationTest`, conforme as
+[instruções de persistência](persistence.md). Essa classe é opcional, não gera
+schema e desfaz seus dados por rollback. A documentação também registra os
+resultados de 06/11/2026; os números históricos abaixo permanecem como evidência
+da avaliação anterior.
+
 Os resultados são gerados em `target/surefire-reports`. Para registrar uma nova
 avaliação, anote `git rev-parse HEAD`, `git status --short`, data, versões,
 comando e código de saída. Preserve os relatórios antes de executar `mvn clean`.
