@@ -15,6 +15,10 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -115,6 +119,96 @@ class SpotifyAuthorizationStateServiceTest {
             assertTrue(context.getBeansOfType(Clock.class).isEmpty());
             assertFalse(context.getBean(SpotifyAuthorizationStateService.class).create(42L).isBlank());
         }
+    }
+
+    @Test
+    void shouldConsumeStateOnceAndPreserveOtherAttempts() {
+        String state = service.create(42L);
+        String other = service.create(43L);
+
+        assertEquals(42L, service.consume(state));
+        assertFalse(pending().containsKey(state));
+        assertEquals(1, pending().size());
+        assertBadState(state);
+        assertEquals(43L, service.consume(other));
+        assertTrue(pending().isEmpty());
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", " ", "\t\n", "unknown-state"})
+    void shouldRejectInvalidStateWithoutRemovingValidAttempt(String invalidState) {
+        String valid = service.create(42L);
+
+        assertBadState(invalidState);
+        assertEquals(1, pending().size());
+        assertEquals(42L, service.consume(valid));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"299999,false", "300000,true", "300001,true"})
+    void shouldCheckExpirationAtConsumption(long elapsedMillis, boolean expired) {
+        String state = service.create(42L);
+        // Verifica os limites do prazo sem esperar cinco minutos de verdade.
+        when(clock.instant()).thenReturn(NOW.plusMillis(elapsedMillis));
+
+        if (expired) assertBadState(state);
+        else assertEquals(42L, service.consume(state));
+
+        assertTrue(pending().isEmpty());
+        assertBadState(state);
+    }
+
+    @Test
+    void shouldReleaseUserCapacityAfterConsumption() {
+        String state = service.create(42L);
+        service.create(42L);
+        service.create(42L);
+        var full = assertThrows(ResponseStatusException.class, () -> service.create(42L));
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, full.getStatusCode());
+
+        service.consume(state);
+        assertDoesNotThrow(() -> service.create(42L));
+        assertEquals(3, pending().size());
+        var fullAgain = assertThrows(ResponseStatusException.class, () -> service.create(42L));
+        assertEquals(HttpStatus.TOO_MANY_REQUESTS, fullAgain.getStatusCode());
+    }
+
+    @Test
+    void shouldAllowOnlyOneConcurrentConsumer() throws Exception {
+        String state = service.create(42L);
+        var ready = new CountDownLatch(2);
+        var start = new CountDownLatch(1);
+        var executor = Executors.newFixedThreadPool(2);
+        // As duas tarefas aguardam a mesma liberação antes de tentar consumir.
+        Callable<Boolean> consume = () -> {
+            ready.countDown();
+            assertTrue(start.await(5, TimeUnit.SECONDS));
+            try {
+                assertEquals(42L, service.consume(state));
+                return true;
+            } catch (ResponseStatusException exception) {
+                assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+                return false;
+            }
+        };
+        try {
+            var first = executor.submit(consume);
+            var second = executor.submit(consume);
+            assertTrue(ready.await(5, TimeUnit.SECONDS));
+            start.countDown();
+
+            assertNotEquals(first.get(5, TimeUnit.SECONDS), second.get(5, TimeUnit.SECONDS));
+            assertTrue(pending().isEmpty());
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    private void assertBadState(String state) {
+        var exception = assertThrows(ResponseStatusException.class, () -> service.consume(state));
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
     }
 
     private Map<?, ?> pending() {
