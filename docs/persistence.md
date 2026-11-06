@@ -20,11 +20,27 @@ corresponde a `logged_at`. O construtor recebe usuário e IP, e `@PrePersist`
 preenche a data. O teste verifica a persistência do log pelo repositório; não
 estabelece que o login registre acessos automaticamente.
 
-## Banco inicializado pelo SQL local
+## Inicialização e atualização do banco
 
-A infraestrutura em `src/main/infra`, incluindo `tables.sql`, é local e ignorada
-pelo Git. O fluxo utilizado nesta entrega recria o banco e importa esse SQL.
-Não há script incremental de atualização nesta branch.
+O schema completo está versionado em `src/main/infra/tables.sql` e deve ser
+importado somente em um banco vazio. O Compose e os demais arquivos de
+infraestrutura local continuam ignorados pelo Git.
+
+Em bancos existentes que já contêm `users`, aplique
+`db/migrations/001_create_spotify_connection.sql` antes de disponibilizar a
+versão que persiste a conexão Spotify. Esse script cria somente a nova tabela,
+sem recriar o banco ou modificar os dados existentes. Execute-o uma vez e
+registre sua aplicação no controle de deploy; não há executor automático de
+migrações configurado.
+
+```powershell
+psql -h <host> -p <porta> -U <usuario> -d <banco> -v ON_ERROR_STOP=1 -f db/migrations/001_create_spotify_connection.sql
+```
+
+Forneça as credenciais pelo mecanismo seguro usado no ambiente. Não execute
+o schema completo sobre um banco já inicializado. Se `spotify_connection` já
+existir, confira sua estrutura antes do deploy; o script incremental falha
+nesse caso, sem assumir que uma tabela existente está correta.
 
 Recriar o volume não executa um arquivo SQL automaticamente sem uma configuração
 de inicialização correspondente no contêiner. Importe o SQL antes de iniciar a
@@ -60,6 +76,12 @@ Cada cenário usa transação com rollback. Usuários e logs de teste não perma
 no banco, mas sequências de IDs podem avançar, conforme o comportamento do PostgreSQL.
 
 ## Evidências de 06/11/2026
+
+- Schema versionado e migração Spotify validados em PostgreSQL 17 temporário:
+  importação completa em banco vazio e aplicação incremental em schema sem
+  `spotify_connection`. Os dois caminhos produziram DDL idêntico para a tabela;
+  o usuário de teste e as três permissões existentes foram preservados.
+  Essa validação foi isolada do banco da aplicação.
 
 - Suíte padrão após a correção do construtor: 360 testes aprovados e dois itens
   opcionais ignorados pelo Surefire, sem falhas

@@ -85,6 +85,13 @@ redirecionamento para o frontend ficam para outras entregas.
 
 ## Configuração
 
+Antes de disponibilizar esta versão em um banco existente, aplique
+`db/migrations/001_create_spotify_connection.sql` conforme o
+[guia de persistência](../persistence.md#inicialização-e-atualização-do-banco).
+Com `ddl-auto=none`, a aplicação não cria `spotify_connection` automaticamente.
+Para um banco vazio, use o schema completo em `src/main/infra/tables.sql`.
+O Compose permanece local e não é versionado.
+
 Defina estas variáveis de ambiente na configuração de execução da aplicação
 (no IntelliJ: **Run → Edit Configurations → Environment variables**):
 
