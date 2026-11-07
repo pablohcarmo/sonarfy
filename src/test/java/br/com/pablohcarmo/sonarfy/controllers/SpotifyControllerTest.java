@@ -8,6 +8,7 @@ import br.com.pablohcarmo.sonarfy.services.JwtService;
 import br.com.pablohcarmo.sonarfy.services.SpotifyAuthorizationService;
 import br.com.pablohcarmo.sonarfy.services.SpotifyAuthorizationStateService;
 import br.com.pablohcarmo.sonarfy.services.SpotifyCallbackService;
+import br.com.pablohcarmo.sonarfy.services.SpotifyConnectionService;
 import br.com.pablohcarmo.sonarfy.services.AuthSpotifyService;
 import br.com.pablohcarmo.sonarfy.dto.SpotifyTokenResponseDto;
 import br.com.pablohcarmo.sonarfy.exceptions.SpotifyIntegrationException;
@@ -17,6 +18,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -55,6 +58,7 @@ class SpotifyControllerTest {
     static class Config {
         @Bean UserRepository users() { return mock(UserRepository.class); }
         @Bean AuthSpotifyService tokens() { return mock(AuthSpotifyService.class); }
+        @Bean SpotifyConnectionService connections() { return mock(SpotifyConnectionService.class); }
     }
 
     @Autowired WebApplicationContext context;
@@ -62,12 +66,13 @@ class SpotifyControllerTest {
     @Autowired JwtService jwt;
     @Autowired SpotifyAuthorizationStateService states;
     @Autowired AuthSpotifyService tokens;
+    @Autowired SpotifyConnectionService connections;
     private MockMvc mvc;
     private User user;
 
     @BeforeEach
     void setUp() {
-        reset(users, tokens);
+        reset(users, tokens, connections);
         pending().clear();
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         user = new User();
@@ -233,6 +238,27 @@ class SpotifyControllerTest {
         mvc.perform(get("/api/spotify/callback").param("code", "test-code").param("state", state))
                 .andExpect(status().isBadRequest());
         verify(tokens, times(1)).exchangeCode("test-code");
+        assertTrue(pending().isEmpty());
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(longs = {0L, -1L, 3601L, Long.MAX_VALUE})
+    void shouldReturn502ForInvalidExpiryWithoutPersistingAndRejectReplay(Long expiresIn) throws Exception {
+        String state = states.create(42L);
+        when(users.findById(42L)).thenReturn(Optional.of(user));
+        when(tokens.exchangeCode("test-code")).thenReturn(
+                new SpotifyTokenResponseDto("private-access", "Bearer", expiresIn, "private-refresh", null));
+
+        var result = mvc.perform(get("/api/spotify/callback").param("code", "test-code").param("state", state))
+                .andExpect(status().isBadGateway()).andReturn();
+        var exception = assertInstanceOf(org.springframework.web.server.ResponseStatusException.class,
+                result.getResolvedException());
+        assertEquals("Spotify returned an invalid token response.", exception.getReason());
+        mvc.perform(get("/api/spotify/callback").param("code", "test-code").param("state", state))
+                .andExpect(status().isBadRequest());
+        verify(tokens, times(1)).exchangeCode("test-code");
+        verifyNoInteractions(connections);
         assertTrue(pending().isEmpty());
     }
 

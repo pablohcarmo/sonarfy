@@ -4,8 +4,11 @@
 
 O backend expõe a rota autenticada `POST /api/spotify/authorization`, monta a URL
 de autorização e recebe o retorno em `GET /api/spotify/callback`, que valida o
-state e troca o código por tokens. Os tokens ainda não são persistidos nem
-retornados ao navegador; a conexão permanente de contas permanece pendente.
+state, troca o código por tokens e persiste a conexão vinculada ao usuário.
+Access token e refresh token são armazenados cifrados com AES-GCM e não são
+retornados ao navegador. Reconexões atualizam a mesma conexão e preservam
+`connected_at`. A migração deve ser aplicada antes do deploy em bancos existentes;
+renovação automática, desconexão e sincronização continuam pendentes.
 
 A rota exige `Authorization: Bearer <accessToken>`, não recebe `userId` e resolve
 o usuário pelo e-mail do `Principal`. Retorna HTTP 200 com
@@ -52,7 +55,12 @@ do state registrado no início da autorização.
 
 `SpotifyCallbackService` consome o state, verifica se o usuário ainda existe,
 está ativo e com e-mail confirmado, trata a recusa e reutiliza
-`AuthSpotifyService.exchangeCode(code)` quando há autorização.
+`AuthSpotifyService.exchangeCode(code)` quando há autorização. Callback e serviço
+de persistência usam `SpotifyTokenResponseValidator` para exigir access token,
+refresh token, tipo Bearer e validade de 1 a 3.600 segundos. `SpotifyConnectionService`
+criptografa os tokens com AES-GCM e grava tipo, escopos e expiração em
+`spotify_connection`, vinculado ao usuário do state. Uma nova autorização atualiza
+a conexão existente e preserva `connected_at`.
 
 | HTTP | Resultado |
 | --- | --- |
@@ -69,15 +77,32 @@ inclusive no caso de recusa. Falhas posteriores não restauram a tentativa:
 Uma rejeição do Spotify também pode indicar configuração incorreta do backend.
 Mesmo uma resposta HTTP de sucesso precisa conter um DTO não nulo,
 `access_token` preenchido, `token_type=Bearer` (sem distinção de maiúsculas) e
-`expires_in` positivo. Dados inválidos retornam 502 com mensagem fixa, sem
-expor tokens e sem restaurar o state. Esta validação não exige `refresh_token`
-ou `scope` e não comprova a validade do token em chamadas de catálogo.
+`expires_in` entre 1 e 3.600 segundos, inclusive. Esse limite corresponde à
+validade usual de uma hora do access token; não representa a expiração da
+conexão nem do refresh token. Valores acima de uma hora são tratados como
+resposta inválida, mesmo que possam ser representados como data.
+Dados inválidos retornam 502 com a mensagem fixa
+`Spotify returned an invalid token response.`, sem
+expor tokens e sem restaurar o state. O refresh token é obrigatório para persistir
+a conexão; o escopo pode estar ausente e a validade do token ainda depende de
+uma chamada autorizada ao Spotify.
 
-O 204 não carrega uma página nova no navegador. Ele confirma a troca, mas
-não representa uma conta conectada permanentemente: os tokens são descartados
-nesta entrega. Persistência e redirecionamento para o frontend ficam para depois.
+O 204 não carrega uma página nova no navegador. Ele confirma a troca e a
+gravação da conexão. Renovação, desconexão, sincronização de escutas e
+redirecionamento para o frontend ficam para outras entregas.
+
+Falhas de banco ou cifragem durante a persistência propagam como erro interno
+(500), sem repetição automática. O state permanece consumido e o usuário precisa
+iniciar outra autorização. Não há ainda métricas ou logs específicos desse caminho.
 
 ## Configuração
+
+Antes de disponibilizar esta versão em um banco existente, aplique
+`db/migrations/001_create_spotify_connection.sql` conforme o
+[guia de persistência](../persistence.md#inicialização-e-atualização-do-banco).
+Com `ddl-auto=none`, a aplicação não cria `spotify_connection` automaticamente.
+Para um banco vazio, use o schema completo em `src/main/infra/tables.sql`.
+O Compose permanece local e não é versionado.
 
 Defina estas variáveis de ambiente na configuração de execução da aplicação
 (no IntelliJ: **Run → Edit Configurations → Environment variables**):
@@ -87,11 +112,19 @@ Defina estas variáveis de ambiente na configuração de execução da aplicaç�
 | `SPOTIFY_CLIENT_ID` | Identificador do aplicativo no Spotify Developer Dashboard |
 | `SPOTIFY_CLIENT_SECRET` | Segredo do aplicativo, exclusivo do backend |
 | `SPOTIFY_REDIRECT_URI` | Endereço de callback cadastrado no painel do Spotify |
+| `SPOTIFY_TOKEN_ENCRYPTION_KEY` | Chave Base64 aleatória de 32 bytes para AES-GCM |
 
 Exemplo de URI local: `http://127.0.0.1:8080/api/spotify/callback`.
 Ajuste a porta à aplicação e cadastre exatamente a mesma URI no painel do Spotify.
-Inicie o backend antes de gerar a autorização; reiniciá-lo perde o state em memória.
 Não inclua credenciais reais ou tokens na documentação, no Git ou nos logs.
+Configure `spotify_token_encryption_key=${SPOTIFY_TOKEN_ENCRYPTION_KEY}` em
+`application.properties`; mantenha o valor da chave somente no ambiente local.
+
+Preserve a chave no gerenciador de segredos do ambiente e no procedimento de
+recuperação. Existe somente uma chave de leitura/escrita: alterá-la torna os tokens
+já armazenados ilegíveis. O prefixo `v1:` identifica o formato, não uma chave.
+Não há rotação automática nem recriptografia; antes de renovar tokens em produção,
+é necessário definir identificação de chave, transição e rollback coordenado.
 
 As propriedades são obrigatórias na execução. O construtor do service rejeita
 valores em branco e verifica a estrutura da URI: exige HTTPS, permitindo HTTP
@@ -175,24 +208,40 @@ inválidas sem consumo, usuário excluído/inativo/não verificado, recusa e tra
 das falhas. O state é real; banco e troca de tokens são simulados. Após sucesso,
 recusa ou falha posterior ao consumo, outra chamada com o mesmo state é rejeitada.
 Os testes de regressão incluem resposta nula, campos essenciais ausentes ou
-inválidos, mensagem fixa de erro e retorno HTTP 502 sem reutilização do state.
+inválidos, mensagem fixa de erro e retorno HTTP 502 sem reutilização do state
+nem chamada à persistência. Para `expires_in`, aceitam 1 e 3.600 segundos e
+rejeitam nulo, zero, negativo e valores acima de 3.600 segundos.
+
+`SpotifyConnectionServiceTest` verifica chamadas diretas ao serviço, incluindo
+rejeição antes de acessar banco ou cifragem e persistência dos limites de validade.
+Os testes do callback também verificam que falhas de banco ou cifragem não
+restauram o state nem repetem a troca de tokens.
+
+`ExistingSchemaIntegrationTest` usa PostgreSQL com geração de schema desativada
+para verificar tokens cifrados, reconexão com escopos ausentes, preservação de
+`connected_at` e concorrência. Continua opt-in localmente, mas a CI executa essa
+classe explicitamente no mesmo job `test`, após importar o schema versionado e
+aplicar a migração em um banco descartável. Uma falha nessa etapa falha o job.
+As instruções de execução local estão no [guia de persistência](../persistence.md).
 
 Os relatórios da execução ficam em `target/surefire-reports`; registre o resultado
 correspondente à versão entregue na descrição do PR e consulte também a CI.
-Validação desta entrega: `357` testes automatizados passaram, sem falhas.
-Na aplicação local em execução, três verificações pelo Postman CLI confirmaram
+Evidência histórica anterior à persistência: `357` testes automatizados passaram,
+sem falhas. Na aplicação local, três verificações pelo Postman CLI confirmaram
 400 sem parâmetros, 400 com state desconhecido e 401 no início sem Bearer.
 O teste manual de recusa retornou 403 e, na repetição, 400.
 O relatório de rede do navegador confirmou duas autorizações com Spotify real,
 ambas com callback 204, corpo vazio e `Cache-Control: no-store`.
-Essas evidências não validam persistência, renovação de tokens ou o fluxo completo
-de conexão permanente, funcionalidades ainda não implementadas.
+Essas verificações históricas não validaram a persistência adicionada neste PR.
+A persistência é coberta pelos testes PostgreSQL descritos acima; renovação,
+desconexão e sincronização ainda não foram implementadas.
 
 ## Próximas entregas
 
 - Integração do frontend à rota de início e apresentação do resultado do callback.
-- Associação dos tokens ao usuário do Sonarfy, armazenamento, renovação
-  e desconexão da conta.
+- Renovação automática dos tokens, desconexão e revogação da conta.
+- Sincronização de escutas e consulta do estado da conexão.
+- Estratégia de rotação de chave e observabilidade de falhas de persistência.
 - Consulta de álbuns e artistas em PR separado.
 
 Referências: [Authorization Code Flow](https://developer.spotify.com/documentation/web-api/tutorials/code-flow)
