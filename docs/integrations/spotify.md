@@ -141,6 +141,10 @@ Defina estas variáveis de ambiente na configuração de execução da aplicaç�
 | `SPOTIFY_CLIENT_SECRET` | Segredo do aplicativo, exclusivo do backend |
 | `SPOTIFY_REDIRECT_URI` | Endereço de callback cadastrado no painel do Spotify |
 | `SPOTIFY_TOKEN_ENCRYPTION_KEY` | Chave Base64 aleatória de 32 bytes para AES-GCM |
+| `SPOTIFY_TOKEN_ENCRYPTION_KEYRING` | Entradas separadas por vírgula no formato `keyId=Base64Key`; manter chaves antigas enquanto dados ou backups dependerem delas |
+| `SPOTIFY_TOKEN_ENCRYPTION_ACTIVE_KEY_ID` | ID da chave para novas cifras; vazio mantém gravação legada `v1` durante rollout |
+| `SPOTIFY_TOKEN_ENCRYPTION_ROTATION_ENABLED` | Habilita o processo operacional explícito; padrão `false` |
+| `SPOTIFY_TOKEN_ENCRYPTION_ROTATION_BATCH_SIZE` | Quantidade máxima de conexões por transação; padrão `100` |
 
 Exemplo de URI local: `http://127.0.0.1:8080/api/spotify/callback`.
 Ajuste a porta à aplicação e cadastre exatamente a mesma URI no painel do Spotify.
@@ -148,11 +152,53 @@ Não inclua credenciais reais ou tokens na documentação, no Git ou nos logs.
 Configure `spotify_token_encryption_key=${SPOTIFY_TOKEN_ENCRYPTION_KEY}` em
 `application.properties`; mantenha o valor da chave somente no ambiente local.
 
-Preserve a chave no gerenciador de segredos do ambiente e no procedimento de
-recuperação. Existe somente uma chave de leitura/escrita: alterá-la torna os tokens
-já armazenados ilegíveis. O prefixo `v1:` identifica o formato, não uma chave.
-Não há rotação automática nem recriptografia; antes de renovar tokens em produção,
-é necessário definir identificação de chave, transição e rollback coordenado.
+Preserve cada chave no gerenciador de segredos do ambiente e no procedimento de
+recuperação. A chave nunca deve aparecer em documentação, Git ou logs. Os IDs de
+chave não são secretos; as entradas do chaveiro usam `id=Base64Key`, separadas por
+vírgula. IDs aceitam letras, números, ponto, sublinhado e hífen. Cada chave deve
+decodificar para 32 bytes.
+
+O formato legado `v1:` continua sendo lido com `SPOTIFY_TOKEN_ENCRYPTION_KEY`.
+Novas cifras usam `v2:<keyId>:<Base64(IV + ciphertext + tag)>` quando
+`SPOTIFY_TOKEN_ENCRYPTION_ACTIVE_KEY_ID` está configurado. O `keyId` permite
+selecionar a chave de leitura; o AAD autentica formato, ID, usuário e finalidade
+do token. A identificação fica no próprio envelope, sem alteração de schema.
+
+### Procedimento de rotação
+
+1. Implantar a versão compatível com leitura de `v1` e `v2`, mantendo o ID ativo
+   vazio para que todas as instâncias continuem gravando `v1` durante o rollout.
+2. Configurar o chaveiro com a chave antiga sob o ID `legacy` e a chave nova sob
+   um ID novo. Depois que todas as instâncias suportarem os dois formatos,
+   configurar `SPOTIFY_TOKEN_ENCRYPTION_ACTIVE_KEY_ID` com o ID novo. Novas
+   conexões passam a gravar `v2`.
+3. Executar o reprocessamento em processo sem servidor HTTP, usando a mesma
+   versão dual-read e acesso ao banco do ambiente:
+
+   ```powershell
+   java -jar sonarfy.jar --spring.main.web-application-type=none --spotify_token_encryption_rotation_enabled=true --spotify_token_encryption_rotation_batch_size=100
+   ```
+
+   Cada lote é transacional e pode ser repetido após uma interrupção. A consulta
+   bloqueia as conexões selecionadas; os tokens de acesso e de atualização são
+   recriptografados juntos. O processo não altera `connected_at` nem `updated_at`.
+   Os logs mostram apenas contagens por formato/ID, nunca chaves ou tokens.
+4. Conferir que a contagem de `v1:legacy` e das chaves antigas chegou a zero.
+   Manter as chaves necessárias enquanto houver backups restauráveis que
+   contenham cifras dependentes delas. Só então removê-las do chaveiro.
+
+O processo seleciona apenas valores fora do formato/ID ativo, então novas
+execuções continuam do trabalho restante. O relatório de uso é feito por valor
+cifrado (access e refresh contam separadamente). Nenhuma migração de banco é
+necessária.
+
+### Rollback
+
+Durante a transição, manter a versão dual-read e todas as chaves requeridas.
+Para voltar a uma versão antiga que só leia `v1`, configurar o ID ativo vazio e
+executar novamente o processo sem HTTP até a contagem `v2:*` ser zero. A chave
+legada deve continuar disponível. Não fazer rollback para uma chave comprometida;
+nesse caso, corrigir a configuração e concluir a rotação para uma chave segura.
 
 As propriedades são obrigatórias na execução. O construtor do service rejeita
 valores em branco e verifica a estrutura da URI: exige HTTPS, permitindo HTTP

@@ -25,17 +25,22 @@ import static org.junit.jupiter.api.Assertions.*;
         "app.frontend-url=http://localhost:3000", "api.security.token.secret=test-secret",
         "spring.mail.username=noreply@example.com",
         "sonarfy.test.jdbc-url=jdbc:h2:mem:spotify_transactions;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
-        "spotify_token_encryption_key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        "spotify_token_encryption_key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "spotify_token_encryption_keyring=legacy=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=,rotated=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "spotify_token_encryption_active_key_id=rotated"
 })
 class SpotifyConnectionTransactionTest {
     @Configuration
-    @Import({SpotifyConnectionService.class, SpotifyTokenEncryptionService.class})
+    @Import({SpotifyConnectionService.class, SpotifyTokenEncryptionService.class,
+            SpotifyTokenKeyRotationService.class})
     static class Config extends EmailReservationIntegrationTest.Config {}
 
     @Autowired SpotifyConnectionService service;
     @Autowired UserRepository users;
     @Autowired br.com.pablohcarmo.sonarfy.repositories.PermissionRepository permissions;
     @Autowired SpotifyConnectionRepository connections;
+    @Autowired SpotifyTokenEncryptionService encryption;
+    @Autowired SpotifyTokenKeyRotationService keyRotation;
     @Autowired PlatformTransactionManager transactions;
     @PersistenceContext EntityManager em;
 
@@ -82,6 +87,50 @@ class SpotifyConnectionTransactionTest {
         });
         assertEquals(0L, users.findById(id).orElseThrow().getSpotifyAuthorizationVersion());
         assertEquals(1, connections.countByUserId(id));
+    }
+
+    @Test
+    void keyReencryptionRunsInResumableIdempotentAtomicBatches() {
+        Long firstUser = createUser();
+        Long secondUser = createUser();
+        service.connect(firstUser, 0L, tokens);
+        service.connect(secondUser, 0L, tokens);
+
+        var legacyEncryption = new SpotifyTokenEncryptionService(
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+        replaceWithLegacyTokens(firstUser, legacyEncryption, "first");
+        replaceWithLegacyTokens(secondUser, legacyEncryption, "second");
+        assertEquals(4L, keyRotation.tokenCountsByKey().get("v1:legacy"));
+
+        assertEquals(1, keyRotation.reencryptNextBatch(1));
+        assertEquals(2L, keyRotation.tokenCountsByKey().get("v1:legacy"));
+        assertEquals(2L, keyRotation.tokenCountsByKey().get("v2:rotated"));
+
+        assertEquals(1, keyRotation.reencryptNextBatch(1));
+        assertEquals(0L, keyRotation.countTokensNeedingReencryption());
+        assertEquals(0, keyRotation.reencryptNextBatch(1));
+        assertEquals(0L, keyRotation.tokenCountsByKey().get("v1:legacy"));
+        assertEquals("first-access", encryption.decrypt(
+                connections.findByUserId(firstUser).orElseThrow().getAccessTokenEncrypted(),
+                firstUser,
+                "access"));
+        assertEquals("second-refresh", encryption.decrypt(
+                connections.findByUserId(secondUser).orElseThrow().getRefreshTokenEncrypted(),
+                secondUser,
+                "refresh"));
+    }
+
+    private void replaceWithLegacyTokens(
+            Long userId,
+            SpotifyTokenEncryptionService legacyEncryption,
+            String prefix
+    ) {
+        var connection = connections.findByUserId(userId).orElseThrow();
+        connection.reencryptTokens(
+                legacyEncryption.encrypt(prefix + "-access", userId, "access"),
+                legacyEncryption.encrypt(prefix + "-refresh", userId, "refresh")
+        );
+        connections.saveAndFlush(connection);
     }
 
     @Test
