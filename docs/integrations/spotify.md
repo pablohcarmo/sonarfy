@@ -155,7 +155,7 @@ Configure `spotify_token_encryption_key=${SPOTIFY_TOKEN_ENCRYPTION_KEY}` em
 Preserve cada chave no gerenciador de segredos do ambiente e no procedimento de
 recuperação. A chave nunca deve aparecer em documentação, Git ou logs. Os IDs de
 chave não são secretos; as entradas do chaveiro usam `id=Base64Key`, separadas por
-vírgula. IDs aceitam letras, números, ponto, sublinhado e hífen. Cada chave deve
+vírgula. IDs aceitam letras, números, ponto e hífen. Cada chave deve
 decodificar para 32 bytes.
 
 O formato legado `v1:` continua sendo lido com `SPOTIFY_TOKEN_ENCRYPTION_KEY`.

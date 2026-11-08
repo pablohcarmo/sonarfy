@@ -26,7 +26,7 @@ public class SpotifyTokenEncryptionService {
     private static final int IV_LENGTH = 12;
     private static final int TAG_LENGTH_BITS = 128;
     private static final int TAG_LENGTH_BYTES = TAG_LENGTH_BITS / 8;
-    private static final Pattern VALID_KEY_ID = Pattern.compile("[A-Za-z0-9._-]{1,64}");
+    private static final Pattern VALID_KEY_ID = Pattern.compile("[A-Za-z0-9.-]{1,64}");
 
     private final SecretKeySpec legacyKey;
     private final Map<String, SecretKeySpec> keyring;
@@ -219,7 +219,7 @@ public class SpotifyTokenEncryptionService {
     // Restringe o ID da chave aos caracteres aceitos pelo formato do envelope.
     private static void validateKeyId(String keyId) {
         if (keyId == null || !VALID_KEY_ID.matcher(keyId).matches()) {
-            throw new IllegalArgumentException("Spotify encryption key IDs must use 1 to 64 letters, digits, '.', '_' or '-'.");
+            throw new IllegalArgumentException("Spotify encryption key IDs must use 1 to 64 letters, digits, '.' or '-'.");
         }
     }
 

@@ -95,6 +95,8 @@ class SpotifyTokenEncryptionServiceTest {
                 () -> new SpotifyTokenEncryptionService(keyA, "same=" + keyA + ",same=" + keyB,
                         "same", new SecureRandom()));
         assertThrows(IllegalArgumentException.class,
+                () -> new SpotifyTokenEncryptionService(keyA, "bad_id=" + keyA, "bad_id", new SecureRandom()));
+        assertThrows(IllegalArgumentException.class,
                 () -> new SpotifyTokenEncryptionService(keyA, "legacy=" + keyB, "", new SecureRandom()));
     }
 }

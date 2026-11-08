@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.*;
         "spring.mail.username=noreply@example.com",
         "sonarfy.test.jdbc-url=jdbc:h2:mem:spotify_transactions;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
         "spotify_token_encryption_key=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-        "spotify_token_encryption_keyring=legacy=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=,rotated=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "spotify_token_encryption_keyring=legacy=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=,rotated=AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
         "spotify_token_encryption_active_key_id=rotated"
 })
 class SpotifyConnectionTransactionTest {
