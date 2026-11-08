@@ -40,13 +40,13 @@ class SpotifyAuthorizationStateServiceTest {
     @NullSource
     @ValueSource(longs = {0, -1, Long.MIN_VALUE})
     void shouldRejectInvalidUserWithoutStoringState(Long userId) {
-        assertThrows(IllegalArgumentException.class, () -> service.create(userId));
+        assertThrows(IllegalArgumentException.class, () -> service.create(userId, 0L));
         assertTrue(pending().isEmpty());
     }
 
     @Test
     void shouldStoreUrlSafeStateWithUserAndFiveMinuteExpiration() {
-        String state = service.create(42L);
+        String state = service.create(42L, 0L);
 
         assertTrue(state.matches("[A-Za-z0-9_-]{43}"));
         assertEquals(32, Base64.getUrlDecoder().decode(state).length);
@@ -59,8 +59,8 @@ class SpotifyAuthorizationStateServiceTest {
 
     @Test
     void shouldKeepSeparateAttemptsForSameUser() {
-        String first = service.create(42L);
-        String second = service.create(42L);
+        String first = service.create(42L, 0L);
+        String second = service.create(42L, 0L);
 
         assertNotEquals(first, second);
         assertEquals(2, pending().size());
@@ -71,13 +71,13 @@ class SpotifyAuthorizationStateServiceTest {
     @ParameterizedTest
     @CsvSource({"299999,false", "300000,true", "300001,true"})
     void shouldCleanExpiredStatesWithoutRemovingActiveOnes(long elapsedMillis, boolean expired) {
-        String first = service.create(42L);
+        String first = service.create(42L, 0L);
         when(clock.instant()).thenReturn(NOW.plusSeconds(60));
-        String active = service.create(43L);
+        String active = service.create(43L, 0L);
 
         // Avança o relógio, sem esperar o prazo real de cinco minutos.
         when(clock.instant()).thenReturn(NOW.plusMillis(elapsedMillis));
-        String latest = service.create(44L);
+        String latest = service.create(44L, 0L);
 
         assertEquals(!expired, pending().containsKey(first));
         assertTrue(pending().containsKey(active));
@@ -87,27 +87,27 @@ class SpotifyAuthorizationStateServiceTest {
 
     @Test
     void shouldLimitEachUserAndAllowNewAttemptsAfterExpiration() {
-        for (int i = 0; i < 3; i++) service.create(42L);
+        for (int i = 0; i < 3; i++) service.create(42L, 0L);
 
-        var exception = assertThrows(ResponseStatusException.class, () -> service.create(42L));
+        var exception = assertThrows(ResponseStatusException.class, () -> service.create(42L, 0L));
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, exception.getStatusCode());
         assertEquals(3, pending().size());
-        assertDoesNotThrow(() -> service.create(43L));
+        assertDoesNotThrow(() -> service.create(43L, 0L));
 
         when(clock.instant()).thenReturn(NOW.plusSeconds(300));
-        assertDoesNotThrow(() -> service.create(42L));
+        assertDoesNotThrow(() -> service.create(42L, 0L));
         assertEquals(1, pending().size());
     }
 
     @Test
     void shouldRejectAtCapacityAndAcceptAfterExpiration() {
-        for (long id = 1; id <= 1000; id++) service.create(id);
+        for (long id = 1; id <= 1000; id++) service.create(id, 0L);
 
-        assertThrows(IllegalStateException.class, () -> service.create(43L));
+        assertThrows(IllegalStateException.class, () -> service.create(43L, 0L));
         assertEquals(1000, pending().size());
 
         when(clock.instant()).thenReturn(NOW.plusSeconds(300));
-        String state = service.create(43L);
+        String state = service.create(43L, 0L);
 
         assertEquals(1, pending().size());
         assertEquals(43L, ReflectionTestUtils.getField(pending().get(state), "userId"));
@@ -117,20 +117,20 @@ class SpotifyAuthorizationStateServiceTest {
     void shouldStartInSpringWithoutClockBean() {
         try (var context = new AnnotationConfigApplicationContext(SpotifyAuthorizationStateService.class)) {
             assertTrue(context.getBeansOfType(Clock.class).isEmpty());
-            assertFalse(context.getBean(SpotifyAuthorizationStateService.class).create(42L).isBlank());
+            assertFalse(context.getBean(SpotifyAuthorizationStateService.class).create(42L, 0L).isBlank());
         }
     }
 
     @Test
     void shouldConsumeStateOnceAndPreserveOtherAttempts() {
-        String state = service.create(42L);
-        String other = service.create(43L);
+        String state = service.create(42L, 0L);
+        String other = service.create(43L, 0L);
 
-        assertEquals(42L, service.consume(state));
+        assertEquals(42L, service.consume(state).userId());
         assertFalse(pending().containsKey(state));
         assertEquals(1, pending().size());
         assertBadState(state);
-        assertEquals(43L, service.consume(other));
+        assertEquals(43L, service.consume(other).userId());
         assertTrue(pending().isEmpty());
     }
 
@@ -138,22 +138,22 @@ class SpotifyAuthorizationStateServiceTest {
     @NullSource
     @ValueSource(strings = {"", " ", "\t\n", "unknown-state"})
     void shouldRejectInvalidStateWithoutRemovingValidAttempt(String invalidState) {
-        String valid = service.create(42L);
+        String valid = service.create(42L, 0L);
 
         assertBadState(invalidState);
         assertEquals(1, pending().size());
-        assertEquals(42L, service.consume(valid));
+        assertEquals(42L, service.consume(valid).userId());
     }
 
     @ParameterizedTest
     @CsvSource({"299999,false", "300000,true", "300001,true"})
     void shouldCheckExpirationAtConsumption(long elapsedMillis, boolean expired) {
-        String state = service.create(42L);
+        String state = service.create(42L, 0L);
         // Verifica os limites do prazo sem esperar cinco minutos de verdade.
         when(clock.instant()).thenReturn(NOW.plusMillis(elapsedMillis));
 
         if (expired) assertBadState(state);
-        else assertEquals(42L, service.consume(state));
+        else assertEquals(42L, service.consume(state).userId());
 
         assertTrue(pending().isEmpty());
         assertBadState(state);
@@ -161,22 +161,22 @@ class SpotifyAuthorizationStateServiceTest {
 
     @Test
     void shouldReleaseUserCapacityAfterConsumption() {
-        String state = service.create(42L);
-        service.create(42L);
-        service.create(42L);
-        var full = assertThrows(ResponseStatusException.class, () -> service.create(42L));
+        String state = service.create(42L, 0L);
+        service.create(42L, 0L);
+        service.create(42L, 0L);
+        var full = assertThrows(ResponseStatusException.class, () -> service.create(42L, 0L));
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, full.getStatusCode());
 
         service.consume(state);
-        assertDoesNotThrow(() -> service.create(42L));
+        assertDoesNotThrow(() -> service.create(42L, 0L));
         assertEquals(3, pending().size());
-        var fullAgain = assertThrows(ResponseStatusException.class, () -> service.create(42L));
+        var fullAgain = assertThrows(ResponseStatusException.class, () -> service.create(42L, 0L));
         assertEquals(HttpStatus.TOO_MANY_REQUESTS, fullAgain.getStatusCode());
     }
 
     @Test
     void shouldAllowOnlyOneConcurrentConsumer() throws Exception {
-        String state = service.create(42L);
+        String state = service.create(42L, 0L);
         var ready = new CountDownLatch(2);
         var start = new CountDownLatch(1);
         var executor = Executors.newFixedThreadPool(2);
@@ -185,7 +185,7 @@ class SpotifyAuthorizationStateServiceTest {
             ready.countDown();
             assertTrue(start.await(5, TimeUnit.SECONDS));
             try {
-                assertEquals(42L, service.consume(state));
+                assertEquals(42L, service.consume(state).userId());
                 return true;
             } catch (ResponseStatusException exception) {
                 assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
@@ -204,6 +204,14 @@ class SpotifyAuthorizationStateServiceTest {
             start.countDown();
             executor.shutdownNow();
         }
+    }
+
+    @Test
+    void consumePreservesOriginalAuthorizationVersion() {
+        String state = service.create(42L, 7L);
+        var attempt = service.consume(state);
+        assertEquals(42L, attempt.userId());
+        assertEquals(7L, attempt.authorizationVersion());
     }
 
     private void assertBadState(String state) {

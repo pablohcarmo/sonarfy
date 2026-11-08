@@ -1,5 +1,7 @@
 package br.com.pablohcarmo.sonarfy.services;
 
+import br.com.pablohcarmo.sonarfy.dto.PendingAuthorization;
+import br.com.pablohcarmo.sonarfy.dto.SpotifyAuthorizationAttempt;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -37,7 +39,10 @@ public class SpotifyAuthorizationStateService {
     }
 
     // Serializa o acesso ao mapa nesta instância.
-    public synchronized String create(Long userId) {
+    public synchronized String create(
+            Long userId,
+            long authorizationVersion
+    ) {
         // O ID deverá vir da identidade autenticada.
         if (userId == null || userId <= 0) {
             throw new IllegalArgumentException("A valid user ID is required.");
@@ -88,7 +93,10 @@ public class SpotifyAuthorizationStateService {
         // Associa o state ao usuário com validade de cinco minutos.
         pending.put(
                 state,
-                new PendingAuthorization(userId, now.plus(VALIDITY))
+                new PendingAuthorization(
+                        userId,
+                        authorizationVersion,
+                        now.plus(VALIDITY))
         );
 
         // O callback valida e consome este state uma única vez.
@@ -96,7 +104,7 @@ public class SpotifyAuthorizationStateService {
     }
 
     // Sincroniza o consumo com a criação e com outras chamadas de consumo.
-    public synchronized Long consume(String state) {
+    public synchronized SpotifyAuthorizationAttempt consume(String state) {
         // Sem state, não conseguimos identificar a tentativa de autorização.
         if (state == null || state.isBlank()) {
             throw new ResponseStatusException(
@@ -117,13 +125,9 @@ public class SpotifyAuthorizationStateService {
         }
 
         // Recupera a identidade registrada no início da autorização, o ID não vem dos parâmetros enviados ao callback.
-        return authorization.userId();
-    }
-
-    // Dados imutáveis da tentativa pendente.
-    private record PendingAuthorization(
-            Long userId,
-            Instant expiresAt
-    ) {
+        return new SpotifyAuthorizationAttempt(
+                authorization.userId(),
+                authorization.authorizationVersion()
+        );
     }
 }

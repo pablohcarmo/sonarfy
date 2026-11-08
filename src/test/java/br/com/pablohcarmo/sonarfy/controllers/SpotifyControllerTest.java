@@ -37,6 +37,9 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Map;
 import java.util.Optional;
+import java.time.OffsetDateTime;
+import br.com.pablohcarmo.sonarfy.dto.SpotifyConnectionResponseDto;
+import br.com.pablohcarmo.sonarfy.enums.SpotifyConnectionStatus;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -86,6 +89,7 @@ class SpotifyControllerTest {
         user.setPermission(permission);
         when(users.findWithPermissionById(42L)).thenReturn(Optional.of(user));
         when(users.findByEmailIgnoreCase(user.getEmail())).thenReturn(Optional.of(user));
+        when(users.findById(42L)).thenReturn(Optional.of(user));
     }
 
     @Test
@@ -139,6 +143,7 @@ class SpotifyControllerTest {
         other.setPermission(user.getPermission());
         when(users.findWithPermissionById(43L)).thenReturn(Optional.of(other));
         when(users.findByEmailIgnoreCase(other.getEmail())).thenReturn(Optional.of(other));
+        when(users.findById(43L)).thenReturn(Optional.of(other));
         mvc.perform(post("/api/spotify/authorization").header("Authorization", "Bearer " + jwt.generateAccessToken("43")))
                 .andExpect(status().isOk());
         assertEquals(4, pending().size());
@@ -165,14 +170,14 @@ class SpotifyControllerTest {
         mvc.perform(get("/api/spotify/callback").param("code", "test-code").param("state", state))
                 .andExpect(status().isBadRequest());
         assertTrue(pending().isEmpty());
-        verify(users, times(1)).findById(42L);
+        verify(users, times(2)).findById(42L);
         verify(tokens, times(1)).exchangeCode("test-code");
     }
 
     @ParameterizedTest
     @CsvSource({"test-code,,", "test-code,unknown,", ",,", "test-code,known,access_denied", ",known,unknown-error"})
     void shouldRejectInvalidCallbackWithoutTokenExchange(String code, String stateValue, String error) throws Exception {
-        String validState = states.create(42L);
+        String validState = states.create(42L, 0L);
         var callback = get("/api/spotify/callback");
         if (code != null) callback.param("code", code);
         if (stateValue != null) callback.param("state", stateValue.equals("known") ? validState : stateValue);
@@ -181,12 +186,12 @@ class SpotifyControllerTest {
         mvc.perform(callback).andExpect(status().isBadRequest());
         verify(users, never()).findById(anyLong());
         verifyNoInteractions(tokens);
-        assertEquals(42L, states.consume(validState));
+        assertEquals(42L, states.consume(validState).userId());
     }
 
     @Test
     void shouldConsumeDenialWithoutBearerOrTokenExchange() throws Exception {
-        String state = states.create(42L);
+        String state = states.create(42L, 0L);
         when(users.findById(42L)).thenReturn(Optional.of(user));
 
         mvc.perform(get("/api/spotify/callback").param("error", "access_denied").param("state", state))
@@ -200,7 +205,7 @@ class SpotifyControllerTest {
     @ParameterizedTest
     @CsvSource({"REJECTED,502", "UNAVAILABLE,503", "TIMEOUT,504"})
     void shouldExposeExchangeFailureStatusAndPreventRetry(Category category, int expected) throws Exception {
-        String state = states.create(42L);
+        String state = states.create(42L, 0L);
         when(users.findById(42L)).thenReturn(Optional.of(user));
         when(tokens.exchangeCode("test-code")).thenThrow(new SpotifyIntegrationException(category));
 
@@ -224,7 +229,7 @@ class SpotifyControllerTest {
 
     @Test
     void shouldReturn502ForIncompleteTokenResponseAndRejectReplay() throws Exception {
-        String state = states.create(42L);
+        String state = states.create(42L, 0L);
         when(users.findById(42L)).thenReturn(Optional.of(user));
         when(tokens.exchangeCode("test-code")).thenReturn(
                 new SpotifyTokenResponseDto(null, "Bearer", 3600L, "private-refresh", null));
@@ -245,7 +250,7 @@ class SpotifyControllerTest {
     @NullSource
     @ValueSource(longs = {0L, -1L, 3601L, Long.MAX_VALUE})
     void shouldReturn502ForInvalidExpiryWithoutPersistingAndRejectReplay(Long expiresIn) throws Exception {
-        String state = states.create(42L);
+        String state = states.create(42L, 0L);
         when(users.findById(42L)).thenReturn(Optional.of(user));
         when(tokens.exchangeCode("test-code")).thenReturn(
                 new SpotifyTokenResponseDto("private-access", "Bearer", expiresIn, "private-refresh", null));
@@ -260,6 +265,93 @@ class SpotifyControllerTest {
         verify(tokens, times(1)).exchangeCode("test-code");
         verifyNoInteractions(connections);
         assertTrue(pending().isEmpty());
+    }
+
+    @Test
+    void connectionRequiresValidAccessBearer() throws Exception {
+        mvc.perform(get("/api/spotify/connection")).andExpect(status().isUnauthorized());
+        for (String token : new String[]{"invalid", jwt.generateRegistrationToken("42")}) {
+            mvc.perform(get("/api/spotify/connection").header("Authorization", "Bearer " + token))
+                    .andExpect(status().isUnauthorized());
+        }
+        verifyNoInteractions(connections, tokens);
+    }
+
+    @Test
+    void connectionReturnsOnlyPublicFieldsForAuthenticatedUserIgnoringSuppliedId() throws Exception {
+        var connectedAt = OffsetDateTime.parse("2026-11-01T12:00:00Z");
+        when(connections.getConnection(42L)).thenReturn(
+                new SpotifyConnectionResponseDto(SpotifyConnectionStatus.CONNECTED, connectedAt));
+
+        var result = mvc.perform(get("/api/spotify/connection")
+                        .header("Authorization", "Bearer " + jwt.generateAccessToken("42"))
+                        .param("userId", "99"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.status").value("CONNECTED"))
+                .andExpect(jsonPath("$.connectedAt").isString())
+                .andReturn();
+        var json = new ObjectMapper().readTree(result.getResponse().getContentAsString());
+        assertEquals(2, json.size());
+        assertEquals(connectedAt, OffsetDateTime.parse(json.get("connectedAt").asText()));
+        verify(connections).getConnection(42L);
+        verifyNoMoreInteractions(connections);
+        verifyNoInteractions(tokens);
+        assertTrue(pending().isEmpty());
+    }
+
+    @Test
+    void connectionReturnsDisconnectedWithExplicitNullDate() throws Exception {
+        when(connections.getConnection(42L)).thenReturn(
+                new SpotifyConnectionResponseDto(SpotifyConnectionStatus.DISCONNECTED, null));
+
+        var result = mvc.perform(get("/api/spotify/connection")
+                        .header("Authorization", "Bearer " + jwt.generateAccessToken("42")))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.status").value("DISCONNECTED"))
+                .andReturn();
+        var json = new ObjectMapper().readTree(result.getResponse().getContentAsString());
+        assertEquals(2, json.size());
+        assertTrue(json.has("connectedAt"));
+        assertTrue(json.get("connectedAt").isNull());
+    }
+
+    @Test
+    void connectionRejectsUserMissingAtControllerLookup() throws Exception {
+        when(users.findByEmailIgnoreCase(user.getEmail())).thenReturn(Optional.empty());
+
+        mvc.perform(get("/api/spotify/connection")
+                        .header("Authorization", "Bearer " + jwt.generateAccessToken("42")))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(connections, tokens);
+    }
+
+    @Test
+    void disconnectUsesAuthenticatedUserAndReturnsNoContentEvenOnRepeat() throws Exception {
+        for (int i = 0; i < 2; i++) {
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/spotify/connection")
+                            .header("Authorization", "Bearer " + jwt.generateAccessToken("42"))
+                            .param("userId", "99"))
+                    .andExpect(status().isNoContent())
+                    .andExpect(header().string("Cache-Control", "no-store"))
+                    .andExpect(content().string(""));
+        }
+        verify(connections, times(2)).disconnect(42L);
+        verifyNoMoreInteractions(connections);
+    }
+
+    @Test
+    void disconnectRejectsMissingOrInvalidBearer() throws Exception {
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/spotify/connection"))
+                .andExpect(status().isUnauthorized());
+        for (String token : new String[]{"invalid", jwt.generateRegistrationToken("42")}) {
+            mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/spotify/connection")
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isUnauthorized());
+        }
+        verifyNoInteractions(connections);
     }
 
     private Map<?, ?> pending() {

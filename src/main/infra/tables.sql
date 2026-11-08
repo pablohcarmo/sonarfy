@@ -29,7 +29,8 @@ CREATE TABLE Users (
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     password_updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    last_email_sent_at TIMESTAMP WITH TIME ZONE
+    last_email_sent_at TIMESTAMP WITH TIME ZONE,
+    spotify_authorization_version BIGINT NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX uk_users_email_ci ON Users (lower(email));

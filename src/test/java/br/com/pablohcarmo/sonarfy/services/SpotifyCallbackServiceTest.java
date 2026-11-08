@@ -47,7 +47,18 @@ class SpotifyCallbackServiceTest {
         user.setId(42L);
         user.setActive(true);
         user.setVerified(true);
-        state = states.create(user.getId());
+        state = states.create(user.getId(), 0L);
+    }
+
+    @Test
+    void shouldForwardOriginalVersionEvenWhenUserVersionChangedDuringAuthorization() {
+        String oldAttempt = states.create(42L, 7L);
+        user.invalidateSpotifyAuthorizations();
+        when(users.findById(42L)).thenReturn(Optional.of(user));
+        var response = new SpotifyTokenResponseDto("access", "Bearer", 3600L, "refresh", null);
+        when(tokens.exchangeCode("code")).thenReturn(response);
+        service.handleCallback("code", oldAttempt, null);
+        verify(connections).connect(42L, 7L, response);
     }
 
     @Test
@@ -61,7 +72,7 @@ class SpotifyCallbackServiceTest {
         assertStatus("test-code", state, null, HttpStatus.BAD_REQUEST);
         verify(users, times(1)).findById(42L);
         verify(tokens, times(1)).exchangeCode("test-code");
-        verify(connections).connect(42L, new SpotifyTokenResponseDto("test-access", "Bearer", 3600L,
+        verify(connections).connect(42L, 0L, new SpotifyTokenResponseDto("test-access", "Bearer", 3600L,
                 "test-refresh", "user-library-read"));
         verifyNoMoreInteractions(users, tokens);
     }
@@ -72,7 +83,7 @@ class SpotifyCallbackServiceTest {
         assertStatus(code, state, error, HttpStatus.BAD_REQUEST);
 
         verifyNoInteractions(users, tokens);
-        assertEquals(42L, states.consume(state));
+        assertEquals(42L, states.consume(state).userId());
     }
 
     static Stream<Arguments> invalidParameters() {
@@ -89,7 +100,7 @@ class SpotifyCallbackServiceTest {
     void shouldStopOnInvalidStateBeforeUserLookup(String invalidState) {
         assertStatus("test-code", invalidState, null, HttpStatus.BAD_REQUEST);
         verifyNoInteractions(users, tokens);
-        assertEquals(42L, states.consume(state));
+        assertEquals(42L, states.consume(state).userId());
     }
 
     @ParameterizedTest
@@ -176,7 +187,7 @@ class SpotifyCallbackServiceTest {
 
         assertDoesNotThrow(() -> service.handleCallback("test-code", state, null));
         verify(tokens).exchangeCode("test-code");
-        verify(connections).connect(42L,
+        verify(connections).connect(42L, 0L,
                 new SpotifyTokenResponseDto("test-access", "bearer", expiresIn, "test-refresh", null));
     }
 
@@ -189,13 +200,13 @@ class SpotifyCallbackServiceTest {
         RuntimeException failure = scenario.equals("database")
                 ? new org.springframework.dao.DataAccessResourceFailureException("Test database unavailable")
                 : new IllegalStateException("Cannot encrypt Spotify token.");
-        doThrow(failure).when(connections).connect(42L, response);
+        doThrow(failure).when(connections).connect(42L, 0L, response);
 
         assertSame(failure, assertThrows(RuntimeException.class,
                 () -> service.handleCallback("test-code", state, null)));
         assertStatus("test-code", state, null, HttpStatus.BAD_REQUEST);
         verify(tokens, times(1)).exchangeCode("test-code");
-        verify(connections, times(1)).connect(42L, response);
+        verify(connections, times(1)).connect(42L, 0L, response);
     }
 
     private ResponseStatusException assertStatus(String code, String callbackState, String error, HttpStatus expected) {

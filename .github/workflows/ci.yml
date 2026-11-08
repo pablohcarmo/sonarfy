@@ -45,6 +45,8 @@ jobs:
           # Only this disposable CI database: simulate the schema before the Spotify table.
           docker exec "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 -c 'DROP TABLE spotify_connection'
           docker exec -i "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 < db/migrations/001_create_spotify_connection.sql
+          docker exec "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 -c 'ALTER TABLE users DROP COLUMN spotify_authorization_version'
+          docker exec -i "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 < db/migrations/002_add_spotify_authorization_version.sql
 
       - name: Execute PostgreSQL persistence and concurrency tests
         env:

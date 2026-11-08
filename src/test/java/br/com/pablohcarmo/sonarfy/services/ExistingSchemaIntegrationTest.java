@@ -100,7 +100,7 @@ class ExistingSchemaIntegrationTest {
                 null, null, null, LocalDate.of(2000, 1, 1), null, null, null, null);
         users.saveAndFlush(user);
 
-        spotifyConnectionService.connect(user.getId(), new SpotifyTokenResponseDto(
+        spotifyConnectionService.connect(user.getId(), 0L, new SpotifyTokenResponseDto(
                 "access-one", "Bearer", 3600L, "refresh-one", "user-library-read"));
         entityManager.flush();
         entityManager.clear();
@@ -113,7 +113,7 @@ class ExistingSchemaIntegrationTest {
         assertEquals("refresh-one", tokenEncryption.decrypt(saved.getRefreshTokenEncrypted(), user.getId(), "refresh"));
         assertEquals("user-library-read", saved.getScopes());
 
-        spotifyConnectionService.connect(user.getId(), new SpotifyTokenResponseDto(
+        spotifyConnectionService.connect(user.getId(), 0L, new SpotifyTokenResponseDto(
                 "access-two", "Bearer", 3600L, "refresh-two", null));
         entityManager.flush();
         entityManager.clear();
@@ -159,7 +159,7 @@ class ExistingSchemaIntegrationTest {
         ready.countDown();
         try {
             start.await();
-            transaction.executeWithoutResult(status -> spotifyConnectionService.connect(userId,
+            transaction.executeWithoutResult(status -> spotifyConnectionService.connect(userId, 0L,
                     new SpotifyTokenResponseDto(accessToken, "Bearer", 3600L,
                             "refresh-" + accessToken, "user-library-read")));
         } catch (InterruptedException exception) {
