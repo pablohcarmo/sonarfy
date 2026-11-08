@@ -2,13 +2,40 @@
 
 ## Estado atual
 
+### Consulta, conexão e desconexão
+
+`GET /api/spotify/connection` exige Bearer Sonarfy e retorna HTTP 200 com
+`status` (`CONNECTED` ou `DISCONNECTED`) e `connectedAt` (nulo sem conexão).
+Conectado significa credenciais armazenadas: o vencimento do access token não
+produz `REAUTHORIZATION_REQUIRED` nesta etapa. Nenhum token é exposto.
+
+`DELETE /api/spotify/connection` exige o mesmo Bearer e retorna HTTP 204 sem
+corpo, inclusive se já desconectado. As duas rotas usam `Cache-Control: no-store`
+e resolvem a identidade autenticada, ignorando um `userId` fornecido pelo cliente.
+A desconexão remove as credenciais locais; a revogação da permissão na conta do
+Spotify é uma ação separada do usuário. Ecos e eventos de integração ainda não
+estão implementados neste fluxo.
+
+Cada state guarda a versão de autorização do usuário. Desconectar bloqueia sua
+linha, incrementa `spotify_authorization_version` e exclui a conexão na mesma
+transação. O callback confere a versão original sob o mesmo bloqueio antes de
+gravar: tentativa anterior retorna HTTP 400 e não recria credenciais. O serviço
+recarrega o usuário sob bloqueio para evitar usar uma versão em cache no request.
+Uma nova autorização usa a versão atual. States antigos permanecem sujeitos ao
+prazo e aos limites de memória; sua versão impede a gravação após desconectar.
+
+Antes do deploy em banco existente, aplicar a migração
+`db/migrations/002_add_spotify_authorization_version.sql` (ver guia de persistência).
+Renovação automática, integração do frontend e sincronização seguem pendentes.
+O callback ainda retorna 204 ao concluir com sucesso.
+
 O backend expõe a rota autenticada `POST /api/spotify/authorization`, monta a URL
 de autorização e recebe o retorno em `GET /api/spotify/callback`, que valida o
 state, troca o código por tokens e persiste a conexão vinculada ao usuário.
 Access token e refresh token são armazenados cifrados com AES-GCM e não são
 retornados ao navegador. Reconexões atualizam a mesma conexão e preservam
 `connected_at`. A migração deve ser aplicada antes do deploy em bancos existentes;
-renovação automática, desconexão e sincronização continuam pendentes.
+renovação automática e sincronização continuam pendentes.
 
 A rota exige `Authorization: Bearer <accessToken>`, não recebe `userId` e resolve
 o usuário pelo e-mail do `Principal`. Retorna HTTP 200 com
@@ -88,7 +115,7 @@ a conexão; o escopo pode estar ausente e a validade do token ainda depende de
 uma chamada autorizada ao Spotify.
 
 O 204 não carrega uma página nova no navegador. Ele confirma a troca e a
-gravação da conexão. Renovação, desconexão, sincronização de escutas e
+gravação da conexão. Renovação, sincronização de escutas e
 redirecionamento para o frontend ficam para outras entregas.
 
 Falhas de banco ou cifragem durante a persistência propagam como erro interno
@@ -97,8 +124,9 @@ iniciar outra autorização. Não há ainda métricas ou logs específicos desse
 
 ## Configuração
 
-Antes de disponibilizar esta versão em um banco existente, aplique
-`db/migrations/001_create_spotify_connection.sql` conforme o
+Antes de disponibilizar esta versão em um banco existente, aplique as migrações
+`db/migrations/001_create_spotify_connection.sql` e
+`db/migrations/002_add_spotify_authorization_version.sql`, nesta ordem, conforme o
 [guia de persistência](../persistence.md#inicialização-e-atualização-do-banco).
 Com `ddl-auto=none`, a aplicação não cria `spotify_connection` automaticamente.
 Para um banco vazio, use o schema completo em `src/main/infra/tables.sql`.
@@ -226,22 +254,25 @@ As instruções de execução local estão no [guia de persistência](../persist
 
 Os relatórios da execução ficam em `target/surefire-reports`; registre o resultado
 correspondente à versão entregue na descrição do PR e consulte também a CI.
-Evidência histórica anterior à persistência: `357` testes automatizados passaram,
-sem falhas. Na aplicação local, três verificações pelo Postman CLI confirmaram
-400 sem parâmetros, 400 com state desconhecido e 401 no início sem Bearer.
-O teste manual de recusa retornou 403 e, na repetição, 400.
-O relatório de rede do navegador confirmou duas autorizações com Spotify real,
-ambas com callback 204, corpo vazio e `Cache-Control: no-store`.
-Essas verificações históricas não validaram a persistência adicionada neste PR.
-A persistência é coberta pelos testes PostgreSQL descritos acima; renovação,
-desconexão e sincronização ainda não foram implementadas.
+Em 08/11/2026, `.\mvnw.cmd test` executou 403 testes: zero falhas, zero erros e
+quatro ignorados (`BUILD SUCCESS`). A suíte padrão usa H2; os testes PostgreSQL
+opt-in não rodam nessa chamada e são executados separadamente pela CI.
+
+Também em 08/11/2026, o teste manual contra a aplicação local e o Spotify real
+confirmou: estado inicial `DISCONNECTED`; autorização concluída no navegador;
+estado `CONNECTED`; desconexão com HTTP 204; estado `DISCONNECTED`; nova
+autorização; e estado final `CONNECTED`. Esse teste valida conexão, consulta,
+desconexão e reconexão reais. Não valida renovação automática nem o frontend.
+Os testes locais cobrem a desconexão com controle de versão e callbacks pendentes;
+a persistência e concorrência são cobertas pelo teste PostgreSQL opt-in da CI.
 
 ## Próximas entregas
 
 - Integração do frontend à rota de início e apresentação do resultado do callback.
-- Renovação automática dos tokens, desconexão e revogação da conta.
-- Sincronização de escutas e consulta do estado da conexão.
-- Estratégia de rotação de chave e observabilidade de falhas de persistência.
+- Renovação automática dos tokens; definir previamente estratégia de rotação de
+  chave e orientar o usuário sobre revogação da permissão no Spotify.
+- Sincronização de escutas e consulta de dados musicais.
+- Observabilidade de falhas de persistência.
 - Consulta de álbuns e artistas em PR separado.
 
 Referências: [Authorization Code Flow](https://developer.spotify.com/documentation/web-api/tutorials/code-flow)

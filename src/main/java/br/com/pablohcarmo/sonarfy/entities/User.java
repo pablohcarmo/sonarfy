@@ -77,6 +77,9 @@ public class User implements UserDetails {
     @Column (name = "last_email_sent_at", updatable = false)
     private OffsetDateTime lastEmailSentAt;
 
+    @Column (name = "spotify_authorization_version", nullable = false)
+    private long spotifyAuthorizationVersion = 0L;
+
     public User(Long id,
                 Permission permission,
                 String name,
@@ -282,6 +285,14 @@ public class User implements UserDetails {
 
     public void setLastEmailSentAt(OffsetDateTime lastEmailSentAt) {
         this.lastEmailSentAt = lastEmailSentAt;
+    }
+
+    public long getSpotifyAuthorizationVersion() {
+        return spotifyAuthorizationVersion;
+    }
+
+    public void invalidateSpotifyAuthorizations() {
+        spotifyAuthorizationVersion++;
     }
 
     @PrePersist

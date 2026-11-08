@@ -38,7 +38,8 @@ public class SpotifyCallbackService {
 
         // Valida a tentativa, remove seu state e recupera o usuário associado.
         // Se o state for inválido, o próprio consume lança a exceção.
-        Long userId = stateService.consume(state);
+        var attempt = stateService.consume(state);
+        Long userId = attempt.userId();
 
         // O usuário pode ter sido excluído ou desativado desde o início do fluxo.
         User user = userRepository.findById(userId)
@@ -71,7 +72,7 @@ public class SpotifyCallbackService {
             // só consideramos a troca concluída se os campos essenciais forem válidos.
             SpotifyTokenResponseValidator.validate(response);
 
-            connectionService.connect(userId, response);
+            connectionService.connect(userId, attempt.authorizationVersion(), response);
 
         } catch (SpotifyIntegrationException exception) {
             // Traduz as categorias do serviço para respostas HTTP.

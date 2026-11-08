@@ -22,19 +22,27 @@ estabelece que o login registre acessos automaticamente.
 
 ## Inicialização e atualização do banco
 
+O controle de autorizações Spotify exige também
+`db/migrations/002_add_spotify_authorization_version.sql` em bancos existentes.
+Execute uma vez, após a migração 001 e antes de iniciar esta versão da aplicação.
+A coluna `users.spotify_authorization_version` é `BIGINT NOT NULL DEFAULT 0`.
+Não há aplicação automática das migrações. O schema completo já inclui a coluna
+para bancos novos; não execute a migração 002 novamente nesses bancos.
+
 O schema completo está versionado em `src/main/infra/tables.sql` e deve ser
 importado somente em um banco vazio. O Compose e os demais arquivos de
 infraestrutura local continuam ignorados pelo Git.
 
-Em bancos existentes que já contêm `users`, aplique
-`db/migrations/001_create_spotify_connection.sql` antes de disponibilizar a
-versão que persiste a conexão Spotify. Esse script cria somente a nova tabela,
-sem recriar o banco ou modificar os dados existentes. Execute-o uma vez e
-registre sua aplicação no controle de deploy; não há executor automático de
-migrações configurado.
+Em bancos existentes que já contêm `users`, aplique as migrações
+`001_create_spotify_connection.sql` e `002_add_spotify_authorization_version.sql`,
+nesta ordem, antes de disponibilizar a versão que persiste a conexão Spotify.
+A primeira cria a tabela da conexão; a segunda adiciona a versão de autorização
+ao usuário. Execute cada script uma vez e registre ambos no controle de deploy;
+não há executor automático de migrações configurado.
 
 ```powershell
 psql -h <host> -p <porta> -U <usuario> -d <banco> -v ON_ERROR_STOP=1 -f db/migrations/001_create_spotify_connection.sql
+psql -h <host> -p <porta> -U <usuario> -d <banco> -v ON_ERROR_STOP=1 -f db/migrations/002_add_spotify_authorization_version.sql
 ```
 
 Forneça as credenciais pelo mecanismo seguro usado no ambiente. Não execute
@@ -53,13 +61,15 @@ A suíte padrão (`.\mvnw.cmd test`) usa H2 isolado. Os testes convencionais de
 integração criam e removem tabelas e não devem receber a conexão de um banco
 que precise ser preservado.
 
-Na CI, o job `test` também inicia um serviço PostgreSQL 17 descartável, importa
-`src/main/infra/tables.sql`, remove somente a tabela Spotify vazia desse banco
-de teste e aplica `db/migrations/001_create_spotify_connection.sql`. Em seguida,
-executa explicitamente `ExistingSchemaIntegrationTest` com a propriedade opt-in
-habilitada. Falhas de SQL, persistência, reconexão ou concorrência falham o mesmo
-job da suíte padrão. Isso valida o rollout em teste; a migração de cada ambiente
-de deploy continua manual e deve preceder a nova versão da aplicação.
+Na CI, o job `test` também inicia um serviço PostgreSQL 17 descartável e importa
+`src/main/infra/tables.sql`. Para simular uma atualização incremental, remove
+somente a tabela Spotify vazia e a coluna `users.spotify_authorization_version`
+desse banco de teste; então aplica, em ordem, `001_create_spotify_connection.sql`
+e `002_add_spotify_authorization_version.sql`. Em seguida, executa explicitamente
+`ExistingSchemaIntegrationTest` com a propriedade opt-in habilitada. Falhas de SQL,
+persistência, reconexão ou concorrência falham o mesmo job da suíte padrão. Isso
+valida o rollout em teste; cada ambiente de deploy ainda exige aplicação manual
+das migrações, em ordem, antes da nova versão da aplicação.
 
 `ExistingSchemaIntegrationTest` é uma verificação separada, habilitada
 explicitamente, com geração de schema desativada. Ela usa os serviços, JPA e
@@ -83,7 +93,9 @@ completo, informado pelo construtor de `User`, após limpar o contexto JPA.
 Cada cenário usa transação com rollback. Usuários e logs de teste não permanecem
 no banco, mas sequências de IDs podem avançar, conforme o comportamento do PostgreSQL.
 
-## Evidências de 06/11/2026
+## Evidências anteriores
+
+### Evidências de 06/11/2026
 
 - Após os ajustes do review: suíte padrão com 387 testes, zero falhas/erros e
   quatro itens opt-in ignorados. Em execução separada contra PostgreSQL 17
@@ -106,5 +118,16 @@ no banco, mas sequências de IDs podem avançar, conforme o comportamento do Pos
 - `UserServiceTest` reexecutado após ampliar as asserções: 31 testes aprovados.
 - Após os testes no PostgreSQL: zero usuários, zero logs e três permissões,
   confirmando o rollback dos dados criados.
+
+## Evidência da branch Spotify em 08/11/2026
+
+- `.\mvnw.cmd test`: 403 testes executados, zero falhas, zero erros e quatro
+  ignorados. `BUILD SUCCESS`. A execução padrão usa H2; os quatro cenários
+  opt-in de `ExistingSchemaIntegrationTest` não foram executados nessa chamada.
+- Teste manual contra a aplicação local e o Spotify real: consulta inicial
+  `DISCONNECTED`, autorização e callback concluídos, consulta `CONNECTED`,
+  desconexão HTTP 204, consulta `DISCONNECTED` e nova autorização seguida de
+  `CONNECTED`. Isso valida o fluxo funcional de conexão e reconexão; não valida
+  renovação automática nem integração do frontend.
 
 Os relatórios locais ficam em `target/surefire-reports` e não são versionados.

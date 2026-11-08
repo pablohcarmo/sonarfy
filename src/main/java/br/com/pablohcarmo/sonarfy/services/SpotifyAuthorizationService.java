@@ -1,5 +1,9 @@
 package br.com.pablohcarmo.sonarfy.services;
 
+import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
+import org.springframework.http.HttpStatus;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -12,22 +16,32 @@ public class SpotifyAuthorizationService {
 
     // Delega a geração e o armazenamento do state ao service dedicado.
     private final SpotifyAuthorizationStateService stateService;
+    private final UserRepository users;
     private final String clientId;
     private final String redirectUri;
 
     public SpotifyAuthorizationService(
             SpotifyAuthorizationStateService stateService,
+            UserRepository users,
             @Value("${SPOTIFY_CLIENT_ID}") String clientId,
             @Value("${SPOTIFY_REDIRECT_URI}") String redirectUri
     ) {
         this.stateService = stateService;
+        this.users = users;
         this.clientId = clientId;
         this.redirectUri = redirectUri;
     }
 
+    @Transactional(readOnly = true)
     public URI startAuthorization(Long userId) {
+        var user = users.findById(userId)
+                .filter(candidate -> candidate.isEnabled())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "User cannot start Spotify authorization."
+                ));
         // Cria uma tentativa vinculada ao usuário autenticado.
-        String state = stateService.create(userId);
+        String state = stateService.create(userId, user.getSpotifyAuthorizationVersion());
 
         // Monta o endereço de consentimento; não faz chamada HTTP ao Spotify.
         return UriComponentsBuilder

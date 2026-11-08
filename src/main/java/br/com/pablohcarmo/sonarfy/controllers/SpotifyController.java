@@ -1,10 +1,12 @@
 package br.com.pablohcarmo.sonarfy.controllers;
 
 import br.com.pablohcarmo.sonarfy.dto.SpotifyAuthorizationResponseDto;
+import br.com.pablohcarmo.sonarfy.dto.SpotifyConnectionResponseDto;
 import br.com.pablohcarmo.sonarfy.entities.User;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import br.com.pablohcarmo.sonarfy.services.SpotifyAuthorizationService;
 import br.com.pablohcarmo.sonarfy.services.SpotifyCallbackService;
+import br.com.pablohcarmo.sonarfy.services.SpotifyConnectionService;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,11 +23,13 @@ public class SpotifyController {
     private final UserRepository userRepository;
     private final SpotifyAuthorizationService spotifyAuthorizationService;
     private final SpotifyCallbackService spotifyCallbackService;
+    private final SpotifyConnectionService spotifyConnectionService;
 
-    public SpotifyController(UserRepository userRepository, SpotifyAuthorizationService spotifyAuthorizationService, SpotifyCallbackService spotifyCallbackService) {
+    public SpotifyController(UserRepository userRepository, SpotifyAuthorizationService spotifyAuthorizationService, SpotifyCallbackService spotifyCallbackService, SpotifyConnectionService spotifyConnectionService) {
         this.userRepository = userRepository;
         this.spotifyAuthorizationService = spotifyAuthorizationService;
         this.spotifyCallbackService = spotifyCallbackService;
+        this.spotifyConnectionService = spotifyConnectionService;
     }
 
     @PostMapping("/authorization")
@@ -59,6 +63,42 @@ public class SpotifyController {
         spotifyCallbackService.handleCallback(code, state, error);
 
         // Confirma a conclusão sem expor tokens nem armazenar a resposta em cache.
+        return ResponseEntity.noContent()
+                .cacheControl(CacheControl.noStore())
+                .build();
+    }
+
+    @GetMapping("/connection")
+    public ResponseEntity<SpotifyConnectionResponseDto> getConnection(
+            Principal principal
+    ) {
+        // Identifica o usuário autenticado, consulta o service e retorna o resultado sem permitir cache
+        User user = userRepository.findByEmailIgnoreCase(principal.getName())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNAUTHORIZED,
+                        "Authenticated user not found."
+                ));
+
+        SpotifyConnectionResponseDto connection = spotifyConnectionService.getConnection(user.getId());
+
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(connection);
+    }
+
+    @DeleteMapping("/connection")
+    public ResponseEntity<Void> deleteConnection(
+            Principal principal
+    ) {
+        // Identifica o usuário autenticado, consulta o service e retorna o resultado sem permitir cache
+        User user = userRepository.findByEmailIgnoreCase(principal.getName())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.UNAUTHORIZED,
+                        "Authenticated user not found."
+                ));
+
+        spotifyConnectionService.disconnect(user.getId());
+
         return ResponseEntity.noContent()
                 .cacheControl(CacheControl.noStore())
                 .build();

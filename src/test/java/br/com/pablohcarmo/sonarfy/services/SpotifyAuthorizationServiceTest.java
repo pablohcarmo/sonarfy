@@ -1,5 +1,8 @@
 package br.com.pablohcarmo.sonarfy.services;
 
+import br.com.pablohcarmo.sonarfy.entities.User;
+import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
+import java.util.Optional;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -21,8 +24,14 @@ class SpotifyAuthorizationServiceTest {
     })
     void shouldBuildAuthorizationUrlPreservingParameterValues(String redirectUri) {
         var stateService = mock(SpotifyAuthorizationStateService.class);
-        when(stateService.create(42L)).thenReturn("test-state");
-        var service = new SpotifyAuthorizationService(stateService, "test-client", redirectUri);
+        var users = mock(UserRepository.class);
+        var user = new User();
+        user.setActive(true);
+        user.setVerified(true);
+        user.invalidateSpotifyAuthorizations();
+        when(users.findById(42L)).thenReturn(Optional.of(user));
+        when(stateService.create(42L, 1L)).thenReturn("test-state");
+        var service = new SpotifyAuthorizationService(stateService, users, "test-client", redirectUri);
 
         var uri = service.startAuthorization(42L);
 
@@ -39,7 +48,7 @@ class SpotifyAuthorizationServiceTest {
         ), params);
         assertNull(uri.getUserInfo());
         assertNull(uri.getFragment());
-        verify(stateService).create(42L);
+        verify(stateService).create(42L, 1L);
         verifyNoMoreInteractions(stateService);
     }
 }
