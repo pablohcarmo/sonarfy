@@ -50,6 +50,12 @@ public class SpotifyConnection {
         this.updatedAt = updatedAt;
     }
 
+    // Substitui os tokens cifrados sem alterar os dados e as datas da conexão.
+    public void reencryptTokens(String accessTokenEncrypted, String refreshTokenEncrypted) {
+        this.accessTokenEncrypted = accessTokenEncrypted;
+        this.refreshTokenEncrypted = refreshTokenEncrypted;
+    }
+
     public Long getId() { return id; }
     public User getUser() { return user; }
     public String getAccessTokenEncrypted() { return accessTokenEncrypted; }
