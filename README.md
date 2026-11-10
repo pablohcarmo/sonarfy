@@ -11,9 +11,9 @@ e pela banca do TCC, sem exigir acesso de colaborador. O Sonarfy não adota uma
 licença open-source; a publicação tem finalidade de consulta e avaliação.
 Esta documentação não concede acesso aos ambientes, contas ou serviços do projeto.
 
-O [guia de avaliação](docs/avaliacao-academica.md) apresenta os comandos de teste,
-as evidências disponíveis e um roteiro de demonstração. A aplicação está em
-desenvolvimento e não é apresentada como pronta para produção.
+A [documentação da API](docs/api/README.md) e o [modelo de persistência](docs/persistence.md)
+apresentam os contratos HTTP, os comandos de teste e as evidências disponíveis.
+A aplicação está em desenvolvimento e não é apresentada como pronta para produção.
 
 O Sonarfy é uma plataforma web voltada para:
 
@@ -54,13 +54,16 @@ suporte a rotação de chaves. Renovação automática, sincronização de escut
 consulta de álbuns e artistas permanecem para entregas posteriores. Consulte a
 [configuração, o contrato de integração do frontend e o escopo](docs/integrations/spotify.md).
 
-## Contrato da API de senhas
+## Contratos da API
 
 O projeto usa Java 21, Spring Boot 4.1.0 e java-jwt 4.4.0.
-Consulte o [contrato de recuperação e troca de senha](docs/api/passwords.md)
-para os campos obrigatórios, exemplos JSON, respostas e limites de autenticação.
-Importe a [coleção oficial do Postman](docs/api/sonarfy-passwords.postman_collection.json)
-e ajuste a variável `baseUrl` (exemplo local: `http://localhost:8080`).
+Consulte o [índice geral da documentação da API](docs/api/README.md) para o mapa completo dos endpoints e o isolamento dos 5 propósitos de tokens JWT:
+
+- [Cadastro, retificação de e-mail pendente e ativação de conta](docs/api/registration.md)
+- [Login e autenticação HTTP Bearer](docs/api/authentication.md)
+- [Recuperação e troca de senha](docs/api/passwords.md) e [coleção oficial do Postman](docs/api/sonarfy-passwords.postman_collection.json) (ajuste a variável `baseUrl`, ex.: `http://localhost:8080`)
+- [Conta e perfil do usuário (`/api/users/me` e `/api/profile/me`)](docs/api/users-and-profile.md)
+- [Integração OAuth 2.0 com o Spotify](docs/integrations/spotify.md)
 
 | Operação | Endpoint | Campos JSON |
 | --- | --- | --- |

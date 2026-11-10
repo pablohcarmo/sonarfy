@@ -41,7 +41,7 @@ jobs:
         env:
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
         run: |
-          docker exec -i "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 < src/main/infra/tables.sql
+          docker exec -i "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 < db/tables.sql
           # Only this disposable CI database: simulate the schema before the Spotify table.
           docker exec "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 -c 'DROP TABLE spotify_connection'
           docker exec -i "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 < db/migrations/001_create_spotify_connection.sql

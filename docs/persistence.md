@@ -29,7 +29,7 @@ A coluna `users.spotify_authorization_version` é `BIGINT NOT NULL DEFAULT 0`.
 Não há aplicação automática das migrações. O schema completo já inclui a coluna
 para bancos novos; não execute a migração 002 novamente nesses bancos.
 
-O schema completo está versionado em `src/main/infra/tables.sql` e deve ser
+O schema completo está versionado em `db/tables.sql` e deve ser
 importado somente em um banco vazio. O Compose e os demais arquivos de
 infraestrutura local continuam ignorados pelo Git.
 
@@ -62,7 +62,7 @@ integração criam e removem tabelas e não devem receber a conexão de um banco
 que precise ser preservado.
 
 Na CI, o job `test` também inicia um serviço PostgreSQL 17 descartável e importa
-`src/main/infra/tables.sql`. Para simular uma atualização incremental, remove
+`db/tables.sql`. Para simular uma atualização incremental, remove
 somente a tabela Spotify vazia e a coluna `users.spotify_authorization_version`
 desse banco de teste; então aplica, em ordem, `001_create_spotify_connection.sql`
 e `002_add_spotify_authorization_version.sql`. Em seguida, executa explicitamente

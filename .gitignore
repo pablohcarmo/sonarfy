@@ -1,47 +1,21 @@
-# Created by https://gitignore.org
-# Android.gitignore
-
-# Local configuration file (sdk path, etc)
-local.properties
-
-# Log/OS Files
+# Logs
 *.log
 
-# Android Studio generated files and folders
-captures/
-.externalNativeBuild/
-.cxx/
-*.aab
-*.apk
-output-metadata.json
-
-# IntelliJ
-*.iml
+# IntelliJ IDEA
 .idea/
-misc.xml
-deploymentTargetDropDown.xml
-render.experimental.xml
+*.iml
 
-# Keystore files
-*.jks
-*.keystore
-
-# Google Services (e.g. APIs or Firebase)
-google-services.json
-
-# Android Profiling
-*.hprof
-
-HELP.md
+# Build e dependências Maven
 target/
+HELP.md
+
+# Configurações locais sensíveis e infraestrutura
 src/main/resources/application.properties
-src/main/infra/*
-!src/main/infra/tables.sql
-src/main/docs/
-.codex
-docs/pr-21-description.md
-issues/
-guias/
+src/main/infra/
+
+# Ferramentas locais de desenvolvimento e IA
+AGENTS.md
+
 # Postman
 .postman/
 postman/
