@@ -31,7 +31,7 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 
 ---
 
-## Mapa Consolidado de Endpoints (16 Rotas Ativas)
+## Mapa Consolidado de Endpoints (17 Rotas Ativas)
 
 | Método | Rota | Controller | Acesso | Contrato Detalhado |
 | --- | --- | --- | --- | --- |
