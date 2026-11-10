@@ -86,4 +86,26 @@ public class SpotifyCallbackService {
             throw new ResponseStatusException(status, exception.getMessage());
         }
     }
+
+    // Traduz o resultado do callback para um código seguro de redirecionamento ao frontend.
+    public String resolveRedirectOutcome(String code, String state, String error) {
+        try {
+            handleCallback(code, state, error);
+            return "connected";
+        } catch (ResponseStatusException exception) {
+            // Parâmetros inválidos, state expirado/usado ou versão de autorização vencida.
+            if (exception.getStatusCode().value() == HttpStatus.BAD_REQUEST.value()) {
+                return "invalid_state";
+            }
+            // Recusa explícita do usuário no Spotify após validar o state e a conta.
+            if (exception.getStatusCode().value() == HttpStatus.FORBIDDEN.value()
+                    && "Spotify authorization was denied.".equals(exception.getReason())) {
+                return "denied";
+            }
+            return "error";
+        } catch (RuntimeException exception) {
+            // Falhas inesperadas de persistência ou cifragem não expõem detalhes na URL.
+            return "error";
+        }
+    }
 }

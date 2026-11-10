@@ -209,6 +209,29 @@ class SpotifyCallbackServiceTest {
         verify(connections, times(1)).connect(42L, 0L, response);
     }
 
+    @Test
+    void shouldResolveRedirectOutcomesForAllCallbackScenarios() {
+        // Verifica a tradução de sucesso, replay, recusa, versão obsoleta e falhas para o parâmetro do frontend.
+        var validResponse = new SpotifyTokenResponseDto("test-access", "Bearer", 3600L, "test-refresh", null);
+        when(users.findById(42L)).thenReturn(Optional.of(user));
+        when(tokens.exchangeCode("ok-code")).thenReturn(validResponse);
+
+        assertEquals("connected", service.resolveRedirectOutcome("ok-code", state, null));
+        assertEquals("invalid_state", service.resolveRedirectOutcome("ok-code", state, null));
+        assertEquals("denied", service.resolveRedirectOutcome(null, states.create(42L, 0L), "access_denied"));
+
+        doThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Spotify authorization is no longer valid."))
+                .when(connections).connect(42L, 0L, validResponse);
+        assertEquals("invalid_state", service.resolveRedirectOutcome("ok-code", states.create(42L, 0L), null));
+
+        doThrow(new IllegalStateException("Cannot encrypt Spotify token."))
+                .when(connections).connect(42L, 0L, validResponse);
+        assertEquals("error", service.resolveRedirectOutcome("ok-code", states.create(42L, 0L), null));
+
+        user.setActive(false);
+        assertEquals("error", service.resolveRedirectOutcome(null, states.create(42L, 0L), "access_denied"));
+    }
+
     private ResponseStatusException assertStatus(String code, String callbackState, String error, HttpStatus expected) {
         var exception = assertThrows(ResponseStatusException.class,
                 () -> service.handleCallback(code, callbackState, error));
