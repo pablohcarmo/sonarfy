@@ -178,7 +178,7 @@ Antes de disponibilizar esta versão em um banco existente, aplique as migraçõ
 `db/migrations/002_add_spotify_authorization_version.sql`, nesta ordem, conforme o
 [guia de persistência](../persistence.md#inicialização-e-atualização-do-banco).
 Com `ddl-auto=none`, a aplicação não cria `spotify_connection` automaticamente.
-Para um banco vazio, use o schema completo em `src/main/infra/tables.sql`.
+Para um banco vazio, use o schema completo em `db/tables.sql`.
 O Compose permanece local e não é versionado.
 
 Defina estas variáveis de ambiente na configuração de execução da aplicação
