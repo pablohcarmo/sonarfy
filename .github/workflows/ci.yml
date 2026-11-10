@@ -47,6 +47,9 @@ jobs:
           docker exec -i "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 < db/migrations/001_create_spotify_connection.sql
           docker exec "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 -c 'ALTER TABLE users DROP COLUMN spotify_authorization_version'
           docker exec -i "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 < db/migrations/002_add_spotify_authorization_version.sql
+          # Simulate the schema before refresh tokens and apply the incremental migration.
+          docker exec "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 -c 'DROP TABLE refresh_tokens'
+          docker exec -i "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 < db/migrations/003_create_refresh_tokens.sql
 
       - name: Execute PostgreSQL persistence and concurrency tests
         env:

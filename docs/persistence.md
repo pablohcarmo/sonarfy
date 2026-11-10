@@ -29,6 +29,18 @@ A coluna `users.spotify_authorization_version` é `BIGINT NOT NULL DEFAULT 0`.
 Não há aplicação automática das migrações. O schema completo já inclui a coluna
 para bancos novos; não execute a migração 002 novamente nesses bancos.
 
+A sessão persistente de login exige `db/migrations/003_create_refresh_tokens.sql`
+em bancos existentes. Execute uma vez, após as migrações 001 e 002 e antes de
+iniciar a versão que emite refresh tokens. A tabela `refresh_tokens` guarda uma
+linha por dispositivo, somente com o hash SHA-256 (hexadecimal) do token opaco
+entregue ao cliente, e é removida em cascata com o usuário. A validade é por
+inatividade: cada renovação troca o hash e estende `expires_at` por 30 dias.
+O schema completo já inclui a tabela para bancos novos.
+
+```powershell
+psql -h <host> -p <porta> -U <usuario> -d <banco> -v ON_ERROR_STOP=1 -f db/migrations/003_create_refresh_tokens.sql
+```
+
 O schema completo está versionado em `db/tables.sql` e deve ser
 importado somente em um banco vazio. O Compose e os demais arquivos de
 infraestrutura local continuam ignorados pelo Git.
@@ -65,7 +77,8 @@ Na CI, o job `test` também inicia um serviço PostgreSQL 17 descartável e impo
 `db/tables.sql`. Para simular uma atualização incremental, remove
 somente a tabela Spotify vazia e a coluna `users.spotify_authorization_version`
 desse banco de teste; então aplica, em ordem, `001_create_spotify_connection.sql`
-e `002_add_spotify_authorization_version.sql`. Em seguida, executa explicitamente
+e `002_add_spotify_authorization_version.sql`. Também remove a tabela vazia
+`refresh_tokens` e aplica `003_create_refresh_tokens.sql`. Em seguida, executa explicitamente
 `ExistingSchemaIntegrationTest` com a propriedade opt-in habilitada. Falhas de SQL,
 persistência, reconexão ou concorrência falham o mesmo job da suíte padrão. Isso
 valida o rollout em teste; cada ambiente de deploy ainda exige aplicação manual
