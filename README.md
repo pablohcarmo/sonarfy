@@ -47,10 +47,12 @@ O Sonarfy busca criar um espaço em que fãs de música, críticos e colecionado
 
 ## Integração com Spotify
 
-A entrega atual permite autorizar uma conta Spotify, consultar o estado da conexão
-e desconectá-la, com tokens armazenados cifrados. Renovação automática, integração
-do frontend, sincronização de escutas e consulta de álbuns e artistas permanecem
-para entregas posteriores. Consulte a [configuração e o escopo](docs/integrations/spotify.md).
+A entrega atual permite autorizar uma conta Spotify, redirecionar o callback ao
+frontend com o desfecho da operação (`?spotify=connected|denied|invalid_state|error`),
+consultar o estado da conexão e desconectá-la, com tokens armazenados cifrados e
+suporte a rotação de chaves. Renovação automática, sincronização de escutas e
+consulta de álbuns e artistas permanecem para entregas posteriores. Consulte a
+[configuração, o contrato de integração do frontend e o escopo](docs/integrations/spotify.md).
 
 ## Contrato da API de senhas
 

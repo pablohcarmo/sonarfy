@@ -19,30 +19,77 @@ estão implementados neste fluxo.
 Cada state guarda a versão de autorização do usuário. Desconectar bloqueia sua
 linha, incrementa `spotify_authorization_version` e exclui a conexão na mesma
 transação. O callback confere a versão original sob o mesmo bloqueio antes de
-gravar: tentativa anterior retorna HTTP 400 e não recria credenciais. O serviço
-recarrega o usuário sob bloqueio para evitar usar uma versão em cache no request.
-Uma nova autorização usa a versão atual. States antigos permanecem sujeitos ao
-prazo e aos limites de memória; sua versão impede a gravação após desconectar.
+gravar: tentativa anterior resulta em `spotify=invalid_state` no redirecionamento e
+não recria credenciais. O serviço recarrega o usuário sob bloqueio para evitar usar
+uma versão em cache no request. Uma nova autorização usa a versão atual. States
+antigos permanecem sujeitos ao prazo e aos limites de memória; sua versão impede a
+gravação após desconectar.
 
 Antes do deploy em banco existente, aplicar a migração
 `db/migrations/002_add_spotify_authorization_version.sql` (ver guia de persistência).
-Renovação automática, integração do frontend e sincronização seguem pendentes.
-O callback ainda retorna 204 ao concluir com sucesso.
+Renovação automática e sincronização seguem pendentes.
 
 O backend expõe a rota autenticada `POST /api/spotify/authorization`, monta a URL
-de autorização e recebe o retorno em `GET /api/spotify/callback`, que valida o
-state, troca o código por tokens e persiste a conexão vinculada ao usuário.
-Access token e refresh token são armazenados cifrados com AES-GCM e não são
-retornados ao navegador. Reconexões atualizam a mesma conexão e preservam
-`connected_at`. A migração deve ser aplicada antes do deploy em bancos existentes;
-renovação automática e sincronização continuam pendentes.
+de autorização e recebe o retorno do navegador em `GET /api/spotify/callback`, que
+valida o state, troca o código por tokens, persiste a conexão vinculada ao usuário e
+redireciona (`HTTP 302 Found`, `Cache-Control: no-store`) para a URL configurada em
+`SPOTIFY_FRONTEND_REDIRECT_URI` acrescentando `?spotify=<resultado>`. Access token e
+refresh token são armazenados cifrados com AES-GCM e nunca são retornados ao navegador.
+Reconexões atualizam a mesma conexão e preservam `connected_at`. A migração deve ser
+aplicada antes do deploy em bancos existentes; renovação automática e sincronização
+continuam pendentes.
 
-A rota exige `Authorization: Bearer <accessToken>`, não recebe `userId` e resolve
+A rota de início exige `Authorization: Bearer <accessToken>`, não recebe `userId` e resolve
 o usuário pelo e-mail do `Principal`. Retorna HTTP 200 com
 `{"authorizationUrl":"https://accounts.spotify.com/authorize?..."}` e
-`Cache-Control: no-store`. O frontend deve abrir essa URL. Credenciais ausentes
-ou inválidas retornam 401; a quarta tentativa pendente do mesmo usuário retorna
-429. A rota não faz chamadas HTTP ao Spotify.
+`Cache-Control: no-store`. O frontend deve redirecionar o navegador para essa URL.
+Credenciais ausentes ou inválidas retornam 401; a quarta tentativa pendente do mesmo
+usuário retorna 429. A rota não faz chamadas HTTP ao Spotify.
+
+## Contrato de integração do frontend
+
+Como o fluxo OAuth 2.0 envolve redirecionamento de página inteira para o provedor
+externo (`accounts.spotify.com`), o frontend integra-se aos quatro endpoints abaixo:
+
+### 1. Consultar estado da conexão (`GET /api/spotify/connection`)
+- **Requisição:** `GET /api/spotify/connection` com cabeçalho `Authorization: Bearer <accessToken>`.
+- **Resposta (`200 OK`, `Cache-Control: no-store`):**
+  ```json
+  {
+    "status": "CONNECTED",
+    "connectedAt": "2026-11-10T03:00:00Z"
+  }
+  ```
+  Quando não há conexão ativa, retorna `{"status":"DISCONNECTED","connectedAt":null}`.
+  *(Nota: até a implementação da renovação automática, `CONNECTED` indica que há credenciais cifradas persistidas para o usuário, e `REAUTHORIZATION_REQUIRED` ainda não é emitido).*
+
+### 2. Iniciar autorização (`POST /api/spotify/authorization`)
+- **Requisição:** `POST /api/spotify/authorization` com cabeçalho `Authorization: Bearer <accessToken>`, sem corpo.
+- **Resposta (`200 OK`, `Cache-Control: no-store`):**
+  ```json
+  {
+    "authorizationUrl": "https://accounts.spotify.com/authorize?response_type=code&client_id=...&redirect_uri=...&scope=user-library-read&state=..."
+  }
+  ```
+- **Ação no frontend:** navegar para a URL recebida (ex.: `window.location.assign(data.authorizationUrl)`). Não abrir via `fetch`/`XHR`, pois o usuário precisa interagir com a página de consentimento do Spotify.
+- **Erros previstos:** `401 Unauthorized` (Bearer ausente/inválido), `403 Forbidden` (conta inativa/não verificada) ou `429 Too Many Requests` (mais de 3 autorizações pendentes para o mesmo usuário nos últimos 5 minutos).
+
+### 3. Apresentar o resultado do callback (`GET /api/spotify/callback` → Redirecionamento `302`)
+Após o consentimento ou recusa no Spotify, o navegador é enviado a `GET /api/spotify/callback`. O backend processa a resposta e responde com `HTTP 302 Found` (`Cache-Control: no-store`, sem corpo) redirecionando o navegador para `SPOTIFY_FRONTEND_REDIRECT_URI` com o parâmetro de query `spotify`:
+
+| Valor de `?spotify=` | Significado funcional | Ação recomendada no frontend |
+| --- | --- | --- |
+| `connected` | Código trocado e tokens persistidos com sucesso | Exibir confirmação de conta conectada e consultar `GET /api/spotify/connection` para atualizar `connectedAt` na tela |
+| `denied` | Usuário recusou a autorização no Spotify (`error=access_denied`) | Informar que a conexão foi cancelada pelo usuário e manter botão de conectar disponível |
+| `invalid_state` | Parâmetros ausentes/inválidos, `state` expirado/reutilizado ou autorização invalidada por desconexão concorrente | Informar que a tentativa de autorização expirou ou é inválida e oferecer iniciar nova tentativa |
+| `error` | Conta inelegível, falha de comunicação/validação com o Spotify ou erro interno ao salvar a conexão | Exibir mensagem de indisponibilidade temporária e permitir tentar novamente |
+
+Após ler o parâmetro `spotify` na inicialização da página, recomenda-se removê-lo da barra de endereços com `window.history.replaceState` para evitar reexibir o aviso ao recarregar a tela.
+
+### 4. Desconectar conta (`DELETE /api/spotify/connection`)
+- **Requisição:** `DELETE /api/spotify/connection` com cabeçalho `Authorization: Bearer <accessToken>`.
+- **Resposta:** `204 No Content` (`Cache-Control: no-store`), idempotente mesmo se a conta já estiver desconectada.
+- **Aviso obrigatório na interface do usuário:** o frontend deve informar claramente que desconectar remove as credenciais salvas no Sonarfy, mas que a revogação da permissão concedida ao aplicativo na conta Spotify é uma ação separada no painel de aplicativos conectados do próprio Spotify.
 
 ## Preparação da autorização
 
@@ -89,14 +136,13 @@ criptografa os tokens com AES-GCM e grava tipo, escopos e expiração em
 `spotify_connection`, vinculado ao usuário do state. Uma nova autorização atualiza
 a conexão existente e preserva `connected_at`.
 
-| HTTP | Resultado |
-| --- | --- |
-| 204 | Troca concluída, sem corpo e com `Cache-Control: no-store` |
-| 400 | Parâmetros inválidos ou state ausente, desconhecido, expirado ou consumido |
-| 403 | Recusa do usuário ou conta excluída, inativa ou não verificada |
-| 502 | Spotify rejeitou a troca (`REJECTED`) ou retornou dados de tokens inválidos |
-| 503 | Troca indisponível (`UNAVAILABLE`) |
-| 504 | Timeout na troca (`TIMEOUT`) |
+| Desfecho interno (`SpotifyCallbackService`) | Redirecionamento HTTP (`SpotifyController`) | Condição |
+| --- | --- | --- |
+| Sucesso | `302 Found` → `?spotify=connected` | Troca concluída e tokens cifrados persistidos, sem corpo e com `Cache-Control: no-store` |
+| `400 Bad Request` | `302 Found` → `?spotify=invalid_state` | Parâmetros inválidos, state ausente/desconhecido/expirado/consumido ou versão de autorização invalidada por desconexão |
+| `403 Forbidden` (`access_denied`) | `302 Found` → `?spotify=denied` | Usuário elegível recusou o consentimento no Spotify |
+| `403 Forbidden` (conta inelegível) | `302 Found` → `?spotify=error` | Conta excluída, inativa ou não verificada |
+| `502` / `503` / `504` / falha de persistência | `302 Found` → `?spotify=error` | Spotify rejeitou a troca (`REJECTED`), retornou tokens inválidos, ficou indisponível (`UNAVAILABLE`), excedeu o tempo (`TIMEOUT`) ou ocorreu falha de banco/cifragem |
 
 O state é consumido antes da verificação do usuário e da troca de tokens,
 inclusive no caso de recusa. Falhas posteriores não restauram a tentativa:
@@ -108,19 +154,22 @@ Mesmo uma resposta HTTP de sucesso precisa conter um DTO não nulo,
 validade usual de uma hora do access token; não representa a expiração da
 conexão nem do refresh token. Valores acima de uma hora são tratados como
 resposta inválida, mesmo que possam ser representados como data.
-Dados inválidos retornam 502 com a mensagem fixa
-`Spotify returned an invalid token response.`, sem
-expor tokens e sem restaurar o state. O refresh token é obrigatório para persistir
-a conexão; o escopo pode estar ausente e a validade do token ainda depende de
-uma chamada autorizada ao Spotify.
+No `SpotifyCallbackService.handleCallback`, dados inválidos lançam `502 Bad Gateway` com a mensagem fixa
+`Spotify returned an invalid token response.`, que o controller converte no
+redirecionamento `?spotify=error`, sem expor tokens e sem restaurar o state.
+O refresh token é obrigatório para persistir a conexão; o escopo pode estar
+ausente e a validade do token ainda depende de uma chamada autorizada ao Spotify.
 
-O 204 não carrega uma página nova no navegador. Ele confirma a troca e a
-gravação da conexão. Renovação, sincronização de escutas e
-redirecionamento para o frontend ficam para outras entregas.
+O redirecionamento `302 Found` devolve o navegador à tela configurada em
+`SPOTIFY_FRONTEND_REDIRECT_URI` preservando eventuais query params fixos dessa URI
+e substituindo apenas `spotify`. Parâmetros de redirecionamento enviados pelo
+cliente na requisição de callback são ignorados. Renovação automática e
+sincronização de escutas ficam para outras entregas.
 
-Falhas de banco ou cifragem durante a persistência propagam como erro interno
-(500), sem repetição automática. O state permanece consumido e o usuário precisa
-iniciar outra autorização. Não há ainda métricas ou logs específicos desse caminho.
+Falhas de banco ou cifragem durante a persistência também são traduzidas no
+endpoint HTTP para `?spotify=error`, sem repetição automática. O state permanece
+consumido e o usuário precisa iniciar outra autorização. Não há ainda métricas ou
+logs específicos desse caminho.
 
 ## Configuração
 
@@ -139,15 +188,17 @@ Defina estas variáveis de ambiente na configuração de execução da aplicaç�
 | --- | --- |
 | `SPOTIFY_CLIENT_ID` | Identificador do aplicativo no Spotify Developer Dashboard |
 | `SPOTIFY_CLIENT_SECRET` | Segredo do aplicativo, exclusivo do backend |
-| `SPOTIFY_REDIRECT_URI` | Endereço de callback cadastrado no painel do Spotify |
+| `SPOTIFY_REDIRECT_URI` | Endereço de callback do backend cadastrado no painel do Spotify |
+| `SPOTIFY_FRONTEND_REDIRECT_URI` | Endereço da página do frontend para onde `GET /api/spotify/callback` redireciona com `?spotify=<resultado>` |
 | `SPOTIFY_TOKEN_ENCRYPTION_KEY` | Chave Base64 aleatória de 32 bytes para AES-GCM |
 | `SPOTIFY_TOKEN_ENCRYPTION_KEYRING` | Entradas separadas por vírgula no formato `keyId=Base64Key`; manter chaves antigas enquanto dados ou backups dependerem delas |
 | `SPOTIFY_TOKEN_ENCRYPTION_ACTIVE_KEY_ID` | ID da chave para novas cifras; vazio mantém gravação legada `v1` durante rollout |
 | `SPOTIFY_TOKEN_ENCRYPTION_ROTATION_ENABLED` | Habilita o processo operacional explícito; padrão `false` |
 | `SPOTIFY_TOKEN_ENCRYPTION_ROTATION_BATCH_SIZE` | Quantidade máxima de conexões por transação; padrão `100` |
 
-Exemplo de URI local: `http://127.0.0.1:8080/api/spotify/callback`.
-Ajuste a porta à aplicação e cadastre exatamente a mesma URI no painel do Spotify.
+Exemplo de URI local do callback no backend: `http://127.0.0.1:8080/api/spotify/callback`.
+Exemplo de URI local de destino no frontend: `http://localhost:3000/settings/spotify`.
+Ajuste a porta à aplicação e cadastre exatamente `SPOTIFY_REDIRECT_URI` no painel do Spotify.
 Não inclua credenciais reais ou tokens na documentação, no Git ou nos logs.
 Configure `spotify_token_encryption_key=${SPOTIFY_TOKEN_ENCRYPTION_KEY}` em
 `application.properties`; mantenha o valor da chave somente no ambiente local.
@@ -200,11 +251,14 @@ executar novamente o processo sem HTTP até a contagem `v2:*` ser zero. A chave
 legada deve continuar disponível. Não fazer rollback para uma chave comprometida;
 nesse caso, corrigir a configuração e concluir a rotação para uma chave segura.
 
-As propriedades são obrigatórias na execução. O construtor do service rejeita
-valores em branco e verifica a estrutura da URI: exige HTTPS, permitindo HTTP
-para `127.0.0.1` e `[::1]`, e rejeita `localhost`, credenciais embutidas,
-fragmentos e portas inválidas. Essa validação não acessa a rede.
-O Spotify verifica as credenciais e a correspondência da URI com seu cadastro.
+As propriedades são obrigatórias na execução. O construtor de `AuthSpotifyService`
+rejeita valores em branco e verifica a estrutura de `SPOTIFY_REDIRECT_URI`: exige
+HTTPS, permitindo HTTP apenas para `127.0.0.1` e `[::1]`, e rejeita `localhost`,
+credenciais embutidas, fragmentos e portas inválidas. O construtor de
+`SpotifyController` valida `SPOTIFY_FRONTEND_REDIRECT_URI` exigindo HTTPS (ou HTTP
+em hosts loopback `localhost`, `127.0.0.1` e `[::1]`), sem credenciais embutidas,
+fragmentos ou portas inválidas. Essas validações não acessam a rede.
+O Spotify verifica as credenciais e a correspondência de `SPOTIFY_REDIRECT_URI` com seu cadastro.
 
 ## Componentes e contrato
 
@@ -273,13 +327,16 @@ identidade autenticada mesmo com `userId` enviado pelo cliente, 429 na quarta
 tentativa e independência entre usuários. O teste do state verifica também a
 liberação do limite por usuário após expiração, consumo único, preservação de
 outras tentativas e consumo concorrente. Os testes HTTP do controller incluem
-callback sem Bearer, 204 sem corpo e com `no-store`, recusa, reutilização,
-parâmetros inválidos, falhas 502/503/504 e proteção dos demais métodos e rotas.
+callback sem Bearer, redirecionamento `302 Found` sem corpo e com `no-store` para
+`?spotify=connected`, `?spotify=denied`, `?spotify=invalid_state` e `?spotify=error`,
+validação de `SPOTIFY_FRONTEND_REDIRECT_URI` na inicialização, bloqueio de
+redirecionamento aberto e proteção dos demais métodos e rotas.
 Nesses testes, repositório e troca de tokens são simulados.
 
 `SpotifyCallbackServiceTest` verifica o usuário vinculado ao state, entradas
-inválidas sem consumo, usuário excluído/inativo/não verificado, recusa e tradução
-das falhas. O state é real; banco e troca de tokens são simulados. Após sucesso,
+inválidas sem consumo, usuário excluído/inativo/não verificado, recusa, tradução
+das falhas e mapeamento para os desfechos de redirecionamento (`resolveRedirectOutcome`).
+O state é real; banco e troca de tokens são simulados. Após sucesso,
 recusa ou falha posterior ao consumo, outra chamada com o mesmo state é rejeitada.
 Os testes de regressão incluem resposta nula, campos essenciais ausentes ou
 inválidos, mensagem fixa de erro e retorno HTTP 502 sem reutilização do state
@@ -300,11 +357,11 @@ As instruções de execução local estão no [guia de persistência](../persist
 
 Os relatórios da execução ficam em `target/surefire-reports`; registre o resultado
 correspondente à versão entregue na descrição do PR e consulte também a CI.
-Em 08/11/2026, `.\mvnw.cmd test` executou 403 testes: zero falhas, zero erros e
+Em 10/11/2026, `.\mvnw.cmd test` executou 420 testes: zero falhas, zero erros e
 quatro ignorados (`BUILD SUCCESS`). A suíte padrão usa H2; os testes PostgreSQL
 opt-in não rodam nessa chamada e são executados separadamente pela CI.
 
-Também em 08/11/2026, o teste manual contra a aplicação local e o Spotify real
+Em 08/11/2026, o teste manual contra a aplicação local e o Spotify real
 confirmou: estado inicial `DISCONNECTED`; autorização concluída no navegador;
 estado `CONNECTED`; desconexão com HTTP 204; estado `DISCONNECTED`; nova
 autorização; e estado final `CONNECTED`. Esse teste valida conexão, consulta,
@@ -314,9 +371,8 @@ a persistência e concorrência são cobertas pelo teste PostgreSQL opt-in da CI
 
 ## Próximas entregas
 
-- Integração do frontend à rota de início e apresentação do resultado do callback.
-- Renovação automática dos tokens; definir previamente estratégia de rotação de
-  chave e orientar o usuário sobre revogação da permissão no Spotify.
+- Renovação automática dos tokens e transição para `REAUTHORIZATION_REQUIRED` quando aplicável.
+- Tratamento do limite global de autorizações pendentes (issue #34).
 - Sincronização de escutas e consulta de dados musicais.
 - Observabilidade de falhas de persistência.
 - Consulta de álbuns e artistas em PR separado.

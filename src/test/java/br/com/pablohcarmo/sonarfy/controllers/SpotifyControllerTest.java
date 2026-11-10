@@ -35,6 +35,7 @@ import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
 import java.util.Map;
 import java.util.Optional;
 import java.time.OffsetDateTime;
@@ -52,7 +53,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // Usa segurança, controller, state e callback reais; banco e troca de tokens simulados.
 @SpringJUnitWebConfig(SpotifyControllerTest.Config.class)
 @TestPropertySource(properties = {"api.security.token.secret=spotify-controller-test-secret",
-        "SPOTIFY_CLIENT_ID=test-client", "SPOTIFY_REDIRECT_URI=http://127.0.0.1:8081/api/spotify/callback"})
+        "SPOTIFY_CLIENT_ID=test-client", "SPOTIFY_REDIRECT_URI=http://127.0.0.1:8081/api/spotify/callback",
+        "SPOTIFY_FRONTEND_REDIRECT_URI=http://localhost:3000/settings/spotify"})
 class SpotifyControllerTest {
     @Configuration
     @EnableWebMvc
@@ -163,12 +165,19 @@ class SpotifyControllerTest {
         when(tokens.exchangeCode("test-code")).thenReturn(
                 new SpotifyTokenResponseDto("test-access", "Bearer", 3600L, "test-refresh", "user-library-read"));
 
-        var callback = mvc.perform(get("/api/spotify/callback").param("code", "test-code").param("state", state))
-                .andExpect(status().isNoContent()).andExpect(header().string("Cache-Control", "no-store"))
+        var callback = mvc.perform(get("/api/spotify/callback")
+                        .param("code", "test-code")
+                        .param("state", state)
+                        .param("redirect_uri", "https://attacker.example/steal"))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("Location", "http://localhost:3000/settings/spotify?spotify=connected"))
                 .andExpect(content().string("")).andReturn();
         assertNull(callback.getRequest().getSession(false));
         mvc.perform(get("/api/spotify/callback").param("code", "test-code").param("state", state))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isFound())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("Location", "http://localhost:3000/settings/spotify?spotify=invalid_state"));
         assertTrue(pending().isEmpty());
         verify(users, times(2)).findById(42L);
         verify(tokens, times(1)).exchangeCode("test-code");
@@ -183,7 +192,10 @@ class SpotifyControllerTest {
         if (stateValue != null) callback.param("state", stateValue.equals("known") ? validState : stateValue);
         if (error != null) callback.param("error", error);
 
-        mvc.perform(callback).andExpect(status().isBadRequest());
+        mvc.perform(callback)
+                .andExpect(status().isFound())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("Location", "http://localhost:3000/settings/spotify?spotify=invalid_state"));
         verify(users, never()).findById(anyLong());
         verifyNoInteractions(tokens);
         assertEquals(42L, states.consume(validState).userId());
@@ -195,24 +207,30 @@ class SpotifyControllerTest {
         when(users.findById(42L)).thenReturn(Optional.of(user));
 
         mvc.perform(get("/api/spotify/callback").param("error", "access_denied").param("state", state))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isFound())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("Location", "http://localhost:3000/settings/spotify?spotify=denied"));
         mvc.perform(get("/api/spotify/callback").param("code", "test-code").param("state", state))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", "http://localhost:3000/settings/spotify?spotify=invalid_state"));
         verifyNoInteractions(tokens);
         assertTrue(pending().isEmpty());
     }
 
     @ParameterizedTest
-    @CsvSource({"REJECTED,502", "UNAVAILABLE,503", "TIMEOUT,504"})
-    void shouldExposeExchangeFailureStatusAndPreventRetry(Category category, int expected) throws Exception {
+    @ValueSource(strings = {"REJECTED", "UNAVAILABLE", "TIMEOUT"})
+    void shouldRedirectToErrorOnExchangeFailureAndPreventRetry(Category category) throws Exception {
         String state = states.create(42L, 0L);
         when(users.findById(42L)).thenReturn(Optional.of(user));
         when(tokens.exchangeCode("test-code")).thenThrow(new SpotifyIntegrationException(category));
 
         mvc.perform(get("/api/spotify/callback").param("code", "test-code").param("state", state))
-                .andExpect(status().is(expected));
+                .andExpect(status().isFound())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("Location", "http://localhost:3000/settings/spotify?spotify=error"));
         mvc.perform(get("/api/spotify/callback").param("code", "test-code").param("state", state))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", "http://localhost:3000/settings/spotify?spotify=invalid_state"));
         verify(tokens, times(1)).exchangeCode("test-code");
         assertTrue(pending().isEmpty());
     }
@@ -228,20 +246,22 @@ class SpotifyControllerTest {
     }
 
     @Test
-    void shouldReturn502ForIncompleteTokenResponseAndRejectReplay() throws Exception {
+    void shouldRedirectToErrorForIncompleteTokenResponseAndRejectReplay() throws Exception {
         String state = states.create(42L, 0L);
         when(users.findById(42L)).thenReturn(Optional.of(user));
         when(tokens.exchangeCode("test-code")).thenReturn(
                 new SpotifyTokenResponseDto(null, "Bearer", 3600L, "private-refresh", null));
 
         var result = mvc.perform(get("/api/spotify/callback").param("code", "test-code").param("state", state))
-                .andExpect(status().isBadGateway()).andReturn();
-        var exception = assertInstanceOf(org.springframework.web.server.ResponseStatusException.class,
-                result.getResolvedException());
-        assertEquals("Spotify returned an invalid token response.", exception.getReason());
+                .andExpect(status().isFound())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("Location", "http://localhost:3000/settings/spotify?spotify=error"))
+                .andReturn();
+        assertFalse(result.getResponse().getHeader("Location").contains("private-refresh"));
         assertFalse(result.getResponse().getContentAsString().contains("private-refresh"));
         mvc.perform(get("/api/spotify/callback").param("code", "test-code").param("state", state))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", "http://localhost:3000/settings/spotify?spotify=invalid_state"));
         verify(tokens, times(1)).exchangeCode("test-code");
         assertTrue(pending().isEmpty());
     }
@@ -249,22 +269,73 @@ class SpotifyControllerTest {
     @ParameterizedTest
     @NullSource
     @ValueSource(longs = {0L, -1L, 3601L, Long.MAX_VALUE})
-    void shouldReturn502ForInvalidExpiryWithoutPersistingAndRejectReplay(Long expiresIn) throws Exception {
+    void shouldRedirectToErrorForInvalidExpiryWithoutPersistingAndRejectReplay(Long expiresIn) throws Exception {
         String state = states.create(42L, 0L);
         when(users.findById(42L)).thenReturn(Optional.of(user));
         when(tokens.exchangeCode("test-code")).thenReturn(
                 new SpotifyTokenResponseDto("private-access", "Bearer", expiresIn, "private-refresh", null));
 
         var result = mvc.perform(get("/api/spotify/callback").param("code", "test-code").param("state", state))
-                .andExpect(status().isBadGateway()).andReturn();
-        var exception = assertInstanceOf(org.springframework.web.server.ResponseStatusException.class,
-                result.getResolvedException());
-        assertEquals("Spotify returned an invalid token response.", exception.getReason());
+                .andExpect(status().isFound())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("Location", "http://localhost:3000/settings/spotify?spotify=error"))
+                .andReturn();
+        assertFalse(result.getResponse().getHeader("Location").contains("private-access"));
         mvc.perform(get("/api/spotify/callback").param("code", "test-code").param("state", state))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location", "http://localhost:3000/settings/spotify?spotify=invalid_state"));
         verify(tokens, times(1)).exchangeCode("test-code");
         verifyNoInteractions(connections);
         assertTrue(pending().isEmpty());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "https://app.sonarfy.com/settings/spotify",
+            "https://app.sonarfy.com:8443/settings?tab=integrations",
+            "http://localhost:3000/callback",
+            "http://127.0.0.1:5173/callback",
+            "http://[::1]:8080/callback"
+    })
+    void shouldAcceptValidFrontendRedirectUrisAndPreserveExistingQueryParameters(String configuredUri) {
+        // Verifica aceitação de HTTPS e loopback HTTP, preservando query params fixos da URI.
+        var controller = new SpotifyController(users, mock(SpotifyAuthorizationService.class),
+                new SpotifyCallbackService(states, users, tokens, connections), connections, configuredUri);
+        String state = states.create(42L, 0L);
+        when(users.findById(42L)).thenReturn(Optional.of(user));
+
+        var response = controller.callback(null, state, "access_denied");
+        assertEquals(302, response.getStatusCode().value());
+        URI location = response.getHeaders().getLocation();
+        assertNotNull(location);
+        assertEquals("denied", UriComponentsBuilder.fromUri(location).build().getQueryParams().getFirst("spotify"));
+        if (configuredUri.contains("tab=integrations")) {
+            assertEquals("integrations", UriComponentsBuilder.fromUri(location).build().getQueryParams().getFirst("tab"));
+        }
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {
+            "",
+            "   ",
+            "not a uri",
+            "/relative/path",
+            "http://app.sonarfy.com/settings/spotify",
+            "ftp://localhost:3000/callback",
+            "https://user:secret@app.sonarfy.com/callback",
+            "https://app.sonarfy.com/callback#section",
+            "https://app.sonarfy.com:0/callback",
+            "https://app.sonarfy.com:70000/callback"
+    })
+    void shouldRejectInvalidFrontendRedirectUrisAtStartup(String invalidUri) {
+        // Confirma rejeição na inicialização sem ecoar o endereço inválido na mensagem.
+        var exception = assertThrows(IllegalArgumentException.class, () ->
+                new SpotifyController(users, mock(SpotifyAuthorizationService.class),
+                        mock(SpotifyCallbackService.class), connections, invalidUri));
+        if (invalidUri != null && !invalidUri.isBlank()) {
+            assertFalse(exception.getMessage().contains(invalidUri));
+        }
     }
 
     @Test
