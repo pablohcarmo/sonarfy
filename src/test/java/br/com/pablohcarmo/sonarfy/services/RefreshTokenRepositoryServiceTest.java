@@ -7,6 +7,8 @@ import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
 import br.com.pablohcarmo.sonarfy.repositories.RefreshTokenRepository;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -94,8 +96,33 @@ class RefreshTokenRepositoryServiceTest {
         assertEquals(43, raw.length());
         assertNotEquals(raw, token.getTokenHash());
         assertEquals(64, token.getTokenHash().length());
+        assertFalse(token.isRememberMe());
         OffsetDateTime expected = OffsetDateTime.now().plus(RefreshTokenService.INACTIVITY_TTL);
         assertTrue(Duration.between(token.getExpiresAt(), expected).abs().toMinutes() < 1);
+    }
+
+    // A preferência persiste por várias rotações, sem mudar o prazo nem outras sessões.
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void rotationPreservesRememberMePerSession(boolean rememberMe) {
+        User user = createUser();
+        String raw = service.issue(user, rememberMe);
+        String other = service.issue(user, !rememberMe);
+        UUID sessionId = stored(raw).getSessionId();
+        assertEquals(rememberMe, stored(raw).isRememberMe());
+
+        for (int i = 0; i < 3; i++) {
+            var rotation = service.rotate(raw);
+            assertEquals(rememberMe, rotation.rememberMe());
+            assertEquals(rememberMe, stored(raw).isRememberMe());
+            raw = rotation.refreshToken();
+            RefreshToken next = stored(raw);
+            assertEquals(rememberMe, next.isRememberMe());
+            assertEquals(sessionId, next.getSessionId());
+            assertTrue(Duration.between(next.getExpiresAt(),
+                    OffsetDateTime.now().plus(RefreshTokenService.INACTIVITY_TTL)).abs().toSeconds() < 10);
+        }
+        assertEquals(!rememberMe, service.rotate(other).rememberMe());
     }
 
     // A renovação devolve um token novo e invalida o anterior.

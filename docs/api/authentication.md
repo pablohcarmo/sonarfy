@@ -160,3 +160,10 @@ cookies, lembrar-me, /refresh e /logout HTTP ficam para a próxima entrega.
 A validade interna é de 30 dias por inatividade. Transporte, CSRF/CORS, prazo
 absoluto e revogação na troca de senha ainda precisam ser integrados.
 Access tokens existentes não são revogados por essa camada.
+
+A preferência `remember_me` já é persistida internamente por sessão e preservada
+nas rotações. A emissão interna sem preferência e os registros migrados assumem
+`false`. Ambos os valores mantêm 30 dias por inatividade, sem prazo absoluto.
+`RotationDto` inclui a preferência para a futura configuração do cookie, mas
+não é um contrato HTTP. O login HTTP ainda não aceita `rememberMe` nem emite
+refresh token; transporte, cookies e endpoints serão integrados na próxima entrega.

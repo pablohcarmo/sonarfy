@@ -51,6 +51,7 @@ jobs:
           docker exec "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 -c 'DROP TABLE refresh_tokens'
           docker exec -i "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 < db/migrations/003_create_refresh_tokens.sql
           docker exec -i "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 < db/migrations/004_add_refresh_token_sessions.sql
+          docker exec -i "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 < db/migrations/005_add_refresh_token_remember_me.sql
 
       - name: Execute PostgreSQL persistence and concurrency tests
         env:
