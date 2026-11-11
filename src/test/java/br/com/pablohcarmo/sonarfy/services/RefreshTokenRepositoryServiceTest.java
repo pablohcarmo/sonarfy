@@ -35,12 +35,24 @@ class RefreshTokenRepositoryServiceTest {
     @Configuration
     @Import(RefreshTokenService.class)
     static class Config extends EmailReservationIntegrationTest.Config {
+        @org.springframework.beans.factory.annotation.Value("${sonarfy.refresh.test.ddl:create-drop}")
+        String schemaMode;
+
+        // PostgreSQL valida o schema importado; H2 cria um banco isolado.
+        @org.springframework.context.annotation.Bean
+        @Override
+        org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean entityManagerFactory(javax.sql.DataSource ds) {
+            var factory = super.entityManagerFactory(ds);
+            factory.setJpaPropertyMap(java.util.Map.of("hibernate.hbm2ddl.auto", schemaMode));
+            return factory;
+        }
     }
 
     @Autowired RefreshTokenService service;
     @Autowired RefreshTokenRepository tokens;
     @Autowired UserRepository users;
     @Autowired PermissionRepository permissions;
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
 
     private User createUser() {
         Permission role = permissions.findByName("ROLE_USER").orElseGet(() -> {
@@ -49,6 +61,12 @@ class RefreshTokenRepositoryServiceTest {
             return permissions.saveAndFlush(p);
         });
         User user = new User();
+        user.setName("Refresh");
+        user.setSurname("Test");
+        user.setPassword("test-hash");
+        user.setCity("Brasilia");
+        user.setCountry("Brasil");
+        user.setBirthDate(java.time.LocalDate.of(2000, 1, 1));
         user.setPermission(role);
         user.setHandle(UUID.randomUUID().toString().substring(0, 12));
         user.setEmail(user.getHandle() + "@example.com");
@@ -88,11 +106,14 @@ class RefreshTokenRepositoryServiceTest {
 
         var rotation = service.rotate(raw);
 
-        assertEquals(user.getId(), rotation.user().getId());
+        assertEquals(user.getId(), rotation.userId());
         assertNotEquals(raw, rotation.refreshToken());
+        assertFalse(rotation.toString().contains(rotation.refreshToken()));
+        String next = service.rotate(rotation.refreshToken()).refreshToken();
+        assertEquals(3, tokens.countByUserId(user.getId()));
         assertUnauthorized(raw);
-        assertNotNull(service.rotate(rotation.refreshToken()).refreshToken());
-        assertEquals(1, tokens.countByUserId(user.getId()));
+        assertUnauthorized(next);
+        assertEquals(0, tokens.countByUserId(user.getId()));
     }
 
     // A renovação estende a validade a partir do momento do uso.
@@ -171,7 +192,7 @@ class RefreshTokenRepositoryServiceTest {
         assertNotNull(service.rotate(foreign).refreshToken());
     }
 
-    // Renovações simultâneas do mesmo token produzem um único vencedor.
+    // Uma renovação vence; a reutilização concorrente encerra a sessão emitida.
     @Test
     void concurrentRotationHasSingleWinner() throws Exception {
         User user = createUser();
@@ -184,7 +205,8 @@ class RefreshTokenRepositoryServiceTest {
                 try {
                     service.rotate(raw);
                     return true;
-                } catch (RuntimeException e) {
+                } catch (ResponseStatusException e) {
+                    assertEquals(HttpStatus.UNAUTHORIZED, e.getStatusCode());
                     return false;
                 }
             };
@@ -194,9 +216,69 @@ class RefreshTokenRepositoryServiceTest {
 
             int winners = (a.get(10, TimeUnit.SECONDS) ? 1 : 0) + (b.get(10, TimeUnit.SECONDS) ? 1 : 0);
             assertEquals(1, winners);
-            assertEquals(1, tokens.countByUserId(user.getId()));
+            assertEquals(0, tokens.countByUserId(user.getId()));
         } finally {
             pool.shutdownNow();
         }
     }
+    // Reutilização encerra apenas a sessão afetada e preserva outro dispositivo.
+    @Test
+    void replayPreservesOtherDevice() {
+        User user = createUser();
+        String old = service.issue(user);
+        String other = service.issue(user);
+        String current = service.rotate(old).refreshToken();
+        assertUnauthorized(old);
+        assertUnauthorized(current);
+        assertNotNull(service.rotate(other).refreshToken());
+    }
+
+    // Logout reconhece o token antigo e remove o sucessor já emitido.
+    @Test
+    void logoutWithConsumedTokenRevokesSuccessor() {
+        String old = service.issue(createUser());
+        String current = service.rotate(old).refreshToken();
+        service.revoke(old);
+        assertUnauthorized(current);
+    }
+
+    // Impede que o 401 confirme alterações pendentes de uma transação do chamador.
+    @Test
+    void rotationRejectsAmbientTransactionWithoutConsumingToken() {
+        String raw = service.issue(createUser());
+        var transaction = new org.springframework.transaction.support.TransactionTemplate(transactions);
+        assertThrows(org.springframework.transaction.IllegalTransactionStateException.class,
+                () -> transaction.execute(status -> service.rotate(raw)));
+        assertNotNull(service.rotate(raw).refreshToken());
+    }
+
+    // Qualquer ordem entre logout e rotação termina com a sessão encerrada.
+    @Test
+    void concurrentLogoutAndRotationLeaveNoActiveSession() throws Exception {
+        User user = createUser();
+        String raw = service.issue(user);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            CountDownLatch start = new CountDownLatch(1);
+            Future<String> rotating = pool.submit(() -> {
+                start.await();
+                try {
+                    return service.rotate(raw).refreshToken();
+                } catch (ResponseStatusException e) {
+                    assertEquals(HttpStatus.UNAUTHORIZED, e.getStatusCode());
+                    return null;
+                }
+            });
+            Future<?> logout = pool.submit(() -> {
+                start.await();
+                service.revoke(raw);
+                return null;
+            });
+            start.countDown();
+            String successor = rotating.get(10, TimeUnit.SECONDS);
+            logout.get(10, TimeUnit.SECONDS);
+            if (successor != null) assertUnauthorized(successor);
+            assertEquals(0, tokens.countByUserId(user.getId()));
+        }
+    }
+
 }

@@ -1,10 +1,10 @@
 package br.com.pablohcarmo.sonarfy.dto;
 
-import br.com.pablohcarmo.sonarfy.entities.User;
-
 public record RotationDto(
-        // Resultado da renovação: o dono do token e o novo token bruto a devolver ao cliente.
-        User user,
+        Long userId,
         String refreshToken
 ) {
+    // Evita expor o segredo em logs ou depender de entidades JPA fora da transação.
+    @Override
+    public String toString() { return "RotationDto[userId=" + userId + ", refreshToken=hidden]"; }
 }

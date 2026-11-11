@@ -50,10 +50,11 @@ jobs:
           # Simulate the schema before refresh tokens and apply the incremental migration.
           docker exec "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 -c 'DROP TABLE refresh_tokens'
           docker exec -i "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 < db/migrations/003_create_refresh_tokens.sql
+          docker exec -i "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_ci -v ON_ERROR_STOP=1 < db/migrations/004_add_refresh_token_sessions.sql
 
       - name: Execute PostgreSQL persistence and concurrency tests
         env:
           SONARFY_TEST_JDBC_URL: jdbc:postgresql://localhost:5432/sonarfy_ci
           SONARFY_TEST_DB_USER: sonarfy_ci
           SONARFY_TEST_DB_PASSWORD: isolated-ci-password
-        run: ./mvnw test -Dtest=ExistingSchemaIntegrationTest -Dsonarfy.test.existing-schema=true
+        run: ./mvnw test -Dtest=ExistingSchemaIntegrationTest,RefreshTokenPostgresTest -Dsonarfy.test.existing-schema=true

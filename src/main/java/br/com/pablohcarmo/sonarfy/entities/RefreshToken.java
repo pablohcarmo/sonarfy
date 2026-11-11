@@ -3,9 +3,10 @@ package br.com.pablohcarmo.sonarfy.entities;
 import jakarta.persistence.*;
 
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 @Entity
-@Table(name = "Refresh_Tokens")
+@Table(name = "refresh_tokens")
 public class RefreshToken {
 
     @Id
@@ -20,6 +21,12 @@ public class RefreshToken {
     @Column(name = "token_hash", length = 64, nullable = false, unique = true)
     private String tokenHash;
 
+    @Column(name = "session_id", nullable = false)
+    private UUID sessionId;
+
+    @Column(name = "used_at")
+    private OffsetDateTime usedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -30,10 +37,21 @@ public class RefreshToken {
     }
 
     public RefreshToken(User user, String tokenHash, OffsetDateTime expiresAt) {
+        this(user, tokenHash, expiresAt, UUID.randomUUID());
+    }
+
+    public RefreshToken(User user, String tokenHash, OffsetDateTime expiresAt, UUID sessionId) {
         this.user = user;
         this.tokenHash = tokenHash;
         this.expiresAt = expiresAt;
+        this.sessionId = sessionId;
     }
+
+    public UUID getSessionId() { return sessionId; }
+    public OffsetDateTime getUsedAt() { return usedAt; }
+
+    // Conserva o hash consumido para reconhecer reutilizações da mesma sessão.
+    public void markUsed(OffsetDateTime now) { usedAt = now; }
 
     @PrePersist
     protected void onCreate() {

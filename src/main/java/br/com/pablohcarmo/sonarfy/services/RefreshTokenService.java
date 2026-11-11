@@ -4,11 +4,16 @@ import br.com.pablohcarmo.sonarfy.dto.RotationDto;
 import br.com.pablohcarmo.sonarfy.entities.RefreshToken;
 import br.com.pablohcarmo.sonarfy.entities.User;
 import br.com.pablohcarmo.sonarfy.repositories.RefreshTokenRepository;
+import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
-
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -22,88 +27,94 @@ import java.util.HexFormat;
 public class RefreshTokenService {
     public static final Duration INACTIVITY_TTL = Duration.ofDays(30);
     public static final long INACTIVITY_TTL_SECONDS = INACTIVITY_TTL.toSeconds();
-
-    private static final int TOKEN_BYTES = 32;
     private static final SecureRandom RANDOM = new SecureRandom();
+    private final RefreshTokenRepository tokens;
+    private final UserRepository users;
+    private final EntityManager entityManager;
+    private final TransactionTemplate transaction;
 
-    private final RefreshTokenRepository refreshTokenRepository;
-
-
-    public RefreshTokenService(RefreshTokenRepository refreshTokenRepository) {
-        this.refreshTokenRepository = refreshTokenRepository;
+    public RefreshTokenService(RefreshTokenRepository tokens, UserRepository users,
+                               EntityManager entityManager, PlatformTransactionManager manager) {
+        this.tokens = tokens;
+        this.users = users;
+        this.entityManager = entityManager;
+        this.transaction = new TransactionTemplate(manager);
     }
 
-    // Cria a sessão de um novo dispositivo e devolve o token bruto, que não é armazenado.
+    // Cria uma sessão independente e armazena apenas o hash.
     @Transactional
     public String issue(User user) {
-        String rawToken = newRawToken();
-        refreshTokenRepository.save(new RefreshToken(user, hash(rawToken), OffsetDateTime.now().plus(INACTIVITY_TTL)));
-        return rawToken;
+        User owner = lockUser(user.getId());
+        if (owner == null || !owner.isEnabled()) throw invalidToken();
+        String raw = newRawToken();
+        tokens.save(new RefreshToken(owner, hash(raw), OffsetDateTime.now().plus(INACTIVITY_TTL)));
+        return raw;
     }
 
-    // Valida o token, confere a conta e o substitui atomicamente por um novo.
-    @Transactional(noRollbackFor = ResponseStatusException.class)
+    // Confirma a revogação antes de responder 401; rejeita transações externas.
+    @Transactional(propagation = Propagation.NEVER)
     public RotationDto rotate(String rawToken) {
-        if(rawToken == null || rawToken.isBlank()) {
-            throw invalidToken();
-        }
-
-        String currentHash = hash(rawToken);
-        OffsetDateTime now = OffsetDateTime.now();
-
-        RefreshToken stored = refreshTokenRepository.findWithUserByTokenHash(currentHash)
-                .orElseThrow(this::invalidToken);
-
-        User user = stored.getUser();
-
-        // Remove sessões expiradas ou de contas que deixaram de estar ativas e verificadas.
-        if(!stored.getExpiresAt().isAfter(now) || !user.isEnabled()) {
-            refreshTokenRepository.deleteByTokenHash(currentHash);
-            throw invalidToken();
-        }
-
-        String newRawToken = newRawToken();
-
-        // Zero linhas afetadas indica que outra requisição já usou este token.
-        int updated = refreshTokenRepository.rotate(currentHash, hash(newRawToken), now.plus(INACTIVITY_TTL), now);
-        if(updated != 1) {
-            throw invalidToken();
-        }
-
-        return new RotationDto(user, newRawToken);
+        if (rawToken == null || rawToken.isBlank()) throw invalidToken();
+        RotationDto result = transaction.execute(status -> rotateLocked(hash(rawToken)));
+        if (result == null) throw invalidToken();
+        return result;
     }
 
+    // O bloqueio é compartilhado por rotação e logout; replay encerra apenas esta sessão.
+    private RotationDto rotateLocked(String tokenHash) {
+        Long ownerId = tokens.findUserIdByTokenHash(tokenHash).orElse(null);
+        if (ownerId == null) return null;
+        User owner = lockUser(ownerId);
+        RefreshToken stored = tokens.findWithUserByTokenHash(tokenHash).orElse(null);
+        if (owner == null || stored == null) return null;
+        OffsetDateTime now = OffsetDateTime.now();
+        if (stored.getUsedAt() != null || !stored.getExpiresAt().isAfter(now) || !owner.isEnabled()) {
+            tokens.deleteBySessionId(stored.getSessionId());
+            return null;
+        }
+        stored.markUsed(now);
+        String raw = newRawToken();
+        tokens.save(new RefreshToken(owner, hash(raw), now.plus(INACTIVITY_TTL), stored.getSessionId()));
+        return new RotationDto(ownerId, raw);
+    }
 
-
-
-    // Logout do dispositivo, idempotente para tokens ausentes ou desconhecidos.
+    // Um token consumido também encerra seus sucessores, mesmo após uma rotação concorrente.
     @Transactional
     public void revoke(String rawToken) {
-        if(rawToken == null || rawToken.isBlank()) {
-            return;
-        }
-        refreshTokenRepository.deleteByTokenHash(hash(rawToken));
+        if (rawToken == null || rawToken.isBlank()) return;
+        String tokenHash = hash(rawToken);
+        Long ownerId = tokens.findUserIdByTokenHash(tokenHash).orElse(null);
+        if (ownerId == null || lockUser(ownerId) == null) return;
+        tokens.findWithUserByTokenHash(tokenHash)
+                .ifPresent(token -> tokens.deleteBySessionId(token.getSessionId()));
     }
 
-    // Encerra todas as sessões do usuário, como após a troca ou redefinição de senha.
+    // Serializa a revogação geral com a emissão e a rotação.
     @Transactional
     public void revokeAll(Long userId) {
-        refreshTokenRepository.deleteAllByUserId(userId);
+        if (lockUser(userId) != null) tokens.deleteAllByUserId(userId);
     }
 
-    // SHA-256 em hexadecimal, suficiente, pois o token tem 256 bits de entropia.
+    // Recarrega a conta após esperar pelo bloqueio para validar seu estado atual.
+    private User lockUser(Long userId) {
+        User user = users.findByIdForRefreshToken(userId).orElse(null);
+        if (user != null) entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE);
+        return user;
+    }
+
+    // SHA-256 é adequado para tokens aleatórios de 256 bits.
     static String hash(String rawToken) {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(rawToken.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest);
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(rawToken.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 unavailable", e);
         }
     }
 
+    // Gera o segredo que será entregue somente ao cliente.
     private static String newRawToken() {
-        byte[] bytes = new byte[TOKEN_BYTES];
+        byte[] bytes = new byte[32];
         RANDOM.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
