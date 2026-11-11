@@ -24,6 +24,9 @@ public class RefreshToken {
     @Column(name = "session_id", nullable = false)
     private UUID sessionId;
 
+    @Column(name = "remember_me", nullable = false)
+    private boolean rememberMe;
+
     @Column(name = "used_at")
     private OffsetDateTime usedAt;
 
@@ -41,13 +44,19 @@ public class RefreshToken {
     }
 
     public RefreshToken(User user, String tokenHash, OffsetDateTime expiresAt, UUID sessionId) {
+        this(user, tokenHash, expiresAt, sessionId, false);
+    }
+
+    public RefreshToken(User user, String tokenHash, OffsetDateTime expiresAt, UUID sessionId, boolean rememberMe) {
         this.user = user;
         this.tokenHash = tokenHash;
         this.expiresAt = expiresAt;
         this.sessionId = sessionId;
+        this.rememberMe = rememberMe;
     }
 
     public UUID getSessionId() { return sessionId; }
+    public boolean isRememberMe() { return rememberMe; }
     public OffsetDateTime getUsedAt() { return usedAt; }
 
     // Conserva o hash consumido para reconhecer reutilizações da mesma sessão.

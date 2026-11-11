@@ -22,6 +22,7 @@ import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.UUID;
 
 @Service
 public class RefreshTokenService {
@@ -44,10 +45,17 @@ public class RefreshTokenService {
     // Cria uma sessão independente e armazena apenas o hash.
     @Transactional
     public String issue(User user) {
+        return issue(user, false);
+    }
+
+    // A preferência pertence à sessão e não altera o prazo de inatividade.
+    @Transactional
+    public String issue(User user, boolean rememberMe) {
         User owner = lockUser(user.getId());
         if (owner == null || !owner.isEnabled()) throw invalidToken();
         String raw = newRawToken();
-        tokens.save(new RefreshToken(owner, hash(raw), OffsetDateTime.now().plus(INACTIVITY_TTL)));
+        tokens.save(new RefreshToken(owner, hash(raw), OffsetDateTime.now().plus(INACTIVITY_TTL),
+                UUID.randomUUID(), rememberMe));
         return raw;
     }
 
@@ -74,8 +82,9 @@ public class RefreshTokenService {
         }
         stored.markUsed(now);
         String raw = newRawToken();
-        tokens.save(new RefreshToken(owner, hash(raw), now.plus(INACTIVITY_TTL), stored.getSessionId()));
-        return new RotationDto(ownerId, raw);
+        tokens.save(new RefreshToken(owner, hash(raw), now.plus(INACTIVITY_TTL),
+                stored.getSessionId(), stored.isRememberMe()));
+        return new RotationDto(ownerId, raw, stored.isRememberMe());
     }
 
     // Um token consumido também encerra seus sucessores, mesmo após uma rotação concorrente.

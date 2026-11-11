@@ -167,7 +167,9 @@ Desenvolvido como projeto acadêmico e base para uma futura plataforma completa 
 
 A camada de refresh tokens guarda hashes e histórico por sessão de dispositivo,
 com rotação e revogação serializadas. Reutilizar um token consumido encerra a
-sessão afetada; as demais sessões são preservadas. Execute as migrations 003 e
-004 em bancos existentes, conforme [persistência](docs/persistence.md).
+sessão afetada; as demais sessões são preservadas. Execute as migrations 003,
+004 e 005 em bancos existentes, conforme [persistência](docs/persistence.md).
+A preferência `remember_me` é armazenada por sessão e preservada na rotação;
+o padrão é `false`. A validade continua em 30 dias por inatividade, sem prazo absoluto.
 Login, refresh, logout e lembrar-me via HTTP ainda estão pendentes.
 A CI exercita a rotação e a concorrência tanto em H2 quanto em PostgreSQL.

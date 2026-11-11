@@ -35,6 +35,18 @@ ordem, após 001 e 002. A migration 004 também deve ser aplicada em bancos de
 validação que já receberam 003: cada registro anterior recebe uma sessão própria.
 O schema consolidado já inclui todas as colunas para bancos novos.
 
+A migration `005_add_refresh_token_remember_me.sql` deve ser aplicada após 004
+antes de iniciar esta versão em bancos existentes. Ela adiciona
+`remember_me BOOLEAN NOT NULL DEFAULT FALSE`: registros anteriores recebem
+`false`, sem alterar hashes, sessões, histórico ou expiração. Não execute 005
+em um banco novo inicializado com o schema consolidado atualizado.
+
+`issue(user, rememberMe)` persiste a preferência; `issue(user)` mantém o padrão
+`false`. A rotação copia essa preferência para cada sucessor e a retorna no
+`RotationDto`, sem consultar uma escolha reenviada pelo cliente. Os dois valores
+mantêm 30 dias de validade por inatividade, sem prazo absoluto. O uso dessa
+preferência para cookies será implementado na entrega HTTP seguinte.
+
 Cada dispositivo possui uma família identificada por `session_id`. A rotação
 marca o hash anterior com `used_at` e cria um sucessor com validade de 30 dias
 de inatividade. Somente hashes SHA-256 de segredos aleatórios são armazenados.
@@ -49,17 +61,18 @@ login se o cliente tentar reutilizar o token anterior.
 
 `rotate` rejeita uma transação externa e abre sua própria unidade transacional:
 a revogação é confirmada antes da resposta 401, sem `noRollbackFor` genérico.
-O resultado contém apenas o ID do usuário e o token bruto, ocultado no
+O resultado contém o ID do usuário, a preferência lembrar-me e o token bruto, ocultado no
 `toString()`. Não retorna entidades JPA.
 
 Hashes históricos devem permanecer enquanto a sessão puder ser renovada.
 O expurgo automático de famílias inteiramente expiradas segue pendente; apagar
 apenas registros consumidos perderia a detecção de reutilização. A política
-de prazo absoluto e a opção lembrar-me também ficam para a integração HTTP.
+de cookies fica para a integração HTTP; esta entrega não impõe prazo absoluto.
 
 ```powershell
 psql -h <host> -p <porta> -U <usuario> -d <banco> -v ON_ERROR_STOP=1 -f db/migrations/003_create_refresh_tokens.sql
 psql -h <host> -p <porta> -U <usuario> -d <banco> -v ON_ERROR_STOP=1 -f db/migrations/004_add_refresh_token_sessions.sql
+psql -h <host> -p <porta> -U <usuario> -d <banco> -v ON_ERROR_STOP=1 -f db/migrations/005_add_refresh_token_remember_me.sql
 ```
 
 O schema completo está versionado em `db/tables.sql` e deve ser
@@ -99,7 +112,8 @@ Na CI, o job `test` também inicia um serviço PostgreSQL 17 descartável e impo
 somente a tabela Spotify vazia e a coluna `users.spotify_authorization_version`
 desse banco de teste; então aplica, em ordem, `001_create_spotify_connection.sql`
 e `002_add_spotify_authorization_version.sql`. Também remove a tabela vazia
-`refresh_tokens` e aplica `003_create_refresh_tokens.sql` e `004_add_refresh_token_sessions.sql`. Em seguida, executa explicitamente
+`refresh_tokens` e aplica `003_create_refresh_tokens.sql`, `004_add_refresh_token_sessions.sql`
+e `005_add_refresh_token_remember_me.sql`. Em seguida, executa explicitamente
 `ExistingSchemaIntegrationTest` e `RefreshTokenPostgresTest` com a propriedade opt-in habilitada. O segundo reutiliza os cenários de refresh e valida o schema sem criá-lo ou removê-lo. Falhas de SQL,
 persistência, reconexão ou concorrência falham o mesmo job da suíte padrão. Isso
 valida o rollout em teste; cada ambiente de deploy ainda exige aplicação manual
@@ -128,6 +142,16 @@ Cada cenário usa transação com rollback. Usuários e logs de teste não perma
 no banco, mas sequências de IDs podem avançar, conforme o comportamento do PostgreSQL.
 
 ## Evidências anteriores
+
+### Preferência lembrar-me em 10/11/2026
+
+- Suíte padrão: 453 testes reportados, zero falhas/erros, 18 ignorados; `BUILD SUCCESS`.
+- PostgreSQL 17.9 descartável na porta local 55433: 15 cenários de
+  `RefreshTokenPostgresTest` aprovados no schema consolidado e novamente após
+  aplicar 005 sobre o schema anterior, com `ddl=validate`.
+- A migration preservou integralmente 23 registros, incluindo histórico consumido
+  e sucessor, e atribuiu `remember_me=false` a todos. Nenhuma migration foi aplicada
+  no banco da aplicação. Cookies e contratos HTTP permanecem fora desta entrega.
 
 ### Evidências de 06/11/2026
 
