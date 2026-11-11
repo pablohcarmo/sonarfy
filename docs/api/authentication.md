@@ -148,3 +148,15 @@ Também cobre a lista de rotas públicas, métodos não permitidos anonimamente,
 despachos de erro, preflight e respostas CORS em requisições autenticadas e anônimas.
 Os testes de claims conferem a assinatura dos tokens e incluem um controle positivo
 assinado com a chave configurada no contexto, evitando rejeições por chave divergente.
+
+
+## Persistência de refresh tokens
+
+A camada interna armazena hashes e histórico por sessão de dispositivo.
+Reutilização encerra somente a sessão afetada; logout interno reconhece tokens
+consumidos. O resultado da renovação não retorna entidades JPA.
+O contrato HTTP permanece inalterado: login ainda não emite refresh token;
+cookies, lembrar-me, /refresh e /logout HTTP ficam para a próxima entrega.
+A validade interna é de 30 dias por inatividade. Transporte, CSRF/CORS, prazo
+absoluto e revogação na troca de senha ainda precisam ser integrados.
+Access tokens existentes não são revogados por essa camada.

@@ -161,3 +161,13 @@ As limitações descritas permitem avaliar o estado real da implementação.
 ---
 
 Desenvolvido como projeto acadêmico e base para uma futura plataforma completa de avaliação musical.
+
+
+## Persistência de sessões de autenticação
+
+A camada de refresh tokens guarda hashes e histórico por sessão de dispositivo,
+com rotação e revogação serializadas. Reutilizar um token consumido encerra a
+sessão afetada; as demais sessões são preservadas. Execute as migrations 003 e
+004 em bancos existentes, conforme [persistência](docs/persistence.md).
+Login, refresh, logout e lembrar-me via HTTP ainda estão pendentes.
+A CI exercita a rotação e a concorrência tanto em H2 quanto em PostgreSQL.
