@@ -13,6 +13,11 @@ import java.time.OffsetDateTime;
 import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<User,Long> {
+    // Serializa emissão, rotação e revogação das sessões de um usuário.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from User u where u.id = :id")
+    Optional<User> findByIdForRefreshToken(@Param("id") Long id);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from User u where u.id = :id")
     Optional<User> findByIdForSpotifyConnection(@Param("id") Long id);
