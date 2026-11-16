@@ -1,7 +1,7 @@
 package br.com.pablohcarmo.sonarfy.controllers;
 
 import br.com.pablohcarmo.sonarfy.dto.UpdateProfileDto;
-import br.com.pablohcarmo.sonarfy.dto.UpdateUserDto;
+import br.com.pablohcarmo.sonarfy.entities.User;
 import br.com.pablohcarmo.sonarfy.dto.UserDto;
 import br.com.pablohcarmo.sonarfy.services.UserService;
 import jakarta.validation.Valid;
@@ -9,7 +9,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.security.Principal;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 @RestController
 @RequestMapping("/api/profile")
@@ -22,14 +22,14 @@ public class ProfileController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<UserDto>getCurrentUser(Principal principal) {
+    public ResponseEntity<UserDto>getCurrentUser(@AuthenticationPrincipal User authenticatedUser) {
         // Busca o usuário logado e devolve o DTO correspondente
-        return ResponseEntity.ok(userService.getUserRegister(principal.getName()));
+        return ResponseEntity.ok(userService.getUserRegister(authenticatedUser.getId()));
     }
 
     @PutMapping("/me")
-    public ResponseEntity<UserDto>updateProfile(@RequestBody @Valid UpdateProfileDto updateProfileDto, Principal principal) {
+    public ResponseEntity<UserDto>updateProfile(@RequestBody @Valid UpdateProfileDto updateProfileDto, @AuthenticationPrincipal User authenticatedUser) {
         // Envia os dados limpos para a camada de serviço, que vai atualizar o usuário logado e devolver o DTO correspondente
-        return ResponseEntity.ok(userService.updateProfile(principal.getName(), updateProfileDto));
+        return ResponseEntity.ok(userService.updateProfile(authenticatedUser.getId(), updateProfileDto));
     }
 }

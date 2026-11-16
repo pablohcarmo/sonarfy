@@ -25,7 +25,7 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
    - `GET /api/profile/me` e `PUT /api/profile/me` — Consulta e personalização de biografia, avatar (`profilePicture`) e capa (`UpdateProfileDto`).
    - Coleção Postman: [sonarfy-users.postman_collection.json](sonarfy-users.postman_collection.json).
    - Integração de dados pessoais: [configurações](../integrations/user-settings.md).
-   - [Solicitação de troca de e-mail](email-changes.md): endpoint e envio sob opção de ativação, desativados até a entrega da confirmação.
+   - [Troca de e-mail](email-changes.md): solicitação autenticada, confirmação com autorização própria e aviso ao endereço antigo, sob opção de ativação.
 5. **[Integração OAuth 2.0 com o Spotify](../integrations/spotify.md)**
    - `POST /api/spotify/authorization` — Geração autenticada da URL de autorização do Spotify e registro de `state` de uso único.
    - `GET /api/spotify/callback` — Processamento público do retorno OAuth, persistência cifrada (`AES-256-GCM`) e redirecionamento `302 Found` ao frontend (`SPOTIFY_FRONTEND_REDIRECT_URI?spotify=connected|denied|invalid_state|error`).
@@ -48,6 +48,8 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 | `GET` | `/api/users/me` | `UserController` | Bearer `access` | [users-and-profile.md](users-and-profile.md#1-consultar-dados-do-usuário-logado) |
 | `PUT` | `/api/users/me` | `UserController` | Bearer `access` | [users-and-profile.md](users-and-profile.md#2-atualizar-dados-cadastrais) |
 | `POST` | `/api/users/me/password-change-request` | `UserController` | Bearer `access` | [passwords.md](passwords.md#solicitar-token-para-troca-autenticada) |
+| `POST` | `/api/users/me/email-change-request` | `EmailChangeController` | Bearer `access` + senha atual | [email-changes.md](email-changes.md) |
+| `POST` | `/api/auth/email-change-confirmation` | `EmailChangeConfirmationController` | JSON `token` (`email_change`) | [email-changes.md](email-changes.md) |
 | `PUT` | `/api/users/me/password` | `UserController` | Bearer `access` + JSON `token` (`password_change`) | [passwords.md](passwords.md#trocar-senha-estando-autenticado) |
 | `GET` | `/api/profile/me` | `ProfileController` | Bearer `access` | [users-and-profile.md](users-and-profile.md#1-consultar-dados-do-usuário-logado) |
 | `PUT` | `/api/profile/me` | `ProfileController` | Bearer `access` | [users-and-profile.md](users-and-profile.md#3-atualizar-perfil-público-bio-avatar-e-capa) |
@@ -69,3 +71,4 @@ Todos os tokens JWT emitidos pelo Sonarfy utilizam o emissor `iss: "sonarfy-api"
 | `email_confirmation` | E-mail de cadastro / reenvio | Query string `?token=` apenas em `GET /api/auth/verify` | **Não** |
 | `password_reset` | E-mail de `POST /api/auth/forgot-password` | Campo JSON `"token"` apenas em `POST /api/auth/reset-password` | **Não** |
 | `password_change` | E-mail de `POST /api/users/me/password-change-request` | Campo JSON `"token"` apenas em `PUT /api/users/me/password` (junto com Bearer `access`) | **Não** |
+| `email_change` | Confirmação enviada ao novo endereço | Campo JSON `"token"` apenas em `POST /api/auth/email-change-confirmation` | **Não** |

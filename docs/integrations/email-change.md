@@ -3,17 +3,24 @@
 Esta entrega será integrada em três PRs dependentes:
 
 1. Persistência das solicitações e da fila de e-mails (integrado no PR #61).
-2. Solicitação autenticada, autorização específica, substituição e envio (recorte atual).
+2. Solicitação autenticada, autorização específica, substituição e envio (integrado no PR #62).
 3. Confirmação, revogação de refresh tokens, notificação ao endereço antigo e
-   cobertura HTTP do fluxo completo.
+   cobertura HTTP do fluxo completo (recorte atual).
 
-O recorte atual implementa a [solicitação autenticada](../api/email-changes.md),
+O recorte atual implementa [solicitação e confirmação](../api/email-changes.md),
 mas mantém endpoint e despachante desativados por padrão (`APP_EMAIL_CHANGE_ENABLED=false`).
-Habilitar somente em testes isolados até concluir o PR 3: a confirmação e a página
-de frontend do link ainda não existem. Cadastro pendente, senha e Spotify mantêm
+Habilitar para usuários somente após preparar o banco, validar SMTP e integrar a
+página de frontend do link, ainda fora do escopo. Cadastro pendente, senha e Spotify mantêm
 seus propósitos de autorização separados.
 
 ## Persistência e atomicidade
+
+Conta, perfil, senha e Spotify usam o ID imutável autenticado. Isso impede que um
+`Principal` carregado antes da confirmação selecione outra conta se o endereço
+antigo for reutilizado. Edições de dados/perfil recarregam o usuário sob bloqueio
+antes de salvar; assim uma edição já iniciada não sobrescreve o e-mail confirmado
+com uma cópia antiga. Ativação e retificação pendente também recarregam o estado
+sob bloqueio antes de avaliar a verificação da conta.
 
 `email_change_requests` mantém uma solicitação vigente por usuário. O serviço
 gera um UUID novo para cada solicitação e o remetente emite um JWT de propósito
@@ -36,9 +43,9 @@ seus eventos antigos permanecem identificáveis na fila para descarte pelo futur
 remetente. A autorização consumida e a expiração também são consultáveis.
 
 O consumo usa atualização condicional por identificador, expiração e ausência de
-consumo anterior. O serviço de confirmação deverá consumi-la na mesma transação
+consumo anterior. `EmailChangeConfirmationService` a consome na mesma transação
 que altera `users.email`, revoga refresh tokens e enfileira `NOTIFY_OLD_EMAIL`.
-Todas essas ações devem ocorrer após bloquear a mesma linha do usuário. As operações
+Todas essas ações ocorrem após bloquear a mesma linha do usuário. As operações
 de solicitação e enfileiramento participam da transação Spring do serviço, inclusive
 quando gerenciada por JPA com o mesmo DataSource.
 
@@ -65,7 +72,8 @@ ciclo, com reserva de dois minutos por evento. Descarta confirmações já subst
 expiradas ou consumidas. Falhas são reagendadas após 30, 60, 120, 240 e depois 300
 segundos, respeitando a expiração original. Eventos entregues são retidos por sete
 dias. Eventos obsoletos são removidos sem registrar entrega. Notificações ao endereço
-antigo serão tratadas no PR 3; não são enviadas neste recorte.
+antigo usam o destinatário persistido, independentemente da solicitação vigente;
+continuam elegíveis a retentativas após a troca, sem prazo de autorização de 15 minutos.
 
 As configurações ficam no `application.properties` local, que permanece fora do Git.
 Replicar os parâmetros abaixo nos ambientes de execução; não há arquivo separado:
@@ -103,7 +111,7 @@ Preparar PostgreSQL descartável com banco `sonarfy_email_change_validation`,
 separado do banco da aplicação, e importar `db/tables.sql`. Executar:
 
 ```powershell
-.\mvnw.cmd '-Dtest=EmailChangePersistencePostgresTest,EmailChangeRequestPostgresTest' `
+.\mvnw.cmd '-Dtest=EmailChangePersistencePostgresTest,EmailChangeRequestPostgresTest,EmailChangeConfirmationPostgresTest' `
   '-Dsonarfy.test.email-change-postgres=true' `
   '-Dsonarfy.email-change.test.jdbc-url=jdbc:postgresql://localhost:55440/sonarfy_email_change_validation' test
 ```
@@ -119,23 +127,48 @@ não aplicar 006 novamente em banco criado com esse schema.
 
 ## Integração com a CI
 
-O workflow `Java CI` executa os sete cenários opt-in em um banco separado,
+O workflow `Java CI` executa as três suítes opt-in em um banco separado,
 `sonarfy_email_change_validation`. Nesse banco descartável, importa o schema
 consolidado, remove somente as duas tabelas desta entrega para reproduzir o
 estado anterior à 006 e aplica o script incremental com `ON_ERROR_STOP=1`.
-As duas suítes validam persistência, solicitação HTTP e concorrência sobre as tabelas migradas.
+As suítes validam persistência, solicitação, confirmação HTTP e concorrência sobre as tabelas migradas.
 
 A URL pode ser configurada por `SONARFY_EMAIL_CHANGE_TEST_JDBC_URL`, preservando
 a precedência da propriedade Java já documentada. Usuário e senha usam
 `SONARFY_TEST_DB_USER` e `SONARFY_TEST_DB_PASSWORD`. A restrição ao nome específico
 de banco local continua obrigatória; nenhuma credencial da aplicação é necessária.
 
-A confirmação futura deverá incluir um teste com `JpaTransactionManager`, cobrindo
-rollback conjunto da mudança de e-mail em `User`, consumo via JDBC, revogação de
-refresh tokens e evento de notificação. A cobertura atual usa
-`DataSourceTransactionManager` e não comprova essa integração com JPA.
+A confirmação tem cobertura com `JpaTransactionManager`, incluindo falha após o
+flush da mudança em `User` e após consumo JDBC/revogação de refresh tokens. Esses
+cenários comprovam o rollback conjunto com a fila. A suíte original da persistência
+continua usando `DataSourceTransactionManager`; as suítes HTTP usam JPA.
 
 ## Evidências deste recorte — 16/11/2026
+
+### Confirmação — PR 3
+
+- Base `1bd7d76`, após merge do PR #62; suíte após criar a branch: 547 reportados,
+  zero falhas/erros e 46 ignorados.
+- Suíte padrão final: 558 reportados, zero falhas/erros e 57 ignorados.
+- PostgreSQL 17.9 descartável na porta 55443: execução ampliada com as três suítes
+  de e-mail, `PasswordResetPostgresTest` e `RefreshTokenPostgresTest`: 103 reportados,
+  zero falhas/erros e um ignorado, correspondente a um cenário exclusivo de H2.
+  Os 69 cenários de troca de e-mail passaram integralmente, incluindo 35 da confirmação.
+- Cobertura de rollback conjunto de `User`, consumo JDBC, refresh tokens e outbox;
+  concorrência na mesma autorização, no endereço único e na rotação de refresh;
+  preservação da conta por ID quando o e-mail anterior já foi reutilizado; edição
+  concorrente de perfil sem sobrescrever o novo endereço.
+- Coleção JSON e dez scripts de teste validados sintaticamente; YAML/Bash do
+  workflow conferidos. A CI foi preparada para executar as três suítes; o workflow
+  modificado ainda não foi executado remotamente.
+- Sem execução Postman, SMTP real, frontend ou navegador. Nenhuma migration nova
+  ou alteração no banco da aplicação; a opção de ativação permanece desabilitada.
+
+O diff supera o alvo aproximado de 300 linhas pela confirmação e sua cobertura
+transacional/concorrente, somadas à correção necessária da identidade por ID nos
+endpoints existentes. A troca de e-mail torna inseguro selecionar contas por um
+e-mail mutável capturado anteriormente; por isso conta, perfil, senha e Spotify
+foram adequados neste recorte, com os mesmos contratos HTTP e JSON.
 
 ### Solicitação e envio — PR 2
 

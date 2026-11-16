@@ -60,13 +60,20 @@ class UserControllerTest {
 
     private final Principal mockPrincipal = () -> "pablo@sonarfy.com";
 
+    @org.junit.jupiter.api.AfterEach
+    void clearAuthentication() { org.springframework.security.core.context.SecurityContextHolder.clearContext(); }
+
     @BeforeEach
     void setUp() {
+        User actor = new User(); actor.setId(1L);
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated(actor, null, java.util.List.of()));
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
 
         mockMvc = MockMvcBuilders.standaloneSetup(userController)
                 .setValidator(validator)
+                .setCustomArgumentResolvers(new org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver())
                 .build();
     }
 
@@ -90,7 +97,7 @@ class UserControllerTest {
                 LocalDateTime.of(2026, 1, 2, 12, 0)
         );
 
-        when(userService.getUserRegister("pablo@sonarfy.com")).thenReturn(userDto);
+        when(userService.getUserRegister(1L)).thenReturn(userDto);
 
         mockMvc.perform(get("/api/users/me")
                         .principal(mockPrincipal))
@@ -105,7 +112,7 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.country").value("Brasil"))
                 .andExpect(jsonPath("$.biography").value("Software Engineer"));
 
-        verify(userService).getUserRegister("pablo@sonarfy.com");
+        verify(userService).getUserRegister(1L);
     }
 
     @Test
@@ -139,7 +146,7 @@ class UserControllerTest {
                 LocalDateTime.of(2026, 2, 1, 14, 0)
         );
 
-        when(userService.updateRegister(eq("pablo@sonarfy.com"), any(UpdateUserDto.class)))
+        when(userService.updateRegister(eq(1L), any(UpdateUserDto.class)))
                 .thenReturn(updatedUserDto);
 
         mockMvc.perform(put("/api/users/me")
@@ -151,7 +158,7 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.city").value("Sao Paulo"))
                 .andExpect(jsonPath("$.birthDate").value("1999-05-20"));
 
-        verify(userService).updateRegister(eq("pablo@sonarfy.com"), any(UpdateUserDto.class));
+        verify(userService).updateRegister(eq(1L), any(UpdateUserDto.class));
     }
 
     @Test
@@ -164,7 +171,7 @@ class UserControllerTest {
                 "NewPass123!"
         );
 
-        doNothing().when(userService).changePassword(eq("pablo@sonarfy.com"), any(ChangePasswordDto.class));
+        doNothing().when(userService).changePassword(eq(1L), any(ChangePasswordDto.class));
 
         mockMvc.perform(put("/api/users/me/password")
                         .principal(mockPrincipal)
@@ -173,7 +180,7 @@ class UserControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string("Password updated successfully."));
 
-        verify(userService).changePassword(eq("pablo@sonarfy.com"), any(ChangePasswordDto.class));
+        verify(userService).changePassword(eq(1L), any(ChangePasswordDto.class));
     }
 
     @Test
@@ -206,7 +213,7 @@ class UserControllerTest {
         );
 
         doThrow(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password is incorrect!"))
-                .when(userService).changePassword(eq("pablo@sonarfy.com"), any(ChangePasswordDto.class));
+                .when(userService).changePassword(eq(1L), any(ChangePasswordDto.class));
 
         mockMvc.perform(put("/api/users/me/password")
                         .principal(mockPrincipal)
@@ -214,7 +221,7 @@ class UserControllerTest {
                         .content(objectMapper.writeValueAsString(dto)))
                 .andExpect(status().isBadRequest());
 
-        verify(userService).changePassword(eq("pablo@sonarfy.com"), any(ChangePasswordDto.class));
+        verify(userService).changePassword(eq(1L), any(ChangePasswordDto.class));
     }
 
     @Test
@@ -224,7 +231,7 @@ class UserControllerTest {
         user.setId(1L);
         user.setEmail("pablo@sonarfy.com");
 
-        when(userRepository.findByEmailIgnoreCase("pablo@sonarfy.com")).thenReturn(Optional.of(user));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(jwtService.generatePasswordChangeToken("1")).thenReturn("jwt-token-reset");
         when(authEmailService.sendPasswordChangeEmail(user, "jwt-token-reset"))
                 .thenReturn("Password change authorization email sent successfully. Please check your inbox.");
@@ -245,7 +252,7 @@ class UserControllerTest {
         user.setEmail("pablo@sonarfy.com");
         user.setVerified(true);
 
-        when(userRepository.findByEmailIgnoreCase(user.getEmail())).thenReturn(Optional.of(user));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         when(jwtService.generatePasswordChangeToken("1")).thenReturn("jwt-token-reset");
         when(authEmailService.sendPasswordChangeEmail(user, "jwt-token-reset"))
                 .thenThrow(new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Please wait"));

@@ -90,7 +90,6 @@ class SpotifyControllerTest {
         permission.setName("ROLE_USER");
         user.setPermission(permission);
         when(users.findWithPermissionById(42L)).thenReturn(Optional.of(user));
-        when(users.findByEmailIgnoreCase(user.getEmail())).thenReturn(Optional.of(user));
         when(users.findById(42L)).thenReturn(Optional.of(user));
     }
 
@@ -124,7 +123,7 @@ class SpotifyControllerTest {
         assertNotNull(state);
         assertEquals(1, pending().size());
         assertEquals(42L, ReflectionTestUtils.getField(pending().get(state), "userId"));
-        verify(users).findByEmailIgnoreCase("user@example.com");
+        verify(users, never()).findByEmailIgnoreCase(anyString());
     }
 
     @Test
@@ -144,7 +143,6 @@ class SpotifyControllerTest {
         other.setVerified(true);
         other.setPermission(user.getPermission());
         when(users.findWithPermissionById(43L)).thenReturn(Optional.of(other));
-        when(users.findByEmailIgnoreCase(other.getEmail())).thenReturn(Optional.of(other));
         when(users.findById(43L)).thenReturn(Optional.of(other));
         mvc.perform(post("/api/spotify/authorization").header("Authorization", "Bearer " + jwt.generateAccessToken("43")))
                 .andExpect(status().isOk());
@@ -179,7 +177,7 @@ class SpotifyControllerTest {
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(header().string("Location", "http://localhost:3000/settings/spotify?spotify=invalid_state"));
         assertTrue(pending().isEmpty());
-        verify(users, times(2)).findById(42L);
+        verify(users, times(3)).findById(42L);
         verify(tokens, times(1)).exchangeCode("test-code");
     }
 
@@ -391,7 +389,7 @@ class SpotifyControllerTest {
 
     @Test
     void connectionRejectsUserMissingAtControllerLookup() throws Exception {
-        when(users.findByEmailIgnoreCase(user.getEmail())).thenReturn(Optional.empty());
+        when(users.findById(42L)).thenReturn(Optional.empty());
 
         mvc.perform(get("/api/spotify/connection")
                         .header("Authorization", "Bearer " + jwt.generateAccessToken("42")))

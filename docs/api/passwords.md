@@ -80,7 +80,7 @@ do tratamento de erros do Spring: não há aqui promessa de um formato JSON est�
 ## Solicitar token para troca autenticada
 
 `POST /api/users/me/password-change-request` — exige identidade autenticada,
-sem corpo. O controller usa `Principal.getName()` para identificar o e-mail da conta.
+sem corpo. O controller usa o ID autenticado para localizar a conta e seu e-mail atual.
 O token enviado possui finalidade `password_change`, distinta de
 `password_reset`; cada endpoint aceita somente o token emitido para seu próprio fluxo.
 

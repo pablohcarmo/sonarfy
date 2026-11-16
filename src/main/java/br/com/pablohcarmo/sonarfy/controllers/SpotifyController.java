@@ -17,7 +17,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.security.Principal;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 @RestController
 @RequestMapping("/api/spotify")
@@ -45,9 +45,9 @@ public class SpotifyController {
 
     @PostMapping("/authorization")
     public ResponseEntity<SpotifyAuthorizationResponseDto> startAuthorization(
-            Principal principal // Recebe o e-mail do usuário autenticado.
+            @AuthenticationPrincipal User authenticatedUser // Immutable authenticated identity.
     ) {
-        User user = userRepository.findByEmailIgnoreCase(principal.getName())
+        User user = userRepository.findById(authenticatedUser.getId())
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.UNAUTHORIZED,
                         "Authenticated user not found."
@@ -124,10 +124,10 @@ public class SpotifyController {
 
     @GetMapping("/connection")
     public ResponseEntity<SpotifyConnectionResponseDto> getConnection(
-            Principal principal
+            @AuthenticationPrincipal User authenticatedUser
     ) {
         // Identifica o usuário autenticado, consulta o service e retorna o resultado sem permitir cache
-        User user = userRepository.findByEmailIgnoreCase(principal.getName())
+        User user = userRepository.findById(authenticatedUser.getId())
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.UNAUTHORIZED,
                         "Authenticated user not found."
@@ -142,10 +142,10 @@ public class SpotifyController {
 
     @DeleteMapping("/connection")
     public ResponseEntity<Void> deleteConnection(
-            Principal principal
+            @AuthenticationPrincipal User authenticatedUser
     ) {
         // Identifica o usuário autenticado, consulta o service e retorna o resultado sem permitir cache
-        User user = userRepository.findByEmailIgnoreCase(principal.getName())
+        User user = userRepository.findById(authenticatedUser.getId())
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.UNAUTHORIZED,
                         "Authenticated user not found."

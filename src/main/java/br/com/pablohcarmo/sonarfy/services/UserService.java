@@ -126,8 +126,8 @@ public class UserService implements UserDetailsService {
                 .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
     }
 
-    public UserDto getUserRegister(String email) {
-        User user = userRepository.findByEmailIgnoreCase(email)
+    public UserDto getUserRegister(Long userId) {
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
 
         return new UserDto(user.getId(), user.getName(), user.getSurname(), user.getHandle(), user.getEmail(),
@@ -138,10 +138,11 @@ public class UserService implements UserDetailsService {
 
     // Replace personal data atomically using the authenticated identity.
     @Transactional
-    public UserDto updateRegister(String email, UpdateUserDto dto) {
+    public UserDto updateRegister(Long userId, UpdateUserDto dto) {
         PersonalDataRules.validateBirthDate(dto.birthDate());
-        User user = userRepository.findByEmailIgnoreCase(email)
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+        entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE);
         userRepository.findByHandleIgnoreCase(dto.handle())
                 .filter(owner -> !owner.getId().equals(user.getId()))
                 .ifPresent(owner -> { throw new ResponseStatusException(HttpStatus.CONFLICT, "Handle is already in use."); });
@@ -165,23 +166,25 @@ public class UserService implements UserDetailsService {
             }
             throw exception;
         }
-        return getUserRegister(email);
+        return getUserRegister(userId);
     }
 
-    public UserDto updateProfile(String email, UpdateProfileDto updateProfileDto) {
-        User user = userRepository.findByEmailIgnoreCase(email)
+    @Transactional
+    public UserDto updateProfile(Long userId, UpdateProfileDto updateProfileDto) {
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+        entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE);
 
         user.setAvatar(updateProfileDto.getAvatar());
         user.setWallpaper(updateProfileDto.getWallpaper());
         user.setBiography(updateProfileDto.getBiography());
 
-        userRepository.save(user);
-        return getUserRegister(email);
+        userRepository.saveAndFlush(user);
+        return getUserRegister(userId);
     }
 
     @Transactional
-    public void changePassword(String loggedInEmail, ChangePasswordDto dto) {
+    public void changePassword(Long loggedInUserId, ChangePasswordDto dto) {
         // O DTO exige a senha atual na entrada HTTP. Mantemos também esta validação para chamadas diretas ao serviço, que não passam pelo @Valid do controller.
         if (dto.currentPassword() == null || dto.currentPassword().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Current password is required!");
@@ -194,7 +197,7 @@ public class UserService implements UserDetailsService {
         User user = validateTokenAndGetUser(dto.token(), true);
 
         // 3. Impede que o usuário altere a senha de outro usuário, mesmo que possua o token
-        if(!user.getEmail().equalsIgnoreCase(loggedInEmail)) {
+        if(!user.getId().equals(loggedInUserId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Token does not belong to the authenticated user!");
         }
 
@@ -224,6 +227,7 @@ public class UserService implements UserDetailsService {
         // 1. Busca o usuário pelo ID verificado no token
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found!"));
+        entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE);
 
         // 2. Verifica se o usuário já foi verificado
         if(user.isVerified()) {
@@ -273,6 +277,7 @@ public class UserService implements UserDetailsService {
 
         // Caso encontre o usuário, instancia o objeto User e busca se ele já foi verificado
         User user = optionalUser.get();
+        entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE);
 
         // Verifica se o usuário já foi verificado
         if(user.isVerified()) {
