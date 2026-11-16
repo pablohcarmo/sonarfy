@@ -83,6 +83,24 @@ A migration `006_create_email_change_requests.sql` é manual, após 005. Não fo
 aplicada ao banco da aplicação. O schema consolidado já contém as novas tabelas;
 não aplicar 006 novamente em banco criado com esse schema.
 
+## Integração com a CI
+
+O workflow `Java CI` executa os sete cenários opt-in em um banco separado,
+`sonarfy_email_change_validation`. Nesse banco descartável, importa o schema
+consolidado, remove somente as duas tabelas desta entrega para reproduzir o
+estado anterior à 006 e aplica o script incremental com `ON_ERROR_STOP=1`.
+A suíte então valida a persistência e a concorrência sobre as tabelas migradas.
+
+A URL pode ser configurada por `SONARFY_EMAIL_CHANGE_TEST_JDBC_URL`, preservando
+a precedência da propriedade Java já documentada. Usuário e senha usam
+`SONARFY_TEST_DB_USER` e `SONARFY_TEST_DB_PASSWORD`. A restrição ao nome específico
+de banco local continua obrigatória; nenhuma credencial da aplicação é necessária.
+
+A confirmação futura deverá incluir um teste com `JpaTransactionManager`, cobrindo
+rollback conjunto da mudança de e-mail em `User`, consumo via JDBC, revogação de
+refresh tokens e evento de notificação. A cobertura atual usa
+`DataSourceTransactionManager` e não comprova essa integração com JPA.
+
 ## Evidências deste recorte — 16/11/2026
 
 - Suíte imediatamente após criar a branch: 531 testes reportados, zero falhas/erros,
@@ -104,3 +122,7 @@ não aplicar 006 novamente em banco criado com esse schema.
   `EmailChangePersistencePostgresTest` executados no PostgreSQL descartável, todos
   aprovados. O novo cenário confirma que persistir a solicitação diretamente no
   repository não enfileira e-mails; o serviço coordena essa decisão e sua transação.
+- Ajuste da CI validado localmente: YAML e sintaxe Bash conferidos; a sequência
+  consolidado → remoção das duas tabelas → migration 006 foi reproduzida em
+  PostgreSQL 17.9 descartável. Os sete testes passaram usando URL e usuário por
+  variáveis de ambiente. Isso não representa execução remota do workflow modificado.

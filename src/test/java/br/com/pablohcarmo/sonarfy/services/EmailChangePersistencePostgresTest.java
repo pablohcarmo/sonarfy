@@ -27,11 +27,14 @@ class EmailChangePersistencePostgresTest {
     @Configuration @EnableTransactionManagement @Import({EmailChangeRequestRepository.class, EmailChangeMailRepository.class, EmailChangeService.class})
     static class Config {
         @Bean DataSource dataSource() {
-            String url = System.getProperty("sonarfy.email-change.test.jdbc-url", "");
+            String url = System.getProperty("sonarfy.email-change.test.jdbc-url",
+                    System.getenv().getOrDefault("SONARFY_EMAIL_CHANGE_TEST_JDBC_URL", ""));
             if (!url.matches("jdbc:postgresql://(localhost|127\\.0\\.0\\.1):[0-9]+/sonarfy_email_change_validation")) {
                 throw new IllegalArgumentException("A dedicated local email-change validation database is required.");
             }
-            return new DriverManagerDataSource(url, "postgres", "");
+            return new DriverManagerDataSource(url,
+                    System.getenv().getOrDefault("SONARFY_TEST_DB_USER", "postgres"),
+                    System.getenv().getOrDefault("SONARFY_TEST_DB_PASSWORD", ""));
         }
         @Bean JdbcTemplate jdbcTemplate(DataSource ds) { return new JdbcTemplate(ds); }
         @Bean PlatformTransactionManager transactionManager(DataSource ds) { return new DataSourceTransactionManager(ds); }
