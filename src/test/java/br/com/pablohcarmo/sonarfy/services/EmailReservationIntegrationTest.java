@@ -65,7 +65,7 @@ class EmailReservationIntegrationTest {
     @EnableTransactionManagement(proxyTargetClass = true)
     @EnableJpaRepositories(basePackageClasses = UserRepository.class)
     @Import({EmailCooldownService.class, AuthEmailService.class, UserService.class,
-            ActivationEmailListener.class})
+            ActivationEmailListener.class, RefreshTokenService.class})
     static class Config {
         @Bean DataSource dataSource(Environment env) {
             return new DriverManagerDataSource(
@@ -103,6 +103,7 @@ class EmailReservationIntegrationTest {
     @Autowired EmailTemplateService templates;
     @Autowired UserService userService;
     @Autowired JwtService jwt;
+    @Autowired RefreshTokenService refreshTokens;
     @Autowired ApplicationEventPublisher publisher;
     @Autowired PlatformTransactionManager transactions;
     @Autowired DataSource dataSource;
@@ -115,6 +116,7 @@ class EmailReservationIntegrationTest {
                 new EmailContent("activation-html", call.getArgument(1), Map.of()));
         when(templates.activationResend(any(User.class), anyString())).thenAnswer(call ->
                 new EmailContent("resend-html", call.getArgument(1), Map.of()));
+        users.findAll().forEach(user -> refreshTokens.revokeAll(user.getId()));
         users.deleteAll();
         permission = permissions.findByName("ROLE_USER").orElseGet(() -> {
             Permission role = new Permission();
@@ -424,7 +426,7 @@ class EmailReservationIntegrationTest {
     void registeredUserCanLoginAfterEmailConfirmationWithoutDatabaseUpdates(String character, int count) throws Exception {
         String password = character.repeat(count);
         var mvc = MockMvcBuilders.standaloneSetup(new AuthController(userService, jwt, authEmails,
-                new AuthService(users, new BCryptPasswordEncoder(4), jwt))).build();
+                new AuthService(users, new BCryptPasswordEncoder(4), refreshTokens), refreshTokens)).build();
         mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
                 {"name":"New","surname":"Account","handle":"new-account",
                  "email":"new@example.com","password":"%s",
@@ -456,7 +458,7 @@ class EmailReservationIntegrationTest {
     @CsvSource({"a,73", "é,37"})
     void registrationRejectsPasswordsOver72Utf8BytesWithoutCreatingAccount(String character, int count) throws Exception {
         var mvc = MockMvcBuilders.standaloneSetup(new AuthController(userService, jwt, authEmails,
-                new AuthService(users, new BCryptPasswordEncoder(4), jwt))).build();
+                new AuthService(users, new BCryptPasswordEncoder(4), refreshTokens), refreshTokens)).build();
         mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
                 {"name":"New","surname":"Account","handle":"new-account",
                  "email":"new@example.com","password":"%s",

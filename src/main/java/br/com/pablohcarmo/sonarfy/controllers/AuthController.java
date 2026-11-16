@@ -3,9 +3,13 @@ package br.com.pablohcarmo.sonarfy.controllers;
 import br.com.pablohcarmo.sonarfy.dto.*;
 import br.com.pablohcarmo.sonarfy.services.AuthEmailService;
 import br.com.pablohcarmo.sonarfy.services.AuthService;
+import br.com.pablohcarmo.sonarfy.services.RefreshTokenService;
 import br.com.pablohcarmo.sonarfy.services.JwtService;
 import br.com.pablohcarmo.sonarfy.services.UserService;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -18,12 +22,17 @@ public class AuthController {
     private final JwtService jwtService;
     private final AuthEmailService authEmailService;
     private final AuthService authService;
+    private final RefreshTokenService refreshTokens;
+    @Value("${app.auth.refresh-cookie-secure:${AUTH_REFRESH_COOKIE_SECURE:true}}")
+    private boolean secureCookie = true;
 
-    public AuthController(UserService userService, JwtService jwtService, AuthEmailService authEmailService, AuthService authService) {
+    public AuthController(UserService userService, JwtService jwtService, AuthEmailService authEmailService,
+                          AuthService authService, RefreshTokenService refreshTokens) {
         this.userService = userService;
         this.jwtService = jwtService;
         this.authEmailService = authEmailService;
         this.authService = authService;
+        this.refreshTokens = refreshTokens;
     }
 
     @PostMapping("/register")
@@ -34,7 +43,38 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<LoginResponseDto> login(@Valid @RequestBody LoginDto dto) {
-        return ResponseEntity.ok(authService.login(dto));
+        return tokenResponse(authService.login(dto));
+    }
+
+    // A rotação não participa de transação externa: o serviço confirma revogações antes do 401.
+    @PostMapping("/refresh")
+    public ResponseEntity<LoginResponseDto> refresh(
+            @CookieValue(name = "sonarfy_refresh", required = false) String token) {
+        try {
+            return tokenResponse(refreshTokens.rotate(token));
+        } catch (ResponseStatusException exception) {
+            if (exception.getStatusCode() != HttpStatus.UNAUTHORIZED) throw exception;
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .header(HttpHeaders.SET_COOKIE, refreshCookie("", false, true)).build();
+        }
+    }
+
+    // O refresh fica apenas no cookie; o JSON mantém o contrato de access token.
+    private ResponseEntity<LoginResponseDto> tokenResponse(RotationDto session) {
+        var response = new LoginResponseDto(jwtService.generateAccessToken(session.userId().toString()),
+                "Bearer", JwtService.ACCESS_TOKEN_TTL_SECONDS);
+        return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .header(HttpHeaders.SET_COOKIE, refreshCookie(session.refreshToken(), session.rememberMe(), false))
+                .body(response);
+    }
+
+    // A exclusão usa os mesmos atributos do cookie emitido; sessão não define Max-Age.
+    private String refreshCookie(String token, boolean rememberMe, boolean clear) {
+        var cookie = ResponseCookie.from("sonarfy_refresh", token).httpOnly(true).secure(secureCookie)
+                .sameSite("Strict").path("/api/auth");
+        if (clear) cookie.maxAge(0);
+        else if (rememberMe) cookie.maxAge(RefreshTokenService.INACTIVITY_TTL_SECONDS);
+        return cookie.build().toString();
     }
 
     @PostMapping("/resend-activation-email")

@@ -1,0 +1,211 @@
+{
+  "info": {
+    "name": "Sonarfy Authentication",
+    "description": "Login e refresh sequenciais com cookie jar. Use uma conta de teste ativa e verificada. Não publique credenciais ou resultados contendo tokens. Scripts validam authExpectedStatus (padrão 200; use 400/401/403 nos testes negativos) e authSecureCookie (padrão true; false em HTTP local). Execute login antes de refresh para registrar a preferência da sessão. Não infere sucesso pelo status recebido.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "authLogin",
+      "value": ""
+    },
+    {
+      "key": "authPassword",
+      "value": ""
+    }
+  ],
+  "auth": {
+    "type": "noauth"
+  },
+  "item": [
+    {
+      "name": "Login - rememberMe configurável",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/auth/login",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Sonarfy-CSRF",
+            "value": "1"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"login\":\"{{authLogin}}\",\"password\":\"{{authPassword}}\",\"rememberMe\":true}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const isLogin = true;",
+              "const expected = Number(pm.variables.get(\"authExpectedStatus\") || 200);",
+              "const cookie = pm.response.headers.get(\"Set-Cookie\") || \"\";",
+              "pm.test(\"Status corresponde ao cenário configurado\", () => {",
+              "  pm.expect([200, 400, 401, 403]).to.include(expected);",
+              "  pm.response.to.have.status(expected);",
+              "});",
+              "pm.test(\"Resposta não permite cache\", () => {",
+              "  pm.expect(pm.response.headers.get(\"Cache-Control\")).to.eql(\"no-store\");",
+              "});",
+              "if (pm.response.code === 200 && expected === 200) {",
+              "  const body = pm.response.json();",
+              "  pm.test(\"JSON contém somente o contrato de acesso\", () => {",
+              "    pm.expect(Object.keys(body).sort()).to.eql([\"accessToken\", \"expiresInSeconds\", \"tokenType\"]);",
+              "    pm.expect(typeof body.accessToken === \"string\" && body.accessToken.length > 0).to.eql(true);",
+              "    pm.expect(body.tokenType).to.eql(\"Bearer\");",
+              "    pm.expect(body.expiresInSeconds).to.eql(900);",
+              "  });",
+              "  let rememberMe = pm.collectionVariables.get(\"authSessionRememberMe\");",
+              "  if (isLogin) {",
+              "    const input = JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+              "    rememberMe = input.rememberMe === true;",
+              "    pm.collectionVariables.set(\"authSessionRememberMe\", rememberMe);",
+              "  }",
+              "  pm.test(\"Cookie tem atributos de segurança e respeita rememberMe\", () => {",
+              "    pm.expect(/^sonarfy_refresh=[A-Za-z0-9_-]{43};/.test(cookie)).to.eql(true);",
+              "    pm.expect(/;\\s*Path=\\/api\\/auth(?:;|$)/i.test(cookie)).to.eql(true);",
+              "    pm.expect(/;\\s*HttpOnly(?:;|$)/i.test(cookie)).to.eql(true);",
+              "    pm.expect(/;\\s*SameSite=Strict(?:;|$)/i.test(cookie)).to.eql(true);",
+              "    pm.expect(/;\\s*Domain=/i.test(cookie)).to.eql(false);",
+              "    pm.expect(rememberMe !== undefined && rememberMe !== null, \"Execute login antes do refresh\").to.eql(true);",
+              "    if (rememberMe === true || rememberMe === \"true\") {",
+              "      pm.expect(/;\\s*Max-Age=2592000(?:;|$)/i.test(cookie)).to.eql(true);",
+              "    } else {",
+              "      pm.expect(/;\\s*(Max-Age|Expires)=/i.test(cookie)).to.eql(false);",
+              "    }",
+              "    if (String(pm.variables.get(\"authSecureCookie\") ?? \"true\") === \"true\") {",
+              "      pm.expect(/;\\s*Secure(?:;|$)/i.test(cookie)).to.eql(true);",
+              "    } else {",
+              "      pm.expect(/;\\s*Secure(?:;|$)/i.test(cookie)).to.eql(false);",
+              "    }",
+              "  });",
+              "  pm.collectionVariables.set(\"accessToken\", body.accessToken);",
+              "} else if (pm.response.code !== 200) {",
+              "  pm.test(\"Erro não expõe credenciais\", () => {",
+              "    pm.expect(/\"(accessToken|refreshToken|password)\"\\s*:/.test(pm.response.text())).to.eql(false);",
+              "  });",
+              "  if (!isLogin && pm.response.code === 401) {",
+              "    pm.test(\"401 de refresh apaga o cookie\", () => {",
+              "      pm.expect(/^sonarfy_refresh=;/.test(cookie)).to.eql(true);",
+              "      pm.expect(/;\\s*Max-Age=0(?:;|$)/i.test(cookie)).to.eql(true);",
+              "      pm.expect(/;\\s*Path=\\/api\\/auth(?:;|$)/i.test(cookie)).to.eql(true);",
+              "      pm.expect(/;\\s*HttpOnly(?:;|$)/i.test(cookie)).to.eql(true);",
+              "      pm.expect(/;\\s*SameSite=Strict(?:;|$)/i.test(cookie)).to.eql(true);",
+              "    });",
+              "    pm.collectionVariables.unset(\"accessToken\");",
+              "    pm.collectionVariables.unset(\"authSessionRememberMe\");",
+              "  } else {",
+              "    pm.test(\"Login recusado ou CSRF inválido não modifica cookies\", () => {",
+              "      pm.expect(cookie.length).to.eql(0);",
+              "    });",
+              "  }",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Refresh usando cookie jar",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/auth/refresh",
+        "header": [
+          {
+            "key": "X-Sonarfy-CSRF",
+            "value": "1"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const isLogin = false;",
+              "const expected = Number(pm.variables.get(\"authExpectedStatus\") || 200);",
+              "const cookie = pm.response.headers.get(\"Set-Cookie\") || \"\";",
+              "pm.test(\"Status corresponde ao cenário configurado\", () => {",
+              "  pm.expect([200, 400, 401, 403]).to.include(expected);",
+              "  pm.response.to.have.status(expected);",
+              "});",
+              "pm.test(\"Resposta não permite cache\", () => {",
+              "  pm.expect(pm.response.headers.get(\"Cache-Control\")).to.eql(\"no-store\");",
+              "});",
+              "if (pm.response.code === 200 && expected === 200) {",
+              "  const body = pm.response.json();",
+              "  pm.test(\"JSON contém somente o contrato de acesso\", () => {",
+              "    pm.expect(Object.keys(body).sort()).to.eql([\"accessToken\", \"expiresInSeconds\", \"tokenType\"]);",
+              "    pm.expect(typeof body.accessToken === \"string\" && body.accessToken.length > 0).to.eql(true);",
+              "    pm.expect(body.tokenType).to.eql(\"Bearer\");",
+              "    pm.expect(body.expiresInSeconds).to.eql(900);",
+              "  });",
+              "  let rememberMe = pm.collectionVariables.get(\"authSessionRememberMe\");",
+              "  if (isLogin) {",
+              "    const input = JSON.parse(pm.variables.replaceIn(pm.request.body.raw));",
+              "    rememberMe = input.rememberMe === true;",
+              "    pm.collectionVariables.set(\"authSessionRememberMe\", rememberMe);",
+              "  }",
+              "  pm.test(\"Cookie tem atributos de segurança e respeita rememberMe\", () => {",
+              "    pm.expect(/^sonarfy_refresh=[A-Za-z0-9_-]{43};/.test(cookie)).to.eql(true);",
+              "    pm.expect(/;\\s*Path=\\/api\\/auth(?:;|$)/i.test(cookie)).to.eql(true);",
+              "    pm.expect(/;\\s*HttpOnly(?:;|$)/i.test(cookie)).to.eql(true);",
+              "    pm.expect(/;\\s*SameSite=Strict(?:;|$)/i.test(cookie)).to.eql(true);",
+              "    pm.expect(/;\\s*Domain=/i.test(cookie)).to.eql(false);",
+              "    pm.expect(rememberMe !== undefined && rememberMe !== null, \"Execute login antes do refresh\").to.eql(true);",
+              "    if (rememberMe === true || rememberMe === \"true\") {",
+              "      pm.expect(/;\\s*Max-Age=2592000(?:;|$)/i.test(cookie)).to.eql(true);",
+              "    } else {",
+              "      pm.expect(/;\\s*(Max-Age|Expires)=/i.test(cookie)).to.eql(false);",
+              "    }",
+              "    if (String(pm.variables.get(\"authSecureCookie\") ?? \"true\") === \"true\") {",
+              "      pm.expect(/;\\s*Secure(?:;|$)/i.test(cookie)).to.eql(true);",
+              "    } else {",
+              "      pm.expect(/;\\s*Secure(?:;|$)/i.test(cookie)).to.eql(false);",
+              "    }",
+              "  });",
+              "  pm.collectionVariables.set(\"accessToken\", body.accessToken);",
+              "} else if (pm.response.code !== 200) {",
+              "  pm.test(\"Erro não expõe credenciais\", () => {",
+              "    pm.expect(/\"(accessToken|refreshToken|password)\"\\s*:/.test(pm.response.text())).to.eql(false);",
+              "  });",
+              "  if (!isLogin && pm.response.code === 401) {",
+              "    pm.test(\"401 de refresh apaga o cookie\", () => {",
+              "      pm.expect(/^sonarfy_refresh=;/.test(cookie)).to.eql(true);",
+              "      pm.expect(/;\\s*Max-Age=0(?:;|$)/i.test(cookie)).to.eql(true);",
+              "      pm.expect(/;\\s*Path=\\/api\\/auth(?:;|$)/i.test(cookie)).to.eql(true);",
+              "      pm.expect(/;\\s*HttpOnly(?:;|$)/i.test(cookie)).to.eql(true);",
+              "      pm.expect(/;\\s*SameSite=Strict(?:;|$)/i.test(cookie)).to.eql(true);",
+              "    });",
+              "    pm.collectionVariables.unset(\"accessToken\");",
+              "    pm.collectionVariables.unset(\"authSessionRememberMe\");",
+              "  } else {",
+              "    pm.test(\"Login recusado ou CSRF inválido não modifica cookies\", () => {",
+              "      pm.expect(cookie.length).to.eql(0);",
+              "    });",
+              "  }",
+              "}"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

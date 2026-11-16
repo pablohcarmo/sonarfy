@@ -64,6 +64,7 @@ class SecurityChainIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        context.getBean(br.com.pablohcarmo.sonarfy.repositories.RefreshTokenRepository.class).deleteAll();
         users.deleteAll();
         reset(transport, templates);
         when(templates.activation(any(User.class), anyString())).thenAnswer(call ->
@@ -72,7 +73,8 @@ class SecurityChainIntegrationTest {
                 .thenReturn(new EmailContent("welcome", "welcome", java.util.Map.of()));
         // O schema local define a data no banco; reproduz esse default no H2.
         new JdbcTemplate(dataSource).execute("ALTER TABLE users ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP");
-        mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+        mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity())
+                .defaultRequest(get("/").header("X-Sonarfy-CSRF", "1")).build();
         user = new User();
         user.setHandle("security-test");
         user.setName("Security");
@@ -172,7 +174,7 @@ class SecurityChainIntegrationTest {
 
     @ParameterizedTest
     @CsvSource({"GET,/api/auth/register", "GET,/api/auth/login", "GET,/api/auth/resend-activation-email",
-            "GET,/api/auth/forgot-password", "GET,/api/auth/reset-password", "POST,/api/auth/verify",
+            "GET,/api/auth/forgot-password", "GET,/api/auth/reset-password", "GET,/api/auth/refresh", "POST,/api/auth/verify",
             "POST,/api/auth/update-pending-email", "GET,/api/auth/unknown", "POST,/api/auth/logout",
             "GET,/error", "GET,/error/unknown", "OPTIONS,/api/users/me"})
     void otherMethodsAndPathsRequireAuthentication(String method, String path) throws Exception {
@@ -197,7 +199,7 @@ class SecurityChainIntegrationTest {
                 .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:63342"))
                 .andExpect(header().string("Access-Control-Allow-Headers", org.hamcrest.Matchers.containsString("Authorization")))
                 .andExpect(header().string("Access-Control-Allow-Methods", org.hamcrest.Matchers.containsString("GET")))
-                .andExpect(header().doesNotExist("Access-Control-Allow-Credentials"));
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
     }
 
     @Test
@@ -238,5 +240,107 @@ class SecurityChainIntegrationTest {
         String accessToken = new ObjectMapper().readTree(login.getResponse().getContentAsString()).get("accessToken").asText();
         mvc.perform(get("/api/users/me").header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.email").value("new@example.com"));
+    }
+
+    // Login e refresh usam apenas cookie para renovar, preservam a preferência e recusam replay.
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void loginRefreshAndReplayRespectCookieContract(boolean rememberMe) throws Exception {
+        var response = mvc.perform(post("/api/auth/login").header("Authorization", "Bearer expired")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"login\":\"user@example.com\",\"password\":\"Correct123!\",\"rememberMe\":" + rememberMe + "}"))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.refreshToken").doesNotExist()).andReturn().getResponse();
+        var cookie = response.getCookie("sonarfy_refresh");
+        assertNotNull(cookie);
+        assertTrue(cookie.isHttpOnly());
+        assertTrue(cookie.getSecure());
+        assertEquals("Strict", cookie.getAttribute("SameSite"));
+        assertEquals("/api/auth", cookie.getPath());
+        assertNull(cookie.getDomain());
+        assertEquals(rememberMe ? 2592000 : -1, cookie.getMaxAge());
+        assertFalse(response.getContentAsString().contains(cookie.getValue()));
+        assertNull(response.getCookie("JSESSIONID"));
+        String other = context.getBean(RefreshTokenService.class).issue(user, !rememberMe);
+        var refreshed = mvc.perform(post("/api/auth/refresh").cookie(cookie)
+                        .header("Authorization", "Bearer expired"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.expiresInSeconds").value(900))
+                .andReturn().getResponse();
+        var next = refreshed.getCookie("sonarfy_refresh");
+        assertNotEquals(cookie.getValue(), next.getValue());
+        assertEquals(cookie.getMaxAge(), next.getMaxAge());
+        String access = new ObjectMapper().readTree(refreshed.getContentAsString()).get("accessToken").asText();
+        mvc.perform(get("/api/users/me").header("Authorization", "Bearer " + access)).andExpect(status().isOk());
+        for (var invalid : java.util.List.of(cookie, next)) {
+            var cleared = mvc.perform(post("/api/auth/refresh").cookie(invalid))
+                    .andExpect(status().isUnauthorized()).andReturn().getResponse().getCookie("sonarfy_refresh");
+            assertEquals(0, cleared.getMaxAge());
+            assertEquals(cookie.getPath(), cleared.getPath());
+            assertEquals(cookie.getSecure(), cleared.getSecure());
+            assertTrue(cleared.isHttpOnly());
+        }
+        assertNotNull(context.getBean(RefreshTokenService.class).rotate(other));
+    }
+
+    // Nem preflight nem formulários ou origens não autorizadas podem consumir uma sessão.
+    @ParameterizedTest
+    @ValueSource(strings = {"missing-header", "wrong-header", "foreign-origin", "null-origin"})
+    void csrfRejectionDoesNotIssueOrRotateTokens(String scenario) throws Exception {
+        var raw = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+        var tokens = context.getBean(RefreshTokenService.class);
+        String token = tokens.issue(user);
+        for (String path : java.util.List.of("/api/auth/login", "/api/auth/refresh")) {
+            var request = post(path).cookie(new jakarta.servlet.http.Cookie("sonarfy_refresh", token))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"login\":\"user@example.com\",\"password\":\"Correct123!\"}");
+            if (!scenario.equals("missing-header")) request.header("X-Sonarfy-CSRF", scenario.equals("wrong-header") ? "0" : "1");
+            if (scenario.endsWith("origin")) request.header("Origin", scenario.equals("null-origin") ? "null" : "https://evil.example");
+            raw.perform(request).andExpect(status().isForbidden()).andExpect(header().doesNotExist("Set-Cookie"));
+        }
+        assertEquals(1, context.getBean(br.com.pablohcarmo.sonarfy.repositories.RefreshTokenRepository.class).count());
+        assertNotNull(tokens.rotate(token));
+    }
+
+    // Falhas de sessão recebem 401 e apagam o cookie, inclusive sem access token válido.
+    @ParameterizedTest
+    @ValueSource(strings = {"missing", "unknown", "expired", "inactive", "unverified"})
+    void refreshRejectsInvalidSessions(String scenario) throws Exception {
+        var request = post("/api/auth/refresh").header("Authorization", "Bearer expired");
+        if (!scenario.equals("missing")) {
+            String token = scenario.equals("unknown") ? "unknown" : context.getBean(RefreshTokenService.class).issue(user);
+            if (scenario.equals("expired")) {
+                new JdbcTemplate(dataSource).update("UPDATE refresh_tokens SET expires_at = ? WHERE user_id = ?",
+                        java.time.OffsetDateTime.now().minusDays(1), user.getId());
+            }
+            if (scenario.equals("inactive") || scenario.equals("unverified")) {
+                user.setActive(!scenario.equals("inactive"));
+                user.setVerified(!scenario.equals("unverified"));
+                users.saveAndFlush(user);
+            }
+            request.cookie(new jakarta.servlet.http.Cookie("sonarfy_refresh", token));
+        }
+        mvc.perform(request).andExpect(status().isUnauthorized()).andExpect(cookie().maxAge("sonarfy_refresh", 0));
+    }
+
+    // HTTP local exige desabilitar Secure explicitamente, preservando os demais atributos.
+    @Test
+    void localHttpCookieRequiresExplicitConfiguration() throws Exception {
+        var controller = context.getBean(AuthController.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "secureCookie", false);
+        try {
+            mvc.perform(post("/api/auth/refresh")).andExpect(status().isUnauthorized())
+                    .andExpect(cookie().secure("sonarfy_refresh", false))
+                    .andExpect(cookie().httpOnly("sonarfy_refresh", true));
+        } finally {
+            org.springframework.test.util.ReflectionTestUtils.setField(controller, "secureCookie", true);
+        }
+    }
+
+    // O matcher interpreta segmentos codificados como o roteamento, sem contornar CSRF.
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/auth/%6cogin", "/api/auth/%72efresh"})
+    void encodedSessionPathsStillRequireCsrfHeader(String path) throws Exception {
+        var raw = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
+        raw.perform(post(java.net.URI.create(path))).andExpect(status().isForbidden());
     }
 }

@@ -10,6 +10,11 @@ public class LoginDto {
     @NotBlank(message = "A senha não pode estar em branco")
     private String password;
 
+    private boolean rememberMe;
+
+    public boolean isRememberMe() { return rememberMe; }
+    public void setRememberMe(boolean rememberMe) { this.rememberMe = rememberMe; }
+
     public LoginDto() {
     }
 

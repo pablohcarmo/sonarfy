@@ -67,6 +67,7 @@ class ExistingSchemaIntegrationTest {
     @Autowired UserRepository users;
     @Autowired AccessLogRepository logs;
     @Autowired JwtService jwt;
+    @Autowired RefreshTokenService refreshTokens;
     @Autowired AuthEmailService emails;
     @Autowired PasswordEncoder encoder;
     @Autowired PermissionRepository permissions;
@@ -176,7 +177,7 @@ class ExistingSchemaIntegrationTest {
         String name = longName ? "A".repeat(50) : "Schema";
         String surname = longName ? "B".repeat(50) : "Check";
         var mvc = MockMvcBuilders.standaloneSetup(new AuthController(
-                service, jwt, emails, new AuthService(users, encoder, jwt))).build();
+                service, jwt, emails, new AuthService(users, encoder, refreshTokens), refreshTokens)).build();
         mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
                 {"name":"%s","surname":"%s","handle":"%s","email":"%s",
                  "password":"TestPassword123!","city":"Brasilia","country":"Brasil",
