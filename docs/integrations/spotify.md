@@ -40,7 +40,8 @@ aplicada antes do deploy em bancos existentes; renovação automática e sincron
 continuam pendentes.
 
 A rota de início exige `Authorization: Bearer <accessToken>`, não recebe `userId` e resolve
-o usuário pelo e-mail do `Principal`. Retorna HTTP 200 com
+o usuário pelo ID imutável autenticado. Consulta e desconexão usam a mesma identidade,
+preservada quando o e-mail muda. Retorna HTTP 200 com
 `{"authorizationUrl":"https://accounts.spotify.com/authorize?..."}` e
 `Cache-Control: no-store`. O frontend deve redirecionar o navegador para essa URL.
 Credenciais ausentes ou inválidas retornam 401; a quarta tentativa pendente do mesmo

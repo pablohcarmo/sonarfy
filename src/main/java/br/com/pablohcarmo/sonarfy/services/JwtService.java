@@ -1,6 +1,7 @@
 package br.com.pablohcarmo.sonarfy.services;
 
 import br.com.pablohcarmo.sonarfy.dto.EmailChangeRequestDto;
+import br.com.pablohcarmo.sonarfy.dto.EmailChangeAuthorizationDto;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.exceptions.JWTVerificationException;
@@ -9,6 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.UUID;
 
 @Service
 public class JwtService {
@@ -35,6 +37,21 @@ public class JwtService {
                 .withJWTId(request.id().toString()).withClaim("purpose", PURPOSE_EMAIL_CHANGE)
                 .withIssuedAt(request.issuedAt().toInstant()).withExpiresAt(request.expiresAt().toInstant())
                 .sign(algorithm());
+    }
+
+    // Assinatura e propósito são necessários, assim como identidade, identificador e prazo finito.
+    public EmailChangeAuthorizationDto validateEmailChangeToken(String token) {
+        if (token == null || token.length() > 4096) return null;
+        DecodedJWT jwt = verify(token, PURPOSE_EMAIL_CHANGE);
+        if (jwt == null || jwt.getExpiresAt() == null || jwt.getIssuedAt() == null || jwt.getId() == null
+                || jwt.getIssuedAt().toInstant().isAfter(Instant.now())
+                || !jwt.getExpiresAt().after(jwt.getIssuedAt())) return null;
+        try {
+            long userId = Long.parseLong(jwt.getSubject());
+            return userId > 0 ? new EmailChangeAuthorizationDto(userId, UUID.fromString(jwt.getId())) : null;
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
     }
 
     public String generateEmailConfirmationToken(String userId) {

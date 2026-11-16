@@ -13,7 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.*;
 
-import java.security.Principal;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 @RestController
 @RequestMapping("/api/users")
@@ -32,20 +32,20 @@ public class UserController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<UserDto>getCurrentUser(Principal principal) {
+    public ResponseEntity<UserDto>getCurrentUser(@AuthenticationPrincipal User authenticatedUser) {
         // Busca o usuário logado e devolve o DTO correspondente
-        return ResponseEntity.ok(userService.getUserRegister(principal.getName()));
+        return ResponseEntity.ok(userService.getUserRegister(authenticatedUser.getId()));
     }
 
     @PutMapping("/me")
-    public ResponseEntity<UserDto>updateRegister(@RequestBody @Valid UpdateUserDto updateUserDto, Principal principal) {
+    public ResponseEntity<UserDto>updateRegister(@RequestBody @Valid UpdateUserDto updateUserDto, @AuthenticationPrincipal User authenticatedUser) {
         // Envia os dados limpos para a camada de serviço, que vai atualizar o usuário logado e devolver o DTO correspondente
-        return ResponseEntity.ok(userService.updateRegister(principal.getName(), updateUserDto));
+        return ResponseEntity.ok(userService.updateRegister(authenticatedUser.getId(), updateUserDto));
     }
 
     @PostMapping("/me/password-change-request")
-    public ResponseEntity<String> requestPasswordChange(Principal principal) {
-        User user = userRepository.findByEmailIgnoreCase(principal.getName())
+    public ResponseEntity<String> requestPasswordChange(@AuthenticationPrincipal User authenticatedUser) {
+        User user = userRepository.findById(authenticatedUser.getId())
                 .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
 
         String token = jwtService.generatePasswordChangeToken(user.getId().toString());
@@ -55,8 +55,8 @@ public class UserController {
     }
 
     @PutMapping("/me/password")
-    public ResponseEntity<String> changePassword(@Valid @RequestBody ChangePasswordDto dto, Principal principal) {
-        userService.changePassword(principal.getName(), dto);
+    public ResponseEntity<String> changePassword(@Valid @RequestBody ChangePasswordDto dto, @AuthenticationPrincipal User authenticatedUser) {
+        userService.changePassword(authenticatedUser.getId(), dto);
         return ResponseEntity.ok("Password updated successfully.");
     }
 }

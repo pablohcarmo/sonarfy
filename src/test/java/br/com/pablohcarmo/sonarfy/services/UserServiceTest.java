@@ -43,7 +43,7 @@ class UserServiceTest {
             "23505,uk_users_email_ci,false", "23514,uk_users_handle_ci,false"})
     void classifiesOnlyHandleUniqueViolations(String state, String constraint, boolean conflict) {
         User user = new User(); user.setId(1L);
-        when(userRepository.findByEmailIgnoreCase("user@example.com")).thenReturn(Optional.of(user));
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
         var violation = mock(org.hibernate.exception.ConstraintViolationException.class);
         when(violation.getSQLState()).thenReturn(state);
         if (state.equals("23505")) when(violation.getConstraintName()).thenReturn(constraint);
@@ -53,10 +53,10 @@ class UserServiceTest {
                 "Campinas", "Brasil", LocalDate.of(2000, 1, 1));
         if (conflict) {
             assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
-                    () -> userService.updateRegister("user@example.com", dto)).getStatusCode());
+                    () -> userService.updateRegister(1L, dto)).getStatusCode());
         } else {
             assertSame(failure, assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
-                    () -> userService.updateRegister("user@example.com", dto)));
+                    () -> userService.updateRegister(1L, dto)));
         }
     }
 
@@ -357,7 +357,7 @@ class UserServiceTest {
         when(passwordEncoder.matches("New123!", "encodedOldPassword")).thenReturn(false);
         when(passwordEncoder.encode("New123!")).thenReturn("encodedNewPassword");
 
-        userService.changePassword("pablo@sonarfy.com", dto);
+        userService.changePassword(1L, dto);
 
         var order = inOrder(userRepository, entityManager, jwtService, passwordEncoder);
         order.verify(userRepository).findByIdForPasswordUpdate(1L);
@@ -374,7 +374,7 @@ class UserServiceTest {
         ChangePasswordDto dto = new ChangePasswordDto("token-jwt", null, "New123!", "New123!");
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
-                userService.changePassword("pablo@sonarfy.com", dto)
+                userService.changePassword(1L, dto)
         );
 
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
@@ -388,7 +388,7 @@ class UserServiceTest {
         ChangePasswordDto dto = new ChangePasswordDto("token-jwt", "Old123!", "New123!", "Different123!");
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
-                userService.changePassword("pablo@sonarfy.com", dto)
+                userService.changePassword(1L, dto)
         );
 
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
@@ -410,7 +410,7 @@ class UserServiceTest {
         when(jwtService.getPasswordChangeTokenIssuedAt("token-jwt")).thenReturn(Instant.now().minusSeconds(5));
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
-                userService.changePassword("pablo@sonarfy.com", dto)
+                userService.changePassword(1L, dto)
         );
 
         assertEquals(HttpStatus.FORBIDDEN, ex.getStatusCode());
@@ -434,7 +434,7 @@ class UserServiceTest {
         when(passwordEncoder.matches("Wrong123!", "encodedOldPassword")).thenReturn(false);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
-                userService.changePassword("pablo@sonarfy.com", dto)
+                userService.changePassword(1L, dto)
         );
 
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
@@ -458,7 +458,7 @@ class UserServiceTest {
         when(passwordEncoder.matches("Same123!", "encodedOldPassword")).thenReturn(true);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
-                userService.changePassword("pablo@sonarfy.com", dto)
+                userService.changePassword(1L, dto)
         );
 
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());

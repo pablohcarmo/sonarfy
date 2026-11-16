@@ -2,7 +2,7 @@
   "info": {
     "name": "Sonarfy - email change requests",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "docs/api/email-changes.md. Disabled by default until confirmation is implemented. Use only an isolated test environment with the feature enabled. Credentials must remain local; do not export filled variables or request traces. Cooldown-dependent cases must be run according to each request description."
+    "description": "Contract: docs/api/email-changes.md. Controlled activation; use an isolated test account. Request scenarios require a free cooldown unless specified. Confirmation uses the email token in JSON with no Bearer; run valid confirmation then replay in order. Configure credentials locally without exporting filled variables or request traces."
   },
   "auth": {
     "type": "bearer",
@@ -34,6 +34,10 @@
     {
       "key": "occupiedEmail",
       "value": "occupied-test@example.com"
+    },
+    {
+      "key": "confirmationToken",
+      "value": ""
     }
   ],
   "item": [
@@ -240,6 +244,151 @@
             "type": "text/javascript",
             "exec": [
               "pm.test(\"HTTP 401\", () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Confirm current request (token received by email)",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/auth/email-change-confirmation",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"{{confirmationToken}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"New login required, no credential returned\", () => { const body = pm.response.json(); pm.expect(body.requiresLogin).to.eql(true); pm.expect(body).not.to.have.property(\"token\"); pm.expect(body).not.to.have.property(\"accessToken\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reject replay of confirmed request",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/auth/email-change-confirmation",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"{{confirmationToken}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reject access token as confirmation",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/auth/email-change-confirmation",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"{{accessToken}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reject malformed confirmation",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/auth/email-change-confirmation",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"invalid\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));"
             ]
           }
         }

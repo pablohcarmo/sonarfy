@@ -22,8 +22,8 @@ Authorization: Bearer <accessToken>
 
 - O `<accessToken>` é obtido em `POST /api/auth/login` e possui `purpose: "access"` com validade de 15 minutos (`900` segundos).
 - O filtro `BearerAuthenticationFilter` valida assinatura, emissor (`sonarfy-api`), expiração, propósito `access` e confirma no banco que o usuário continua existente, ativo (`active = true`) e verificado (`verified = true`).
-- A identidade autenticada é exposta no `Principal`, cujo `getName()` retorna o `email` do usuário logado.
-- Requisições sem cabeçalho `Authorization`, com token inválido/expirado ou com tokens de outros propósitos (`pending_registration`, `email_confirmation`, `password_reset`, `password_change`) recebem HTTP `401 Unauthorized`. Consulte o [contrato de autenticação](authentication.md).
+- Os controllers usam o ID imutável do usuário autenticado. O e-mail retornado por `Principal.getName()` não é usado para selecionar a conta, pois pode mudar.
+- Requisições sem cabeçalho `Authorization`, com token inválido/expirado ou com tokens de outros propósitos (`pending_registration`, `email_confirmation`, `password_reset`, `password_change`, `email_change`) recebem HTTP `401 Unauthorized`. Consulte o [contrato de autenticação](authentication.md).
 
 ---
 
@@ -63,7 +63,10 @@ Os quatro endpoints retornam HTTP `200 OK` com `Content-Type: application/json` 
 - `GET /api/users/me` (`UserController.getCurrentUser`)
 - `GET /api/profile/me` (`ProfileController.getCurrentUser`)
 
-Ambos os endpoints não recebem corpo, identificam o usuário autenticado por `Principal.getName()` (e-mail) e delegam para `UserService.getUserRegister(email)`, retornando `200 OK` com o mesmo `UserDto`.
+Ambos os endpoints não recebem corpo, identificam o usuário pelo ID autenticado e
+delegam para `UserService.getUserRegister(userId)`, retornando `200 OK` com o mesmo
+`UserDto`. Atualizações de dados e perfil bloqueiam/recarregam esse usuário antes
+de salvar, preservando alterações concorrentes de e-mail e senha.
 
 Exemplo com `curl`:
 
@@ -167,6 +170,7 @@ O corpo da requisição é representado por `UpdateProfileDto`:
 | Classe de teste | O que valida neste contrato |
 | --- | --- |
 | `UserControllerTest` | Consulta e atualização de cadastro em `/api/users/me` |
-| `UserServiceTest` | Regras de `getUserRegister`, `updateRegister` e `updateProfile` |
+| `UserServiceTest` | Regras de cadastro, senha, retificação pendente e classificação de erros de persistência |
 | `SecurityChainIntegrationTest` | Acesso autenticado a `GET /api/users/me` após `POST /api/auth/login` e rejeição (`401`) para requisições anônimas, tokens inválidos ou contas não elegíveis |
 | `PersonalDataIntegrationTest` | GET/PUT pela cadeia real de segurança, persistência, limites, idade, isolamento, campos protegidos e rejeição de credenciais; corrida concorrente opt-in em PostgreSQL descartável |
+| `EmailChangeConfirmationPostgresTest` | Conta/perfil por ID após reutilização do e-mail antigo; edição concorrente de perfil preservando a troca confirmada |

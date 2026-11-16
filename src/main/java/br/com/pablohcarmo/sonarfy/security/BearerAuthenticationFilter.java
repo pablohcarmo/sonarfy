@@ -26,9 +26,10 @@ public class BearerAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        // Cadastro valida seu Bearer no controller; operações de sessão usam suas próprias credenciais.
+        // Os fluxos públicos validam suas próprias credenciais; confirmação de e-mail usa o corpo.
         String path = request.getRequestURI().substring(request.getContextPath().length());
         return "/api/auth/update-pending-email".equals(path)
+                || "/api/auth/email-change-confirmation".equals(path)
                 || AuthCsrfFilter.isSessionRequest(request);
     }
 

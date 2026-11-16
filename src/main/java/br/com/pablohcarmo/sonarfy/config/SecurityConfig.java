@@ -64,6 +64,7 @@ public class SecurityConfig {
                             "/api/auth/logout",
                             "/api/auth/resend-activation-email",
                             "/api/auth/forgot-password",
+                            "/api/auth/email-change-confirmation",
                             "/api/auth/reset-password"
                     ).permitAll();
 

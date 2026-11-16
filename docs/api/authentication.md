@@ -68,7 +68,7 @@ com `iss: "sonarfy-api"`, ID do usuário como string em `sub`, `purpose: "access
 data de emissão em `iat` e expiração em `exp`.
 
 O propósito `access` distingue essa credencial dos tokens `email_confirmation`,
-`pending_registration`, `password_reset` e `password_change`. O token de acesso
+`pending_registration`, `password_reset`, `password_change` e `email_change`. O token de acesso
 é rejeitado pelos validadores existentes desses outros fluxos.
 
 ## Erros
@@ -101,7 +101,8 @@ O filtro exige assinatura e emissor válidos, `purpose: "access"`, `exp` present
 e ainda válido e `sub` representando um ID positivo compatível com `long`.
 O usuário é consultado novamente, com sua permissão, e precisa continuar ativo
 e verificado. Sua identidade é estabelecida no `Principal`; `getName()` retorna
-o e-mail. `/api/users/me` retorna `200` com o cadastro correspondente.
+o e-mail. Os controllers usam o ID imutável desse usuário para selecionar a conta;
+o e-mail é um dado mutável. `/api/users/me` retorna `200` com o cadastro correspondente.
 
 Credencial ausente, inválida, expirada, de outro propósito ou vinculada a usuário
 removido, inativo ou não verificado resulta em `401` nas rotas protegidas.
@@ -111,6 +112,8 @@ O access token já emitido continua sujeito à expiração e à situação atual
 
 `/api/auth/update-pending-email` continua validando seu Bearer de cadastro no
 controller; esse token não autentica acesso a `/api/users/**`.
+`POST /api/auth/email-change-confirmation` usa exclusivamente o token `email_change`
+no corpo e ignora o cabeçalho Bearer, sem autenticar outras rotas.
 
 ## Rotas públicas e CORS
 
@@ -125,6 +128,7 @@ O `SecurityConfig` permite acesso sem login somente aos pares de método e camin
 | POST | `/api/auth/resend-activation-email` |
 | POST | `/api/auth/forgot-password` |
 | POST | `/api/auth/reset-password` |
+| POST | `/api/auth/email-change-confirmation` (quando o fluxo estiver habilitado) |
 | GET | `/api/auth/verify` |
 | PATCH | `/api/auth/update-pending-email` |
 

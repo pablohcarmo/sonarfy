@@ -164,11 +164,11 @@ class PasswordResetIntegrationTest {
     @Test
     void validationFailuresDoNotConsumeToken() {
         assertEquals(403, assertThrows(ResponseStatusException.class,
-                () -> service.changePassword("other@example.com",
+                () -> service.changePassword(id + 1,
                         new ChangePasswordDto(changeToken, "OldPassword123!", "FirstPassword123!", "FirstPassword123!")))
                 .getStatusCode().value());
         assertEquals(400, assertThrows(ResponseStatusException.class,
-                () -> service.changePassword("password@example.com",
+                () -> service.changePassword(id,
                         new ChangePasswordDto(changeToken, "wrong", "FirstPassword123!", "FirstPassword123!")))
                 .getStatusCode().value());
         assertThrows(ResponseStatusException.class,
@@ -218,7 +218,7 @@ class PasswordResetIntegrationTest {
     @Test
     void invalidPasswordChangePreservesSession() {
         String refresh = refreshTokens.issue(users.findById(id).orElseThrow());
-        assertThrows(ResponseStatusException.class, () -> service.changePassword("password@example.com",
+        assertThrows(ResponseStatusException.class, () -> service.changePassword(id,
                 new ChangePasswordDto(changeToken, "wrong", "FirstPassword123!", "FirstPassword123!")));
         assertNotNull(refreshTokens.rotate(refresh));
         assertUnchanged();
@@ -288,7 +288,7 @@ class PasswordResetIntegrationTest {
 
     private void change(boolean authenticated, String value, String password) {
         if (authenticated) {
-            service.changePassword("password@example.com",
+            service.changePassword(id,
                     new ChangePasswordDto(value, "OldPassword123!", password, password));
         } else {
             service.resetPassword(new ResetPasswordDto(value, password, password));

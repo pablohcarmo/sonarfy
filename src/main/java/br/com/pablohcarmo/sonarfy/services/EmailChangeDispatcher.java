@@ -1,6 +1,7 @@
 package br.com.pablohcarmo.sonarfy.services;
 
 import br.com.pablohcarmo.sonarfy.repositories.*;
+import br.com.pablohcarmo.sonarfy.dto.EmailChangeMailDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,6 +42,11 @@ public class EmailChangeDispatcher {
         var claimed = mails.claim(now, Duration.ofMinutes(2));
         if (claimed.isEmpty()) return false;
         var mail = claimed.get();
+        if ("NOTIFY_OLD_EMAIL".equals(mail.kind())) {
+            send(mail, "Seu e-mail foi alterado - Sonarfy",
+                    "O e-mail da sua conta Sonarfy foi alterado. Se não reconhece a operação, revise a segurança da sua conta.");
+            return true;
+        }
         if (!"CONFIRM_NEW_EMAIL".equals(mail.kind())) {
             mails.retryLater(mail, now.plusMinutes(5));
             return true;
@@ -51,16 +57,21 @@ public class EmailChangeDispatcher {
             mails.discard(mail);
             return true;
         }
+        String link = frontendUrl + "/confirm-email-change.html#token=" + jwt.generateEmailChangeToken(request);
+        send(mail, "Confirme seu novo e-mail - Sonarfy",
+                "Confirme a troca de e-mail no link abaixo. Se não solicitou, ignore esta mensagem.\n" + link);
+        return true;
+    }
+
+    // SMTP e confirmação da entrega ficam fora da transação da troca de e-mail.
+    private void send(EmailChangeMailDto mail, String subject, String body) {
         try {
-            String link = frontendUrl + "/confirm-email-change.html#token=" + jwt.generateEmailChangeToken(request);
-            email.sendEmail(mail.recipient(), "Confirme seu novo e-mail - Sonarfy",
-                    "Confirme a troca de e-mail no link abaixo. Se não solicitou, ignore esta mensagem.\n" + link);
+            email.sendEmail(mail.recipient(), subject, body);
             mails.markDelivered(mail, OffsetDateTime.now());
         } catch (RuntimeException failure) {
             long seconds = Math.min(300, 30L << Math.min(mail.attempts() - 1, 4));
             mails.retryLater(mail, OffsetDateTime.now().plusSeconds(seconds));
             logger.warn("Email change delivery deferred; failure={}", failure.getClass().getSimpleName());
         }
-        return true;
     }
 }
