@@ -55,4 +55,14 @@ public class EmailChangeMailRepository {
                 WHERE event_id = ? AND lease_id = ? AND delivered_at IS NULL
                 """, nextAttempt, mail.id(), mail.leaseId()) == 1;
     }
+
+    // Eventos obsoletos são descartados sem registrar uma entrega inexistente.
+    public void discard(EmailChangeMailDto mail) {
+        jdbc.update("DELETE FROM email_change_mail_outbox WHERE event_id = ? AND lease_id = ?",
+                mail.id(), mail.leaseId());
+    }
+
+    public void pruneDelivered(OffsetDateTime cutoff) {
+        jdbc.update("DELETE FROM email_change_mail_outbox WHERE delivered_at < ?", cutoff);
+    }
 }

@@ -1,0 +1,249 @@
+{
+  "info": {
+    "name": "Sonarfy - email change requests",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "docs/api/email-changes.md. Disabled by default until confirmation is implemented. Use only an isolated test environment with the feature enabled. Credentials must remain local; do not export filled variables or request traces. Cooldown-dependent cases must be run according to each request description."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "currentPassword",
+      "value": ""
+    },
+    {
+      "key": "newEmail",
+      "value": "new-test@example.com"
+    },
+    {
+      "key": "occupiedEmail",
+      "value": "occupied-test@example.com"
+    }
+  ],
+  "item": [
+    {
+      "name": "Accept request",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/users/me/email-change-request",
+        "description": "Requires an enabled isolated backend and an active verified test account. Does not confirm the new email.",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"newEmail\": \"{{newEmail}}\",\n  \"currentPassword\": \"{{currentPassword}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 202\", () => pm.response.to.have.status(202));",
+              "pm.test(\"No confirmation credential in JSON\", () => { const body = pm.response.json(); pm.expect(body).not.to.have.property(\"token\"); pm.expect(body).not.to.have.property(\"accessToken\"); pm.expect(body.expiresInSeconds).to.eql(900); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reject invalid email",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/users/me/email-change-request",
+        "description": "",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"newEmail\": \"invalid\",\n  \"currentPassword\": \"{{currentPassword}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reject missing current password",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/users/me/email-change-request",
+        "description": "",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"newEmail\": \"{{newEmail}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reject immediate repeat",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/users/me/email-change-request",
+        "description": "Run within 30 seconds of an accepted request.",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"newEmail\": \"{{newEmail}}\",\n  \"currentPassword\": \"{{currentPassword}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 429\", () => pm.response.to.have.status(429));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reject occupied address",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/users/me/email-change-request",
+        "description": "Requires a free cooldown and an address owned by another account.",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"newEmail\": \"{{occupiedEmail}}\",\n  \"currentPassword\": \"{{currentPassword}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 409\", () => pm.response.to.have.status(409));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reject anonymous request",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/users/me/email-change-request",
+        "description": "",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"newEmail\": \"{{newEmail}}\",\n  \"currentPassword\": \"{{currentPassword}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 401\", () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
