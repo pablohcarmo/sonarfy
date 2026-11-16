@@ -29,6 +29,13 @@ estabelece que o login registre acessos automaticamente.
 
 ## Inicialização e atualização do banco
 
+A preparação da troca de e-mail adiciona
+`006_create_email_change_requests.sql`, após 005, com `email_change_requests` e
+`email_change_mail_outbox`. Ela ainda não habilita endpoints ou envio de e-mails.
+O schema consolidado já inclui as tabelas para bancos novos; não aplicar 006
+novamente nesses bancos. A aplicação da migration no banco da aplicação depende
+de autorização. Consulte [persistência e retentativas da troca de e-mail](integrations/email-change.md).
+
 O controle de autorizações Spotify exige também
 `db/migrations/002_add_spotify_authorization_version.sql` em bancos existentes.
 Execute uma vez, após a migração 001 e antes de iniciar esta versão da aplicação.
