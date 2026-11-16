@@ -54,7 +54,7 @@ Os quatro endpoints retornam HTTP `200 OK` com `Content-Type: application/json` 
 
 - **`profilePicture` vs `avatar`:** Na entidade `User` e no DTO de entrada `UpdateProfileDto`, o campo chama-se `avatar`; porém, no `UserDto` de resposta, o getter `getProfilePicture()` serializa a propriedade JSON como `"profilePicture"`.
 - **`active`:** O campo booleano interno `isActive` é exposto pelo getter `isActive()`, sendo serializado pelo Jackson como `"active"`.
-- **`displayName`:** O nome de exibição (`users.display_name`) é gerado internamente no cadastro, mas não faz parte dos campos atuais de `UserDto`.
+- **`displayName`:** O nome de exibição do perfil (`users.display_name`) é composto no cadastro e recalculado ao editar nome/sobrenome. Não faz parte de `UserDto` nem pode ser informado neste PUT.
 
 ---
 
@@ -91,11 +91,39 @@ O corpo da requisição é representado por `UpdateUserDto`:
 }
 ```
 
-### Comportamento atual da implementação
+### Substituição dos dados pessoais
 
-1. **Campos efetivamente atualizados:** `UserService.updateRegister` atualiza `name`, `surname`, `birthDate`, `city` e `country` na entidade `User` e retorna o `UserDto` atualizado (`200 OK`).
-2. **Campo `handle` ignorado na atualização:** Embora `UpdateUserDto` possua a propriedade `handle`, `UserService.updateRegister` não altera o `handle` da conta (preservando o identificador original).
-3. **Validações em `UpdateUserDto`:** O controller declara `@Valid`, mas a classe `UpdateUserDto` atualmente não possui anotações de Bean Validation (`@NotBlank`, `@Pattern`, `@Past`). As restrições de nulidade e tamanho continuam impostas pelas colunas da entidade `User` e pelo schema do banco de dados.
+Os seis campos são obrigatórios: omissão, `null` ou texto em branco recebem `400`.
+O PUT substitui esses seis valores; clientes devem carregar o GET e enviar também
+os valores não alterados. `UpdateUserDto` e `UserDto` são records; o JSON de resposta
+permanece igual, inclusive `active` e `profilePicture`.
+
+| Campo | Regras compartilhadas com o cadastro |
+| --- | --- |
+| `name`, `surname` | Letras latinas, espaços, apóstrofos e hífens conforme padrão do cadastro; até 50 caracteres cada |
+| `handle` | Letras ASCII, números, `_`, `-`, `.`; entre 1 e 15 caracteres, sem prefixo `@` ou espaços |
+| `city`, `country` | Padrão de localização do cadastro: letras, espaços, apóstrofos, hífens e pontos; até 100 caracteres cada |
+| `birthDate` | Data ISO `YYYY-MM-DD` no passado, com pelo menos 13 anos completos na data atual do servidor |
+
+É permitido manter o próprio handle ou alterar apenas sua caixa. Um handle ocupado
+por outra conta recebe `409`, sem distinção entre maiúsculas e minúsculas.
+A transação e o índice PostgreSQL `uk_users_handle_ci` protegem também contra
+colisões concorrentes; somente a violação desse índice com SQLSTATE `23505` é
+traduzida em conflito de handle. Outros erros de persistência não viram `409`.
+Uma atualização rejeitada não persiste parcialmente.
+
+A identidade vem exclusivamente do Bearer. Propriedades adicionais não são
+aplicadas: `id`, e-mail, senha, permissão, estado da conta, `displayName`, avatar,
+capa e biografia não podem ser alterados por esse DTO. Avatar, capa e biografia
+continuam opcionais e pertencem ao fluxo de perfil.
+
+`displayName` é recalculado a partir de nome e sobrenome com `strip()`, limitado
+a 60 pontos de código Unicode, preservando os nomes originais completos.
+Não há revogação de sessões nem exigência de novo login nesta operação. O novo
+handle passa a valer também para login; o antigo deixa de identificar esta conta.
+
+Coleção importável: [sonarfy-users.postman_collection.json](sonarfy-users.postman_collection.json).
+Orientação para a tela: [configurações — dados pessoais](../integrations/user-settings.md).
 
 ---
 
@@ -126,6 +154,8 @@ O corpo da requisição é representado por `UpdateProfileDto`:
 | Situação | HTTP | Comportamento |
 | --- | --- | --- |
 | Consulta ou atualização realizada com sucesso | `200 OK` | Retorna `UserDto` em JSON |
+| Dado pessoal omitido, nulo, em branco, fora do formato/limite ou idade inferior a 13 anos | `400 Bad Request` | Nenhum dado pessoal é alterado |
+| Handle ocupado, inclusive por corrida concorrente ou variação de caixa | `409 Conflict` | Nenhum dado pessoal é alterado |
 | `biography` acima de 255 caracteres em `PUT /api/profile/me` ou JSON malformado | `400 Bad Request` | Rejeitado na validação de entrada |
 | Token Bearer ausente, inválido, expirado, de outro propósito ou usuário inativo/não verificado | `401 Unauthorized` | Rejeitado por `BearerAuthenticationFilter` / `SecurityConfig` |
 
@@ -138,3 +168,4 @@ O corpo da requisição é representado por `UpdateProfileDto`:
 | `UserControllerTest` | Consulta e atualização de cadastro em `/api/users/me` |
 | `UserServiceTest` | Regras de `getUserRegister`, `updateRegister` e `updateProfile` |
 | `SecurityChainIntegrationTest` | Acesso autenticado a `GET /api/users/me` após `POST /api/auth/login` e rejeição (`401`) para requisições anônimas, tokens inválidos ou contas não elegíveis |
+| `PersonalDataIntegrationTest` | GET/PUT pela cadeia real de segurança, persistência, limites, idade, isolamento, campos protegidos e rejeição de credenciais; corrida concorrente opt-in em PostgreSQL descartável |

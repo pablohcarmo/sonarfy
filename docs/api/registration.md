@@ -44,7 +44,11 @@ O corpo da requisição é representado por `NewUserDto`:
 | `country` | `@NotBlank` e `@Pattern("^[a-zA-ZÀ-ÿ\\s.'-]+$")` | Persistido no cadastro do usuário |
 | `birthDate` | `@NotNull` e `@Past` | Idade mínima de **13 anos completos** na data atual (`400 Bad Request` caso menor de 13 anos) |
 
+Os limites de nome/sobrenome (50), handle (15) e cidade/país (100) são validados
+também na entrada, em alinhamento com o schema e a edição de dados pessoais.
+
 No momento da persistência:
+
 - A conta recebe a permissão padrão `ROLE_USER`.
 - `User.onCreate()` inicializa `active = true` e `verified = false` (o login em `POST /api/auth/login` permanece bloqueado até a confirmação do e-mail).
 - A transação publica o evento `ActivationEmailRequested(userId)`. O envio do e-mail de ativação ocorre **após o commit** (`ActivationEmailListener` com `TransactionPhase.AFTER_COMMIT` e `Propagation.NOT_SUPPORTED`), garantindo que uma falha SMTP não desfaça o cadastro já persistido.

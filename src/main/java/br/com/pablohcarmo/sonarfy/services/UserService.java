@@ -7,14 +7,17 @@ import br.com.pablohcarmo.sonarfy.events.ActivationEmailRequested;
 import br.com.pablohcarmo.sonarfy.exceptions.EmailDeliveryException;
 import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
+import br.com.pablohcarmo.sonarfy.validation.PersonalDataRules;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceContext;
 import jakarta.transaction.Transactional;
+import org.hibernate.exception.ConstraintViolationException;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -25,9 +28,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.Period;
 import java.util.Optional;
 
 @Service
@@ -62,26 +63,8 @@ public class UserService implements UserDetailsService {
 
     @Transactional
     public RegisterResponseDto newUser(NewUserDto newUserDto) {
-        // Validação de idade mínima (13 anos)
-        LocalDate birthDate = newUserDto.getBirthDate();
+        PersonalDataRules.validateBirthDate(newUserDto.getBirthDate());
 
-        if(birthDate == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Birth date is required."
-            );
-        }
-
-        int minimumAge = Period.between(birthDate, LocalDate.now()).getYears();
-
-        if(minimumAge < 13) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "User must be at least 13 years old to register."
-            );
-        }
-
-        // Limpar o handle, caso o usuário tenha digitado com "@"
         String cleanHandle = cleanHandle(newUserDto.getHandle());
 
         // Verificar se já existe um usuário com o mesmo email ou handle
@@ -107,9 +90,7 @@ public class UserService implements UserDetailsService {
         User user = new User();
         user.setName(newUserDto.getName());
         user.setSurname(newUserDto.getSurname());
-        String displayName = (newUserDto.getName().strip() + " " + newUserDto.getSurname().strip());
-        int displayNameLength = Math.min(60, displayName.codePointCount(0, displayName.length()));
-        user.setDisplayName(displayName.substring(0, displayName.offsetByCodePoints(0, displayNameLength)));
+        user.setDisplayName(PersonalDataRules.displayName(newUserDto.getName(), newUserDto.getSurname()));
         user.setHandle(cleanHandle);
         user.setEmail(newUserDto.getEmail());
         user.setPassword(passwordEncoder.encode(password));
@@ -155,18 +136,36 @@ public class UserService implements UserDetailsService {
                 user.getLastUpdateDate().toLocalDateTime()); // lastLoginDate removido com sucesso
     }
 
-    public UserDto updateRegister(String email, UpdateUserDto updateUserDto) {
+    // Replace personal data atomically using the authenticated identity.
+    @Transactional
+    public UserDto updateRegister(String email, UpdateUserDto dto) {
+        PersonalDataRules.validateBirthDate(dto.birthDate());
         User user = userRepository.findByEmailIgnoreCase(email)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
+        userRepository.findByHandleIgnoreCase(dto.handle())
+                .filter(owner -> !owner.getId().equals(user.getId()))
+                .ifPresent(owner -> { throw new ResponseStatusException(HttpStatus.CONFLICT, "Handle is already in use."); });
 
-        // Atualiza os campos do usuário com os dados do DTO
-        user.setName( updateUserDto.getName());
-        user.setSurname(updateUserDto.getSurname());
-        user.setBirthDate(updateUserDto.getBirthDate());
-        user.setCity(updateUserDto.getCity());
-        user.setCountry(updateUserDto.getCountry());
-
-        userRepository.save(user);
+        user.setName(dto.name());
+        user.setSurname(dto.surname());
+        user.setDisplayName(PersonalDataRules.displayName(dto.name(), dto.surname()));
+        user.setHandle(dto.handle());
+        user.setBirthDate(dto.birthDate());
+        user.setCity(dto.city());
+        user.setCountry(dto.country());
+        try {
+            userRepository.saveAndFlush(user);
+        } catch (DataIntegrityViolationException exception) {
+            // Only this named case-insensitive index represents a handle conflict.
+            for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+                if (cause instanceof ConstraintViolationException violation
+                        && "23505".equals(violation.getSQLState())
+                        && "uk_users_handle_ci".equals(violation.getConstraintName())) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "Handle is already in use.");
+                }
+            }
+            throw exception;
+        }
         return getUserRegister(email);
     }
 

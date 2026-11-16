@@ -23,6 +23,8 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 4. **[Conta e Perfil do Usuário](users-and-profile.md)**
    - `GET /api/users/me` e `PUT /api/users/me` — Consulta e atualização de dados cadastrais (`UserDto` / `UpdateUserDto`).
    - `GET /api/profile/me` e `PUT /api/profile/me` — Consulta e personalização de biografia, avatar (`profilePicture`) e capa (`UpdateProfileDto`).
+   - Coleção Postman: [sonarfy-users.postman_collection.json](sonarfy-users.postman_collection.json).
+   - Integração de dados pessoais: [configurações](../integrations/user-settings.md).
 5. **[Integração OAuth 2.0 com o Spotify](../integrations/spotify.md)**
    - `POST /api/spotify/authorization` — Geração autenticada da URL de autorização do Spotify e registro de `state` de uso único.
    - `GET /api/spotify/callback` — Processamento público do retorno OAuth, persistência cifrada (`AES-256-GCM`) e redirecionamento `302 Found` ao frontend (`SPOTIFY_FRONTEND_REDIRECT_URI?spotify=connected|denied|invalid_state|error`).
