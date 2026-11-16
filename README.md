@@ -63,6 +63,7 @@ Consulte o [índice geral da documentação da API](docs/api/README.md) para o m
 - [Login e autenticação HTTP Bearer](docs/api/authentication.md)
 - [Recuperação e troca de senha](docs/api/passwords.md) e [coleção oficial do Postman](docs/api/sonarfy-passwords.postman_collection.json) (ajuste a variável `baseUrl`, ex.: `http://localhost:8080`)
 - [Conta e perfil do usuário (`/api/users/me` e `/api/profile/me`)](docs/api/users-and-profile.md)
+- [Integração das configurações: dados pessoais](docs/integrations/user-settings.md), com [coleção Postman importável](docs/api/sonarfy-users.postman_collection.json).
 - [Integração OAuth 2.0 com o Spotify](docs/integrations/spotify.md)
 
 | Operação | Endpoint | Campos JSON |

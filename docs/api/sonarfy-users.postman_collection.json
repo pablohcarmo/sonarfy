@@ -1,0 +1,222 @@
+{
+  "info": {
+    "name": "Sonarfy - personal data",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Contract: docs/api/users-and-profile.md. Uses an active verified TEST account. PUT changes the account. Set a temporary accessToken locally without exporting it; occupiedHandle must belong to a different test account. Do not publish credential-filled variables or request traces."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "occupiedHandle",
+      "value": "occupied.test"
+    }
+  ],
+  "item": [
+    {
+      "name": "Read personal data",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/users/me",
+        "header": []
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Replace six personal fields",
+      "request": {
+        "method": "PUT",
+        "url": "{{baseUrl}}/api/users/me",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\",\n  \"birthDate\": \"2000-05-15\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"Updated handle\", () => pm.expect(pm.response.json().handle).to.eql(\"maria.silva\"));",
+              "pm.test(\"Existing JSON keys\", () => { const body = pm.response.json(); pm.expect(body).to.have.property(\"active\"); pm.expect(body).to.have.property(\"profilePicture\"); pm.expect(body).not.to.have.property(\"displayName\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Invalid handle",
+      "request": {
+        "method": "PUT",
+        "url": "{{baseUrl}}/api/users/me",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"@invalid\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\",\n  \"birthDate\": \"2000-05-15\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Missing birth date",
+      "request": {
+        "method": "PUT",
+        "url": "{{baseUrl}}/api/users/me",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Occupied handle (configure occupiedHandle)",
+      "request": {
+        "method": "PUT",
+        "url": "{{baseUrl}}/api/users/me",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"{{occupiedHandle}}\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\",\n  \"birthDate\": \"2000-05-15\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 409\", () => pm.response.to.have.status(409));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Anonymous update",
+      "request": {
+        "method": "PUT",
+        "url": "{{baseUrl}}/api/users/me",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\",\n  \"birthDate\": \"2000-05-15\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 401\", () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

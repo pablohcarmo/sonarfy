@@ -37,6 +37,29 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
 
+    // Outros índices ou tipos de erro de persistência não podem virar conflito de handle.
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"23505,uk_users_handle_ci,true",
+            "23505,uk_users_email_ci,false", "23514,uk_users_handle_ci,false"})
+    void classifiesOnlyHandleUniqueViolations(String state, String constraint, boolean conflict) {
+        User user = new User(); user.setId(1L);
+        when(userRepository.findByEmailIgnoreCase("user@example.com")).thenReturn(Optional.of(user));
+        var violation = mock(org.hibernate.exception.ConstraintViolationException.class);
+        when(violation.getSQLState()).thenReturn(state);
+        if (state.equals("23505")) when(violation.getConstraintName()).thenReturn(constraint);
+        var failure = new org.springframework.dao.DataIntegrityViolationException("test", violation);
+        when(userRepository.saveAndFlush(user)).thenThrow(failure);
+        var dto = new br.com.pablohcarmo.sonarfy.dto.UpdateUserDto("Maria", "Silva", "maria",
+                "Campinas", "Brasil", LocalDate.of(2000, 1, 1));
+        if (conflict) {
+            assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
+                    () -> userService.updateRegister("user@example.com", dto)).getStatusCode());
+        } else {
+            assertSame(failure, assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                    () -> userService.updateRegister("user@example.com", dto)));
+        }
+    }
+
     @org.junit.jupiter.api.BeforeEach
     void injectPersistenceContext() {
         org.springframework.test.util.ReflectionTestUtils.setField(userService, "entityManager", entityManager);

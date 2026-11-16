@@ -1,24 +1,28 @@
 package br.com.pablohcarmo.sonarfy.dto;
 
 import jakarta.validation.constraints.*;
+import br.com.pablohcarmo.sonarfy.validation.PersonalDataRules;
 
 import java.time.LocalDate;
 
 public class NewUserDto {
     @NotBlank(message = "Name is required")
     @Pattern(
-            regexp = "^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:['’-][A-Za-zÀ-ÖØ-öø-ÿ]+)*(?:\\s[A-Za-zÀ-ÖØ-öø-ÿ]+(?:['’-][A-Za-zÀ-ÖØ-öø-ÿ]+)*)*$",
+            regexp = PersonalDataRules.NAME,
             message = "Name must contain only letters and spaces")
+    @Size(max = 50)
     private String name;
 
     @NotBlank(message = "Surname is required")
     @Pattern(
-            regexp = "^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:['’-][A-Za-zÀ-ÖØ-öø-ÿ]+)*(?:\\s[A-Za-zÀ-ÖØ-öø-ÿ]+(?:['’-][A-Za-zÀ-ÖØ-öø-ÿ]+)*)*$",
+            regexp = PersonalDataRules.NAME,
             message = "Surname must contain only letters and spaces")
+    @Size(max = 50)
     private String surname;
 
     @NotBlank(message = "Handle is required")
-    @Pattern(regexp = "^[a-zA-Z0-9_.-]+$", message = "Handle must contain only letters, numbers, underscores, hyphens and dots")
+    @Pattern(regexp = PersonalDataRules.HANDLE, message = "Handle must contain only letters, numbers, underscores, hyphens and dots")
+    @Size(max = 15)
     private String handle;
 
     @NotBlank(message = "Email is required")
@@ -30,11 +34,13 @@ public class NewUserDto {
     private String password;
 
     @NotBlank(message = "City is required")
-    @Pattern(regexp = "^[a-zA-ZÀ-ÿ\\s.'-]+$", message = "City must contain only letters, spaces, hyphens and dots")
+    @Pattern(regexp = PersonalDataRules.LOCATION, message = "City must contain only letters, spaces, hyphens and dots")
+    @Size(max = 100)
     private String city;
 
     @NotBlank(message = "Country is required")
-    @Pattern(regexp = "^[a-zA-ZÀ-ÿ\\s.'-]+$", message = "Country must contain only letters, spaces, hyphens and dots")
+    @Pattern(regexp = PersonalDataRules.LOCATION, message = "Country must contain only letters, spaces, hyphens and dots")
+    @Size(max = 100)
     private String country;
 
     @NotNull(message = "Birth date is required")
