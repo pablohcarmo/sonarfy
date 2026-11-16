@@ -141,7 +141,8 @@ cadastro) também pode ser recusado. Tokens sem `iat`, expirados ou com outra
 finalidade são rejeitados.
 
 O controle por horário pressupõe relógios coerentes entre instâncias e invalida
-os tokens anteriores ou iguais ao corte; ele não revoga sessões de login.
+os tokens anteriores ou iguais ao corte. Troca e recuperação de senha também
+revogam todas as sessões de refresh do usuário na mesma transação.
 `PasswordResetIntegrationTest` verifica reutilização com senhas diferentes,
 concorrência nos dois fluxos, estado previamente carregado, limites temporais e
 rollback com JWTs reais e banco. Pode ser executado com H2 ou com as propriedades
@@ -178,4 +179,6 @@ enviar `credentials: "include"`. Em HTTP local, configurar explicitamente
 em `AUTH_ALLOWED_ORIGINS` (local: `http://localhost:63342,http://localhost:8080`).
 Veja [autenticação](docs/api/authentication.md) e [integração](docs/integrations/authentication.md).
 Logout HTTP e checkbox no frontend permanecem para as próximas entregas.
+Troca e recuperação de senha revogam todas as sessões de refresh do usuário na
+mesma transação. Access tokens já emitidos continuam sujeitos à validade de 15 minutos.
 A CI exercita a rotação e a concorrência tanto em H2 quanto em PostgreSQL.

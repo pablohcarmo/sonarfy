@@ -65,6 +65,15 @@ a revogação é confirmada antes da resposta 401, sem `noRollbackFor` genérico
 O resultado contém o ID do usuário, a preferência lembrar-me e o token bruto, ocultado no
 `toString()`. Não retorna entidades JPA.
 
+Troca e recuperação de senha usam o mesmo bloqueio pessimista na linha de usuário
+e revogam todas as suas sessões na transação que altera hash e data da senha.
+A revogação ocorre antes de modificar a entidade, pois `revokeAll` a recarrega
+sob bloqueio. Uma rotação que confirmar antes terá seu sucessor removido; uma
+que adquirir o bloqueio depois encontrará a sessão revogada. Rollback restaura
+senha e sessões. Não há alteração de schema nem migration adicional.
+`PasswordResetPostgresTest` repete os cenários de senha, revogação, rollback e
+concorrência no PostgreSQL importado, usando validação de schema, sem DDL automático.
+
 Hashes históricos devem permanecer enquanto a sessão puder ser renovada.
 O expurgo automático de famílias inteiramente expiradas segue pendente; apagar
 apenas registros consumidos perderia a detecção de reutilização. A política
@@ -143,6 +152,20 @@ Cada cenário usa transação com rollback. Usuários e logs de teste não perma
 no banco, mas sequências de IDs podem avançar, conforme o comportamento do PostgreSQL.
 
 ## Evidências anteriores
+
+### Revogação por senha em 16/11/2026
+
+- `./mvnw.cmd test`: 491 testes reportados, zero falhas/erros, 29 ignorados.
+- PostgreSQL 17.9 descartável, porta 55434, schema consolidado importado:
+  `ExistingSchemaIntegrationTest`, `RefreshTokenPostgresTest` e
+  `PasswordResetPostgresTest`: 39 testes reportados, zero falhas/erros e um
+  ignorado. O caso legado de cutoff nullable é exclusivo do H2, pois o schema
+  PostgreSQL exige `password_updated_at NOT NULL`; missing iat com cutoff
+  preenchido também foi validado no PostgreSQL.
+- Cobertura inclui troca e recuperação de senha, revogação de todos os
+  dispositivos e históricos, preservação de outro usuário, concorrência entre
+  senha e refresh, validação recusada e restauração de sessões por rollback.
+- Nenhuma migration ou alteração no banco da aplicação nesta correção.
 
 ### Aplicação no banco local em 11/11/2026
 

@@ -40,6 +40,8 @@ class PasswordResetIntegrationTest {
     @Autowired PasswordEncoder encoder;
     @Autowired PlatformTransactionManager transactions;
     @Autowired DataSource dataSource;
+    @Autowired RefreshTokenService refreshTokens;
+    @Autowired br.com.pablohcarmo.sonarfy.repositories.RefreshTokenRepository sessions;
     private Long id;
     private Instant issuedAt;
     private OffsetDateTime originalCutoff;
@@ -49,6 +51,7 @@ class PasswordResetIntegrationTest {
 
     @BeforeEach
     void prepare() {
+        sessions.deleteAll();
         users.deleteAll();
         Permission role = permissions.findByName("ROLE_USER").orElseGet(() -> {
             Permission p = new Permission();
@@ -56,6 +59,11 @@ class PasswordResetIntegrationTest {
             return permissions.save(p);
         });
         User user = new User();
+        user.setName("Password");
+        user.setSurname("Test");
+        user.setCity("Brasilia");
+        user.setCountry("Brasil");
+        user.setBirthDate(LocalDate.of(2000, 1, 1));
         user.setDisplayName("Password Test");
         user.setPermission(role);
         user.setHandle("password-test");
@@ -118,15 +126,24 @@ class PasswordResetIntegrationTest {
         }
     }
 
-    @Test
-    void missingIssuedAtIsRejectedEvenWithNullStoredCutoff() {
-        setCutoff(null);
+    // PostgreSQL exige cutoff não nulo; o caso legado nullable continua coberto no H2.
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void missingIssuedAtIsRejectedRegardlessOfStoredCutoff(boolean nullCutoff) throws Exception {
+        if (nullCutoff) {
+            try (var connection = dataSource.getConnection()) {
+                org.junit.jupiter.api.Assumptions.assumeTrue(
+                        connection.getMetaData().getDatabaseProductName().equals("H2"));
+            }
+            setCutoff(null);
+        }
         String missing = signedToken(null, "password_reset", Instant.now().plusSeconds(600));
         ResponseStatusException rejected = assertThrows(ResponseStatusException.class,
                 () -> change(false, missing, "FirstPassword123!"));
         assertEquals("Token issuance date is required!", rejected.getReason());
         assertEquals(originalHash, users.findById(id).orElseThrow().getPassword());
-        assertNull(users.findById(id).orElseThrow().getPasswordLastUpdateDate());
+        if (nullCutoff) assertNull(users.findById(id).orElseThrow().getPasswordLastUpdateDate());
+        else assertUnchanged();
     }
 
     @Test
@@ -164,6 +181,7 @@ class PasswordResetIntegrationTest {
 
     @Test
     void rollbackRestoresPasswordAndCutoffAndAllowsRetry() {
+        String refresh = refreshTokens.issue(users.findById(id).orElseThrow());
         assertThrows(IllegalStateException.class, () -> new TransactionTemplate(transactions)
                 .executeWithoutResult(status -> {
                     change(false, resetToken, "FirstPassword123!");
@@ -171,8 +189,73 @@ class PasswordResetIntegrationTest {
                     throw new IllegalStateException("Force rollback after SQL update");
                 }));
         assertUnchanged();
+        assertNotNull(refreshTokens.rotate(refresh));
         change(false, resetToken, "SecondPassword123!");
         assertTrue(encoder.matches("SecondPassword123!", users.findById(id).orElseThrow().getPassword()));
+    }
+
+    // Os dois fluxos encerram todos os dispositivos e históricos; outro usuário permanece autenticado.
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void passwordUpdateRevokesEverySession(boolean authenticated) {
+        User owner = users.findById(id).orElseThrow();
+        String first = refreshTokens.issue(owner, true);
+        String successor = refreshTokens.rotate(first).refreshToken();
+        String second = refreshTokens.issue(owner, false);
+        User other = new User(null, owner.getPermission(), "Other", "Account", "Other Account",
+                "other-password", "other@example.com", originalHash, true, true, "Brasilia", "Brasil",
+                null, null, null, LocalDate.of(2000, 1, 1), null, null, null, null);
+        String foreign = refreshTokens.issue(users.saveAndFlush(other));
+        change(authenticated, authenticated ? changeToken : resetToken, "FirstPassword123!");
+        assertEquals(0, sessions.countByUserId(id));
+        for (String token : new String[] {first, successor, second}) assertRefreshRejected(token);
+        assertNotNull(refreshTokens.rotate(foreign));
+        assertTrue(encoder.matches("FirstPassword123!", users.findById(id).orElseThrow().getPassword()));
+        assertNotNull(refreshTokens.rotate(refreshTokens.issue(users.findById(id).orElseThrow())));
+    }
+
+    // Validação recusada não revoga a sessão nem altera a senha.
+    @Test
+    void invalidPasswordChangePreservesSession() {
+        String refresh = refreshTokens.issue(users.findById(id).orElseThrow());
+        assertThrows(ResponseStatusException.class, () -> service.changePassword("password@example.com",
+                new ChangePasswordDto(changeToken, "wrong", "FirstPassword123!", "FirstPassword123!")));
+        assertNotNull(refreshTokens.rotate(refresh));
+        assertUnchanged();
+    }
+
+    // Seja qual for o vencedor do bloqueio, nenhum sucessor anterior à recuperação sobrevive.
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void passwordUpdateCompetesWithRefresh(boolean authenticated) throws Exception {
+        String old = refreshTokens.issue(users.findById(id).orElseThrow());
+        CyclicBarrier start = new CyclicBarrier(2);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            Future<String> rotating = pool.submit(() -> {
+                start.await(10, TimeUnit.SECONDS);
+                try { return refreshTokens.rotate(old).refreshToken(); }
+                catch (ResponseStatusException ex) {
+                    assertEquals(401, ex.getStatusCode().value());
+                    return null;
+                }
+            });
+            Future<?> resetting = pool.submit(() -> {
+                start.await(10, TimeUnit.SECONDS);
+                change(authenticated, authenticated ? changeToken : resetToken, "FirstPassword123!");
+                return null;
+            });
+            resetting.get(15, TimeUnit.SECONDS);
+            String successor = rotating.get(15, TimeUnit.SECONDS);
+            assertRefreshRejected(old);
+            if (successor != null) assertRefreshRejected(successor);
+            assertEquals(0, sessions.countByUserId(id));
+            assertTrue(encoder.matches("FirstPassword123!", users.findById(id).orElseThrow().getPassword()));
+        }
+    }
+
+    private void assertRefreshRejected(String token) {
+        assertEquals(401, assertThrows(ResponseStatusException.class,
+                () -> refreshTokens.rotate(token)).getStatusCode().value());
     }
 
     @Test

@@ -42,6 +42,7 @@ public class UserService implements UserDetailsService {
     private final JwtService jwtService;
     private final AuthEmailService authEmailService;
     private final ApplicationEventPublisher eventPublisher;
+    private final RefreshTokenService refreshTokens;
     private static final Logger logger = LoggerFactory.getLogger(UserService.class);
 
     public UserService (UserRepository userRepository,
@@ -49,13 +50,14 @@ public class UserService implements UserDetailsService {
                         PasswordEncoder passwordEncoder,
                         JwtService jwtService,
                         AuthEmailService authEmailService,
-                        ApplicationEventPublisher eventPublisher) {
+                        ApplicationEventPublisher eventPublisher, RefreshTokenService refreshTokens) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.permissionRepository = permissionRepository;
         this.jwtService = jwtService;
         this.authEmailService = authEmailService;
         this.eventPublisher = eventPublisher;
+        this.refreshTokens = refreshTokens;
     }
 
     @Transactional
@@ -315,6 +317,9 @@ public class UserService implements UserDetailsService {
     }
 
     private void updatePassword(User user, String newRawPassword) {
+        // Compartilha a transação e o bloqueio já mantido pela validação da senha.
+        // Revoga antes de alterar a entidade, pois revokeAll recarrega o usuário bloqueado.
+        refreshTokens.revokeAll(user.getId());
         user.setPassword(passwordEncoder.encode(newRawPassword));
 
         // Política compatível com os tokens emitidos pela biblioteca atual.

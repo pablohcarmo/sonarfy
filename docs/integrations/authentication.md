@@ -90,7 +90,11 @@ Post-response para a requisição equivalente. Alterar arquivos locais não alte
 automaticamente uma coleção independente salva na nuvem.
 
 O JWT já emitido continua sujeito à expiração de 15 minutos e à situação atual
-da conta; não há blacklist nem revogação automática por troca de senha.
+da conta; não há blacklist de access tokens. Troca e recuperação de senha revogam
+todas as sessões de refresh do usuário, de modo atômico com a atualização da
+senha. Ao concluir qualquer desses fluxos, descartar o access token local e
+exigir novo login. Outros dispositivos receberão 401 na próxima renovação,
+com limpeza do cookie. O cookie HttpOnly não precisa ser apagado por JavaScript.
 O checkbox e a coordenação de chamadas pertencem ao repositório do frontend.
 `/api/auth/logout` fica para a próxima entrega. Apagar apenas o access token não
 revoga a sessão no servidor.

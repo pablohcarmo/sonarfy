@@ -176,6 +176,13 @@ síncrono: não garantem entrega após reinício.
 
 O token é rejeitado se sua emissão for anterior ou igual à última alteração de
 senha. A precisão é de segundos; um token novo no mesmo segundo também pode ser
-recusado. O mecanismo não revoga sessões de login, e o fluxo síncrono pode revelar
-diferenças de duração nas respostas.
+recusado. Tanto a troca autenticada quanto a recuperação revogam todas as sessões
+de refresh do usuário, incluindo históricos e sucessores, na mesma transação da
+senha. O bloqueio pessimista da linha do usuário é compartilhado com a rotação:
+se o refresh confirmar primeiro, seu sucessor será revogado; se a alteração de
+senha confirmar primeiro, o refresh será recusado. Rollback restaura senha e
+sessões conjuntamente; validação recusada não revoga sessões. Outros usuários
+não são afetados. Access tokens já emitidos podem continuar válidos por até
+15 minutos. O cliente deve descartar credenciais locais e fazer novo login.
+O fluxo síncrono pode revelar diferenças de duração nas respostas.
 

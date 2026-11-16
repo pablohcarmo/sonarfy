@@ -106,8 +106,8 @@ o e-mail. `/api/users/me` retorna `200` com o cadastro correspondente.
 Credencial ausente, inválida, expirada, de outro propósito ou vinculada a usuário
 removido, inativo ou não verificado resulta em `401` nas rotas protegidas.
 O filtro não cria sessão: cada nova requisição precisa enviar seu Bearer.
-Não há revogação automática por troca de senha nesta entrega; o token continua
-sujeito à expiração e à situação atual da conta.
+Troca e recuperação de senha revogam todas as sessões de refresh do usuário.
+O access token já emitido continua sujeito à expiração e à situação atual da conta.
 
 `/api/auth/update-pending-email` continua validando seu Bearer de cadastro no
 controller; esse token não autentica acesso a `/api/users/**`.
@@ -179,7 +179,8 @@ Reutilização encerra somente a sessão afetada; logout interno reconhece token
 consumidos. O resultado da renovação não retorna entidades JPA.
 Login emite refresh por cookie e `/refresh` rotaciona a sessão. `/logout` HTTP
 fica para a próxima entrega. A validade é de 30 dias por inatividade, sem prazo
-absoluto. Revogação na troca de senha permanece fora desta entrega.
+absoluto. Troca autenticada e recuperação de senha revogam todas as sessões
+de refresh do usuário na mesma transação da atualização da senha.
 Access tokens existentes não são revogados por essa camada.
 
 A preferência `remember_me` já é persistida internamente por sessão e preservada

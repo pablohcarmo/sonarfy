@@ -82,6 +82,9 @@ class UserServiceTest {
     @Mock
     private EntityManager entityManager;
 
+    @Mock
+    private RefreshTokenService refreshTokens;
+
     @InjectMocks
     private UserService userService;
 
