@@ -3,7 +3,7 @@
 A tela de configurações usa os endpoints existentes, sem rota `/me/settings`.
 Este documento cobre a entrega 1; os contratos de troca de e-mail, Spotify e
 senha serão alinhados nas entregas seguintes. A [preparação da troca de e-mail](email-change.md)
-documenta a persistência em desenvolvimento; ela ainda não oferece endpoints.
+documenta a solicitação em desenvolvimento, desativada até concluir a confirmação.
 
 1. Consultar `GET /api/users/me` com Bearer `access` para carregar os valores.
 2. Enviar `PUT /api/users/me` com os seis campos: `name`, `surname`, `handle`,

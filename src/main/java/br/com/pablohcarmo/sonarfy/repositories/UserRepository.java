@@ -13,6 +13,10 @@ import java.time.OffsetDateTime;
 import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<User,Long> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from User u where u.id = :id")
+    Optional<User> findByIdForEmailChange(@Param("id") Long id);
+
     // Serializa emissão, rotação e revogação das sessões de um usuário.
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from User u where u.id = :id")

@@ -43,13 +43,6 @@ public class UserController {
         return ResponseEntity.ok(userService.updateRegister(principal.getName(), updateUserDto));
     }
 
-    /*@PostMapping("/me/email-change")
-    public ResponseEntity<String> requestEmailChange(Principal principal) {
-        String userEmail = principal.getName();
-        String result = userService.sendEmailChangeRequest(userEmail);
-        return ResponseEntity.ok(result);
-    }*/
-
     @PostMapping("/me/password-change-request")
     public ResponseEntity<String> requestPasswordChange(Principal principal) {
         User user = userRepository.findByEmailIgnoreCase(principal.getName())

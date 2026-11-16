@@ -1,5 +1,6 @@
 package br.com.pablohcarmo.sonarfy.services;
 
+import br.com.pablohcarmo.sonarfy.dto.EmailChangeRequestDto;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.auth0.jwt.exceptions.JWTVerificationException;
@@ -18,6 +19,7 @@ public class JwtService {
     private static final String PURPOSE_PASSWORD_RESET = "password_reset";
     private static final String PURPOSE_PASSWORD_CHANGE = "password_change";
     private static final String PURPOSE_ACCESS = "access";
+    private static final String PURPOSE_EMAIL_CHANGE = "email_change";
 
     public static final long EMAIL_CONFIRMATION_TTL_SECONDS = 900; // 15 minutes
     public static final long PENDING_REGISTRATION_TTL_SECONDS = 900;
@@ -26,6 +28,14 @@ public class JwtService {
 
     @Value("${api.security.token.secret}")
     private String secretKey;
+
+    // A retentativa preserva o identificador e a expiração originais da solicitação.
+    public String generateEmailChangeToken(EmailChangeRequestDto request) {
+        return JWT.create().withIssuer(ISSUER).withSubject(Long.toString(request.userId()))
+                .withJWTId(request.id().toString()).withClaim("purpose", PURPOSE_EMAIL_CHANGE)
+                .withIssuedAt(request.issuedAt().toInstant()).withExpiresAt(request.expiresAt().toInstant())
+                .sign(algorithm());
+    }
 
     public String generateEmailConfirmationToken(String userId) {
         requireNotBlank(userId, "user ID");
