@@ -148,7 +148,6 @@ public class UserService implements UserDetailsService {
 
         user.setName(dto.name());
         user.setSurname(dto.surname());
-        user.setDisplayName(PersonalDataRules.displayName(dto.name(), dto.surname()));
         user.setHandle(dto.handle());
         user.setBirthDate(dto.birthDate());
         user.setCity(dto.city());

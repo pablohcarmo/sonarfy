@@ -92,7 +92,7 @@ class PersonalDataIntegrationTest {
                 .andExpect(jsonPath("$.profilePicture").value("avatar"))
                 .andExpect(jsonPath("$.displayName").doesNotExist());
         User saved = users.findById(user.getId()).orElseThrow();
-        assertEquals("Maria Silva", saved.getDisplayName());
+        assertEquals("Chosen profile name", saved.getDisplayName());
         assertEquals("Maria", saved.getName());
         assertEquals("Silva", saved.getSurname());
         assertEquals("Campinas", saved.getCity());
@@ -135,14 +135,14 @@ class PersonalDataIntegrationTest {
     }
 
     @Test
-    void acceptsSchemaLimitsAndTruncatesOnlyDisplayName() throws Exception {
+    void acceptsSchemaLimitsWithoutChangingDisplayName() throws Exception {
         var input = payload();
         input.put("name", "A".repeat(50)); input.put("surname", "B".repeat(50));
         input.put("handle", "h".repeat(15));
         input.put("city", "C".repeat(100)); input.put("country", "D".repeat(100));
         update(user, input).andExpect(status().isOk());
         User saved = users.findById(user.getId()).orElseThrow();
-        assertEquals("A".repeat(50) + " " + "B".repeat(9), saved.getDisplayName());
+        assertEquals("Chosen profile name", saved.getDisplayName());
         assertEquals(50, saved.getSurname().length());
     }
 
@@ -223,7 +223,7 @@ class PersonalDataIntegrationTest {
         var role = permissions.findByName("ROLE_USER").orElseGet(() -> {
             Permission value = new Permission(); value.setName("ROLE_USER"); return permissions.save(value);
         });
-        User value = new User(null, role, "Original", "Account", "Original Account", handle,
+        User value = new User(null, role, "Original", "Account", "Chosen profile name", handle,
                 handle + "@example.com", "test-hash", true, true, "Brasilia", "Brasil", "avatar", "wallpaper", "bio",
                 LocalDate.of(2000, 1, 1), null, null, null, null);
         return users.saveAndFlush(value);

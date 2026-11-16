@@ -8,8 +8,9 @@ reserva de e-mail foram preservados.
 `User.displayName` corresponde a `users.display_name VARCHAR(60) NOT NULL`.
 No cadastro, o serviço combina nome e sobrenome e limita o nome de exibição a
 60 caracteres Unicode, sem dividir pares substitutos. Os nomes originais são
-preservados. A edição de dados pessoais recalcula esse nome de exibição pela
-mesma regra. Ele permanece interno, sem exposição em `UserDto`.
+preservados. Essa composição define apenas o valor inicial no cadastro.
+A edição de dados pessoais preserva o nome de exibição, cuja edição pertence
+ao perfil. Ele permanece sem exposição em `UserDto` nesta entrega.
 
 O PUT de dados pessoais usa transação e flush explícito. A unicidade sem distinção
 de caixa depende do índice existente `uk_users_handle_ci` sobre `lower(handle)`;

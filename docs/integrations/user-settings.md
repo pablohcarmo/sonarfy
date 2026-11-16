@@ -15,10 +15,12 @@ senha serão alinhados nas entregas seguintes.
    [autenticação](authentication.md); se a renovação falhar, solicitar login.
    A edição em si não revoga sessões.
 
-Nome/sobrenome atualizam o nome de exibição do perfil (`displayName`), composto
-internamente. Não enviar `displayName` no PUT. Avatar, capa e biografia pertencem
-ao `UpdateProfileDto`; não incluir esses campos na atualização de dados pessoais.
-Uma representação própria para consulta do perfil fica fora desta entrega.
+Nome/sobrenome são independentes do nome de exibição do perfil (`displayName`).
+O cadastro gera seu valor inicial; a atualização de dados pessoais o preserva.
+Não enviar `displayName` no PUT. Sua edição pertence à página de perfil e fica
+fora desta entrega, assim como uma representação própria para consulta do perfil.
+Avatar, capa e biografia pertencem ao `UpdateProfileDto`; não incluir esses campos
+na atualização de dados pessoais.
 
 ## Consumidor inspecionado
 
@@ -65,6 +67,9 @@ Em 16/11/2026:
 - Suíte após a troca de branch: 504 testes reportados, zero falhas/erros, 29 ignorados.
 - Suíte completa após a implementação: 531 reportados, zero falhas/erros, 30 ignorados.
   O cenário PostgreSQL é opt-in e fica ignorado nessa execução padrão.
+  Suíte repetida com o mesmo resultado após corrigir a preservação de
+  `displayName`: os testes HTTP agora verificam que um nome de exibição
+  personalizado permanece igual ao alterar nome/sobrenome, inclusive nos limites.
 - `PersonalDataIntegrationTest` sobre PostgreSQL 17.9 descartável, com
   `db/tables.sql`: 24 testes, zero falhas/erros e nenhum ignorado. Inclui corrida
   concorrente pela cadeia HTTP real, com exatamente um sucesso e um conflito.

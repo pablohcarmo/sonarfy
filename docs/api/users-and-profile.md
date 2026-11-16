@@ -54,7 +54,7 @@ Os quatro endpoints retornam HTTP `200 OK` com `Content-Type: application/json` 
 
 - **`profilePicture` vs `avatar`:** Na entidade `User` e no DTO de entrada `UpdateProfileDto`, o campo chama-se `avatar`; porém, no `UserDto` de resposta, o getter `getProfilePicture()` serializa a propriedade JSON como `"profilePicture"`.
 - **`active`:** O campo booleano interno `isActive` é exposto pelo getter `isActive()`, sendo serializado pelo Jackson como `"active"`.
-- **`displayName`:** O nome de exibição do perfil (`users.display_name`) é composto no cadastro e recalculado ao editar nome/sobrenome. Não faz parte de `UserDto` nem pode ser informado neste PUT.
+- **`displayName`:** O nome de exibição do perfil (`users.display_name`) é composto inicialmente no cadastro. Depois disso, sua edição pertence ao perfil; alterar nome/sobrenome nas configurações preserva o valor existente. Não faz parte de `UserDto` nem pode ser informado neste PUT.
 
 ---
 
@@ -117,8 +117,9 @@ aplicadas: `id`, e-mail, senha, permissão, estado da conta, `displayName`, avat
 capa e biografia não podem ser alterados por esse DTO. Avatar, capa e biografia
 continuam opcionais e pertencem ao fluxo de perfil.
 
-`displayName` é recalculado a partir de nome e sobrenome com `strip()`, limitado
-a 60 pontos de código Unicode, preservando os nomes originais completos.
+`displayName` é gerado apenas no cadastro, a partir de nome e sobrenome com
+`strip()`, limitado a 60 pontos de código Unicode. O PUT preserva esse campo,
+inclusive quando ele tiver sido personalizado no perfil.
 Não há revogação de sessões nem exigência de novo login nesta operação. O novo
 handle passa a valer também para login; o antigo deixa de identificar esta conta.
 
