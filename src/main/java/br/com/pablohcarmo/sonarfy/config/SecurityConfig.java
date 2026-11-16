@@ -32,7 +32,7 @@ public class SecurityConfig {
                 // Integra o CORS à segurança para processar o preflight antes da autenticação.
                 .cors(Customizer.withDefaults())
 
-                // Bearer não usa cookie; login e refresh recebem proteção pelo AuthCsrfFilter.
+                // Bearer não usa cookie; login, refresh e logout recebem proteção pelo AuthCsrfFilter.
                 .csrf(AbstractHttpConfigurer::disable)
 
                 // Transforma a API em Stateless (náo guarda a sessão do usuário)
@@ -61,6 +61,7 @@ public class SecurityConfig {
                             "/api/auth/register",
                             "/api/auth/login",
                             "/api/auth/refresh",
+                            "/api/auth/logout",
                             "/api/auth/resend-activation-email",
                             "/api/auth/forgot-password",
                             "/api/auth/reset-password"

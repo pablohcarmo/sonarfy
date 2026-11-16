@@ -52,7 +52,8 @@ Cada dispositivo possui uma família identificada por `session_id`. A rotação
 marca o hash anterior com `used_at` e cria um sucessor com validade de 30 dias
 de inatividade. Somente hashes SHA-256 de segredos aleatórios são armazenados.
 Reutilizar qualquer token consumido remove toda a família, preservando outros
-dispositivos. Logout aceita tanto o token atual quanto um token consumido.
+dispositivos. O endpoint `POST /api/auth/logout` usa `revoke`, que aceita tanto o token atual
+quanto um token consumido, removendo a família inteira. Não exige nova migration.
 
 Emissão, rotação e revogação usam o mesmo bloqueio no usuário. Duas renovações
 simultâneas do mesmo token têm um único sucesso, mas a segunda detecta reutilização

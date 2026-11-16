@@ -175,7 +175,9 @@ class SecurityChainIntegrationTest {
     @ParameterizedTest
     @CsvSource({"GET,/api/auth/register", "GET,/api/auth/login", "GET,/api/auth/resend-activation-email",
             "GET,/api/auth/forgot-password", "GET,/api/auth/reset-password", "GET,/api/auth/refresh", "POST,/api/auth/verify",
-            "POST,/api/auth/update-pending-email", "GET,/api/auth/unknown", "POST,/api/auth/logout",
+            "POST,/api/auth/update-pending-email", "GET,/api/auth/unknown", "GET,/api/auth/logout",
+            "PUT,/api/auth/logout", "DELETE,/api/auth/logout", "PATCH,/api/auth/logout",
+            "POST,/api/auth/logout/extra", "POST,/api/auth/logout-other",
             "GET,/error", "GET,/error/unknown", "OPTIONS,/api/users/me"})
     void otherMethodsAndPathsRequireAuthentication(String method, String path) throws Exception {
         mvc.perform(request(HttpMethod.valueOf(method), path)).andExpect(status().isUnauthorized());
@@ -285,11 +287,11 @@ class SecurityChainIntegrationTest {
     // Nem preflight nem formulários ou origens não autorizadas podem consumir uma sessão.
     @ParameterizedTest
     @ValueSource(strings = {"missing-header", "wrong-header", "foreign-origin", "null-origin"})
-    void csrfRejectionDoesNotIssueOrRotateTokens(String scenario) throws Exception {
+    void csrfRejectionDoesNotChangeSessions(String scenario) throws Exception {
         var raw = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
         var tokens = context.getBean(RefreshTokenService.class);
         String token = tokens.issue(user);
-        for (String path : java.util.List.of("/api/auth/login", "/api/auth/refresh")) {
+        for (String path : java.util.List.of("/api/auth/login", "/api/auth/refresh", "/api/auth/logout")) {
             var request = post(path).cookie(new jakarta.servlet.http.Cookie("sonarfy_refresh", token))
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("{\"login\":\"user@example.com\",\"password\":\"Correct123!\"}");
@@ -338,9 +340,99 @@ class SecurityChainIntegrationTest {
 
     // O matcher interpreta segmentos codificados como o roteamento, sem contornar CSRF.
     @ParameterizedTest
-    @ValueSource(strings = {"/api/auth/%6cogin", "/api/auth/%72efresh"})
+    @ValueSource(strings = {"/api/auth/%6cogin", "/api/auth/%72efresh", "/api/auth/%6cogout"})
     void encodedSessionPathsStillRequireCsrfHeader(String path) throws Exception {
         var raw = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
-        raw.perform(post(java.net.URI.create(path))).andExpect(status().isForbidden());
+        var tokens = context.getBean(RefreshTokenService.class);
+        String token = tokens.issue(user);
+        raw.perform(post(java.net.URI.create(path)).cookie(new jakarta.servlet.http.Cookie("sonarfy_refresh", token)))
+                .andExpect(status().isForbidden()).andExpect(header().doesNotExist("Set-Cookie"));
+        assertNotNull(tokens.rotate(token));
     }
+
+    // Logout com token atual ou consumido encerra a sessão e preserva outro dispositivo e o JWT emitido.
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void logoutRevokesSessionAndSuccessorsWithoutRevokingOtherDevicesOrAccess(boolean consumed) throws Exception {
+        var tokens = context.getBean(RefreshTokenService.class);
+        String original = tokens.issue(user, true);
+        String current = consumed ? tokens.rotate(original).refreshToken() : original;
+        String other = tokens.issue(user);
+        String access = jwt.generateAccessToken(user.getId().toString());
+        String expired = JWT.create().withIssuer("sonarfy-api").withSubject(user.getId().toString())
+                .withClaim("purpose", "access").withExpiresAt(Instant.now().minusSeconds(60))
+                .sign(Algorithm.HMAC256(signingKey));
+        assertNull(jwt.validateAccessTokenAndGetUserId(expired));
+        mvc.perform(post("/api/auth/logout").cookie(new jakarta.servlet.http.Cookie("sonarfy_refresh", original))
+                        .header("Authorization", "Bearer " + expired))
+                .andExpect(status().isNoContent()).andExpect(content().string(""))
+                .andExpect(header().string("Cache-Control", "no-store"));
+        for (String rejected : java.util.List.of(original, current)) {
+            mvc.perform(post("/api/auth/refresh").cookie(new jakarta.servlet.http.Cookie("sonarfy_refresh", rejected)))
+                    .andExpect(status().isUnauthorized());
+        }
+        mvc.perform(post("/api/auth/refresh").cookie(new jakarta.servlet.http.Cookie("sonarfy_refresh", other)))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/users/me").header("Authorization", "Bearer " + access)).andExpect(status().isOk());
+    }
+
+    // Ausência, token desconhecido e repetição são idempotentes; exclusão mantém todos os atributos.
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void logoutAlwaysClearsCookieWithConfiguredAttributes(boolean secure) throws Exception {
+        var controller = context.getBean(AuthController.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "secureCookie", secure);
+        try {
+            String issued = context.getBean(RefreshTokenService.class).issue(user);
+            for (String token : new String[] {null, "", "unknown", issued, issued}) {
+                var request = post("/api/auth/logout");
+                if (token != null) request.cookie(new jakarta.servlet.http.Cookie("sonarfy_refresh", token));
+                mvc.perform(request).andExpect(status().isNoContent()).andExpect(content().string(""))
+                        .andExpect(header().string("Cache-Control", "no-store"))
+                        .andExpect(cookie().value("sonarfy_refresh", ""))
+                        .andExpect(cookie().maxAge("sonarfy_refresh", 0))
+                        .andExpect(cookie().path("sonarfy_refresh", "/api/auth"))
+                        .andExpect(cookie().httpOnly("sonarfy_refresh", true))
+                        .andExpect(cookie().secure("sonarfy_refresh", secure))
+                        .andExpect(cookie().attribute("sonarfy_refresh", "SameSite", "Strict"))
+                        .andExpect(cookie().domain("sonarfy_refresh", org.hamcrest.Matchers.nullValue()));
+            }
+        } finally {
+            org.springframework.test.util.ReflectionTestUtils.setField(controller, "secureCookie", true);
+        }
+    }
+
+    // Body e Bearer não selecionam uma sessão para revogação quando o cookie está ausente.
+    @Test
+    void logoutReadsRefreshTokenExclusivelyFromCookie() throws Exception {
+        var tokens = context.getBean(RefreshTokenService.class);
+        String token = tokens.issue(user);
+        mvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"refreshToken\":\"" + token + "\"}"))
+                .andExpect(status().isNoContent()).andExpect(content().string(""));
+        mvc.perform(post("/api/auth/refresh").cookie(new jakarta.servlet.http.Cookie("sonarfy_refresh", token)))
+                .andExpect(status().isOk());
+    }
+
+    // Preflight autorizado não revoga nem modifica cookies; a chamada real aceita credenciais da origem.
+    @Test
+    void logoutPreflightPreservesSessionAndAllowsCredentialedRequest() throws Exception {
+        String token = context.getBean(RefreshTokenService.class).issue(user);
+        mvc.perform(options("/api/auth/logout").header("Origin", "http://localhost:63342")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header("Access-Control-Request-Headers", "X-Sonarfy-CSRF"))
+                .andExpect(status().isOk()).andExpect(header().doesNotExist("Set-Cookie"))
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:63342"))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"))
+                .andExpect(header().string("Access-Control-Allow-Headers", org.hamcrest.Matchers.containsString("X-Sonarfy-CSRF")));
+        mvc.perform(post("/api/auth/refresh").cookie(new jakarta.servlet.http.Cookie("sonarfy_refresh", token)))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/auth/logout").cookie(new jakarta.servlet.http.Cookie("sonarfy_refresh", token))
+                        .header("Origin", "http://localhost:63342"))
+                .andExpect(status().isNoContent())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:63342"))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
+    }
+
 }

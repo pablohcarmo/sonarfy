@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Sonarfy Authentication",
-    "description": "Login e refresh sequenciais com cookie jar. Use uma conta de teste ativa e verificada. Não publique credenciais ou resultados contendo tokens. Scripts validam authExpectedStatus (padrão 200; use 400/401/403 nos testes negativos) e authSecureCookie (padrão true; false em HTTP local). Execute login antes de refresh para registrar a preferência da sessão. Não infere sucesso pelo status recebido.",
+    "description": "Login, refresh e logout sequenciais com cookie jar. Use uma conta de teste ativa e verificada. Não publique credenciais ou resultados contendo tokens. Scripts validam authExpectedStatus (padrão 200 em login/refresh e 204 em logout; use 400/401/403 nos cenários negativos aplicáveis) e authSecureCookie (padrão true; false em HTTP local). Execute login antes de refresh para registrar a preferência da sessão. Não infere sucesso pelo status recebido.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -201,6 +201,58 @@
               "      pm.expect(cookie.length).to.eql(0);",
               "    });",
               "  }",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Logout usando cookie jar",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/auth/logout",
+        "header": [
+          {
+            "key": "X-Sonarfy-CSRF",
+            "value": "1"
+          }
+        ]
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const expected = Number(pm.variables.get(\"authExpectedStatus\") || 204);",
+              "const cookie = pm.response.headers.get(\"Set-Cookie\") || \"\";",
+              "pm.test(\"Status corresponde ao cenário configurado\", () => {",
+              "  pm.expect([204, 403]).to.include(expected);",
+              "  pm.response.to.have.status(expected);",
+              "});",
+              "pm.test(\"Resposta não permite cache\", () => {",
+              "  pm.expect(pm.response.headers.get(\"Cache-Control\")).to.eql(\"no-store\");",
+              "});",
+              "if (pm.response.code === 204 && expected === 204) {",
+              "  pm.test(\"Logout retorna corpo vazio e exclui cookie com os mesmos atributos\", () => {",
+              "    pm.expect(pm.response.text().length).to.eql(0);",
+              "    pm.expect(/^sonarfy_refresh=;/.test(cookie)).to.eql(true);",
+              "    pm.expect(/;\\s*Max-Age=0(?:;|$)/i.test(cookie)).to.eql(true);",
+              "    pm.expect(/;\\s*Path=\\/api\\/auth(?:;|$)/i.test(cookie)).to.eql(true);",
+              "    pm.expect(/;\\s*HttpOnly(?:;|$)/i.test(cookie)).to.eql(true);",
+              "    pm.expect(/;\\s*SameSite=Strict(?:;|$)/i.test(cookie)).to.eql(true);",
+              "    pm.expect(/;\\s*Domain=/i.test(cookie)).to.eql(false);",
+              "    const secure = String(pm.variables.get(\"authSecureCookie\") ?? \"true\") === \"true\";",
+              "    pm.expect(/;\\s*Secure(?:;|$)/i.test(cookie)).to.eql(secure);",
+              "  });",
+              "  pm.collectionVariables.unset(\"accessToken\");",
+              "  pm.collectionVariables.unset(\"authSessionRememberMe\");",
+              "} else if (pm.response.code === 403) {",
+              "  pm.test(\"CSRF inválido não modifica cookies nem expõe credenciais\", () => {",
+              "    pm.expect(cookie.length).to.eql(0);",
+              "    pm.expect(/\"(accessToken|refreshToken|password)\"\\s*:/.test(pm.response.text())).to.eql(false);",
+              "  });",
               "}"
             ]
           }

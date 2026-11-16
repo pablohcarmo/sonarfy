@@ -173,12 +173,15 @@ sessão afetada; as demais sessões são preservadas. Execute as migrations 003,
 A preferência `remember_me` é armazenada por sessão e preservada na rotação;
 o padrão é `false`. A validade continua em 30 dias por inatividade, sem prazo absoluto.
 Login aceita `rememberMe` e emite refresh em cookie HttpOnly; `POST /api/auth/refresh`
-rotaciona a sessão. Os dois endpoints exigem `X-Sonarfy-CSRF: 1` e o navegador deve
+rotaciona a sessão e `POST /api/auth/logout` a encerra com 204 e limpa o cookie.
+Os três endpoints exigem `X-Sonarfy-CSRF: 1` e o navegador deve
 enviar `credentials: "include"`. Em HTTP local, configurar explicitamente
 `AUTH_REFRESH_COOKIE_SECURE=false`; o padrão é `true`. Configurar origens exatas
 em `AUTH_ALLOWED_ORIGINS` (local: `http://localhost:63342,http://localhost:8080`).
 Veja [autenticação](docs/api/authentication.md) e [integração](docs/integrations/authentication.md).
-Logout HTTP e checkbox no frontend permanecem para as próximas entregas.
+Logout aceita token atual ou consumido e preserva outros dispositivos. O cliente deve
+descartar seu access token, que pode continuar válido por até 15 minutos.
+O checkbox e a integração do logout no frontend permanecem para próximas entregas.
 Troca e recuperação de senha revogam todas as sessões de refresh do usuário na
 mesma transação. Access tokens já emitidos continuam sujeitos à validade de 15 minutos.
 A CI exercita a rotação e a concorrência tanto em H2 quanto em PostgreSQL.

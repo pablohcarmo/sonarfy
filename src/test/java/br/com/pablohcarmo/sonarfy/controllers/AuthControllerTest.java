@@ -369,4 +369,23 @@ class AuthControllerTest {
 
         verifyNoInteractions(userService);
     }
+
+    // Falhas de infraestrutura devem escapar sem anunciar sucesso ou limpar o cookie.
+    @Test
+    void logoutPropagatesInfrastructureFailureWithoutClearingCookie() throws Exception {
+        var failure = new org.springframework.dao.DataAccessResourceFailureException("Database unavailable");
+        doThrow(failure).when(refreshTokens).revoke("test-token");
+        var response = new java.util.concurrent.atomic.AtomicReference<jakarta.servlet.http.HttpServletResponse>();
+        var mvc = MockMvcBuilders.standaloneSetup(authController).addFilters((request, result, chain) -> {
+            response.set((jakarta.servlet.http.HttpServletResponse) result);
+            chain.doFilter(request, result);
+        }).build();
+        var exception = org.junit.jupiter.api.Assertions.assertThrows(jakarta.servlet.ServletException.class,
+                () -> mvc.perform(post("/api/auth/logout")
+                        .cookie(new jakarta.servlet.http.Cookie("sonarfy_refresh", "test-token"))));
+        org.junit.jupiter.api.Assertions.assertSame(failure, exception.getCause());
+        org.junit.jupiter.api.Assertions.assertNull(response.get().getHeader("Set-Cookie"));
+        verify(refreshTokens).revoke("test-token");
+    }
+
 }

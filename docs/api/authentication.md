@@ -73,9 +73,9 @@ O propósito `access` distingue essa credencial dos tokens `email_confirmation`,
 
 ## Erros
 
-Login e refresh exigem `X-Sonarfy-CSRF: 1`, inclusive sem Origin. Ausência ou
+Login, refresh e logout exigem `X-Sonarfy-CSRF: 1`, inclusive sem Origin. Ausência ou
 valor incorreto, ou Origin presente fora da lista permitida, resultam em `403`,
-sem emitir/rotacionar tokens nem modificar cookies.
+sem emitir, rotacionar ou revogar tokens nem modificar cookies.
 
 | Situação | HTTP | Comportamento |
 | --- | --- | --- |
@@ -121,6 +121,7 @@ O `SecurityConfig` permite acesso sem login somente aos pares de método e camin
 | POST | `/api/auth/register` |
 | POST | `/api/auth/login` |
 | POST | `/api/auth/refresh` |
+| POST | `/api/auth/logout` |
 | POST | `/api/auth/resend-activation-email` |
 | POST | `/api/auth/forgot-password` |
 | POST | `/api/auth/reset-password` |
@@ -142,7 +143,7 @@ Em produção, configurar explicitamente as origens HTTPS. O caminho
 
 O cabeçalho CSRF obrigatório impede formulários simples; chamadas entre origens
 dependem do preflight restrito. SameSite e STATELESS não substituem essa proteção.
-O navegador deve usar `credentials: "include"` em login e refresh. Em HTTP local,
+O navegador deve usar `credentials: "include"` em login, refresh e logout. Em HTTP local,
 definir explicitamente `AUTH_REFRESH_COOKIE_SECURE=false`; o padrão é `true` e
 produção exige HTTPS. API e frontend devem estar no mesmo site; portas diferentes
 de localhost funcionam, mas não misture localhost e 127.0.0.1. Sites distintos
@@ -177,9 +178,9 @@ assinado com a chave configurada no contexto, evitando rejeições por chave div
 A camada interna armazena hashes e histórico por sessão de dispositivo.
 Reutilização encerra somente a sessão afetada; logout interno reconhece tokens
 consumidos. O resultado da renovação não retorna entidades JPA.
-Login emite refresh por cookie e `/refresh` rotaciona a sessão. `/logout` HTTP
-fica para a próxima entrega. A validade é de 30 dias por inatividade, sem prazo
-absoluto. Troca autenticada e recuperação de senha revogam todas as sessões
+Login emite refresh por cookie, `/refresh` rotaciona e `/logout` encerra a sessão.
+A validade é de 30 dias por inatividade, sem prazo absoluto. Troca autenticada
+e recuperação de senha revogam todas as sessões
 de refresh do usuário na mesma transação da atualização da senha.
 Access tokens existentes não são revogados por essa camada.
 
@@ -209,7 +210,7 @@ cookie anterior substituído no navegador. Login recusado não modifica o cookie
 
 `POST /api/auth/refresh`, sem corpo ou Bearer obrigatório. Enviar o cookie e
 `X-Sonarfy-CSRF: 1`. Um Bearer inválido/expirado eventualmente enviado é ignorado
-nesse endpoint e no POST de login. As outras rotas mantêm a validação existente.
+nesse endpoint e nos POSTs de login e logout. As outras rotas mantêm a validação existente.
 
 Sucesso: `200`, mesmo JSON do login, `Cache-Control: no-store` e cookie rotacionado
 com a preferência original. O token anterior fica consumido. Exemplo Bash:
@@ -233,7 +234,58 @@ podem encerrar a sessão. Veja o [guia de integração](../integrations/authenti
 rotação com Bearer inválido, uso do JWT renovado, limpeza no 401, replay com
 isolamento entre dispositivos e proteção CSRF antes de mutações.
 
-## Evidências desta entrega (11/11/2026)
+## Logout
+
+`POST /api/auth/logout`, sem corpo, recebe refresh exclusivamente pelo cookie
+`sonarfy_refresh`. Não exige access token; Bearer inválido ou expirado é ignorado.
+Exige `X-Sonarfy-CSRF: 1`; Origin presente deve estar autorizado, como no login/refresh.
+
+Retorna `204 No Content`, sem JSON, com `Cache-Control: no-store`. Limpa o cookie
+com valor vazio, `Max-Age=0`, `HttpOnly; SameSite=Strict; Path=/api/auth`, sem
+`Domain`, e `Secure` conforme a mesma configuração da emissão. Cookie ausente,
+vazio, desconhecido ou sessão já encerrada também recebem 204.
+
+Um token atual ou consumido revoga toda a sua sessão, incluindo sucessores,
+preservando outros dispositivos. O bloqueio compartilhado serializa logout e
+refresh: se o refresh vencer, seu sucessor será revogado; se logout vencer,
+o refresh será recusado. Não há mudança de schema ou migration adicional.
+
+CSRF inválido recebe 403 sem revogar a sessão nem modificar o cookie. Falhas de
+infraestrutura propagam erro (5xx), sem anunciar sucesso nem emitir exclusão do
+cookie pelo endpoint. Uma falha de rede não garante que a revogação não ocorreu;
+logout pode ser repetido por ser idempotente.
+
+O access token anterior pode continuar válido por até 15 minutos, sujeito à
+situação da conta. O cliente deve descartar sua cópia; não existe blacklist.
+Coordenar logout e refresh entre abas: uma resposta de refresh atrasada pode
+reescrever um cookie já revogado, incapaz de renovar a sessão.
+
+```bash
+curl -i -X POST 'http://localhost:8080/api/auth/logout' \
+  -H 'X-Sonarfy-CSRF: 1' -b cookies.txt -c cookies.txt
+```
+
+## Evidências do logout (16/11/2026)
+
+- `./mvnw.cmd test`: 504 testes reportados, zero falhas/erros e 29 ignorados.
+  Inclui cadeia real de segurança com JPA/H2 isolado, atributos de exclusão do
+  cookie, idempotência, CSRF/origem, preflight, Bearer expirado, token consumido,
+  isolamento entre dispositivos, métodos/caminhos indevidos e caminho codificado.
+  Os testes de serviço existentes exercitam concorrência entre logout e refresh.
+  Falha de infraestrutura é simulada no teste HTTP isolado do controller para
+  verificar propagação da exceção e ausência de Set-Cookie.
+- A coleção JSON versionada foi executada pelo Postman CLI contra API real local
+  em porta 18080, com H2 descartável, cadeia de segurança, serviços e JPA reais e
+  e-mail simulado: três requisições (login, refresh, logout), 11 asserções aprovadas,
+  código de saída 0. Execução com `--no-report-events`, sem exportar credenciais.
+- Validação manual no Postman confirmada pelo responsável: logout 204 com cookie
+  removido e no-store, refresh posterior 401 e logout repetido 204. Novo login
+  seguido de logout sem CSRF retornou 403 sem Set-Cookie; refresh posterior 200
+  confirmou que a sessão foi preservada.
+- Navegador e PostgreSQL não foram executados nesta entrega. As evidências abaixo
+  pertencem à entrega anterior. Nenhuma migration ou alteração no banco da aplicação.
+
+## Evidências anteriores (11/11/2026)
 
 - `./mvnw.cmd test`: 474 testes reportados, zero falhas/erros e 18 ignorados.
   H2 isolado; inclui proteção em caminhos codificados e configuração Secure.
