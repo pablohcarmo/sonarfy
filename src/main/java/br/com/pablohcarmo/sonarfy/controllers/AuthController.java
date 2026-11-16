@@ -59,6 +59,15 @@ public class AuthController {
         }
     }
 
+    // Confirma a revogação da sessão antes de apagar o cookie, inclusive para tokens consumidos.
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(
+            @CookieValue(name = "sonarfy_refresh", required = false) String token) {
+        refreshTokens.revoke(token);
+        return ResponseEntity.noContent().header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .header(HttpHeaders.SET_COOKIE, refreshCookie("", false, true)).build();
+    }
+
     // O refresh fica apenas no cookie; o JSON mantém o contrato de access token.
     private ResponseEntity<LoginResponseDto> tokenResponse(RotationDto session) {
         var response = new LoginResponseDto(jwtService.generateAccessToken(session.userId().toString()),

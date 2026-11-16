@@ -64,7 +64,7 @@ tokens ou cabeçalhos Cookie, Set-Cookie e Authorization. Postman não reproduz
 CORS/SameSite do navegador; validar ambos.
 
 A [coleção importável](../api/sonarfy-authentication.postman_collection.json)
-executa login e refresh em sequência. Preencher `baseUrl`,
+executa login, refresh e logout em sequência. Preencher `baseUrl`,
 `authLogin` e `authPassword` apenas no ambiente local do Postman e não exportar
 credenciais. O cookie jar deve estar habilitado. Em CLI local, usar
 `postman collection run docs/api/sonarfy-authentication.postman_collection.json`
@@ -96,5 +96,37 @@ senha. Ao concluir qualquer desses fluxos, descartar o access token local e
 exigir novo login. Outros dispositivos receberão 401 na próxima renovação,
 com limpeza do cookie. O cookie HttpOnly não precisa ser apagado por JavaScript.
 O checkbox e a coordenação de chamadas pertencem ao repositório do frontend.
-`/api/auth/logout` fica para a próxima entrega. Apagar apenas o access token não
-revoga a sessão no servidor.
+Apagar apenas o access token não revoga a sessão no servidor.
+
+## Logout no navegador
+
+```javascript
+const response = await fetch("http://localhost:8080/api/auth/logout", {
+  method: "POST",
+  credentials: "include",
+  headers: { "X-Sonarfy-CSRF": "1" }
+});
+if (response.status === 204) {
+  accessToken = null;
+}
+```
+
+Não chamar `response.json()` no 204. O refresh é enviado e removido pelo navegador.
+Token ausente, desconhecido ou sessão já encerrada também recebem 204. Um token
+consumido encerra seus sucessores; outros dispositivos permanecem conectados.
+Bearer expirado não bloqueia logout. Em 403, corrigir CSRF/origem: o servidor
+não revogou a sessão nem modificou o cookie. Em rede/5xx, não anunciar conclusão;
+a revogação pode ter ocorrido e é seguro repetir logout.
+
+Descartar o access token local ao concluir logout; a cópia anterior pode continuar
+válida por até 15 minutos. Coordenar logout e refresh entre chamadas/abas, usando
+o mesmo mecanismo de sincronização e notificando o encerramento aos demais
+contextos. Uma resposta de refresh atrasada pode gravar um cookie já revogado.
+
+Na coleção Postman, logout usa `authExpectedStatus` com padrão **204**, enquanto
+login/refresh mantêm 200. Remover overrides de cenários negativos antes de executar
+a sequência completa. Para logout, o cenário negativo de CSRF usa 403; 204 não
+interpreta JSON e valida corpo vazio, no-store e todos os atributos de exclusão,
+inclusive `authSecureCookie`. Somente após 204 esperado e recebido, o script
+remove `accessToken` e `authSessionRememberMe`. Em 403 não modifica essas variáveis
+nem aceita Set-Cookie. O cookie jar processa a exclusão.
