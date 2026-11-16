@@ -58,4 +58,4 @@ jobs:
           SONARFY_TEST_JDBC_URL: jdbc:postgresql://localhost:5432/sonarfy_ci
           SONARFY_TEST_DB_USER: sonarfy_ci
           SONARFY_TEST_DB_PASSWORD: isolated-ci-password
-        run: ./mvnw test -Dtest=ExistingSchemaIntegrationTest,RefreshTokenPostgresTest -Dsonarfy.test.existing-schema=true
+        run: ./mvnw test -Dtest=ExistingSchemaIntegrationTest,RefreshTokenPostgresTest,PasswordResetPostgresTest -Dsonarfy.test.existing-schema=true

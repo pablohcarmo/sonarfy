@@ -26,8 +26,10 @@ public class BearerAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        // Esta rota valida um Bearer de cadastro, não um token de acesso.
-        return "/api/auth/update-pending-email".equals(request.getServletPath());
+        // Cadastro valida seu Bearer no controller; login e refresh usam suas próprias credenciais.
+        String path = request.getRequestURI().substring(request.getContextPath().length());
+        return "/api/auth/update-pending-email".equals(path)
+                || AuthCsrfFilter.isSessionRequest(request);
     }
 
     @Override

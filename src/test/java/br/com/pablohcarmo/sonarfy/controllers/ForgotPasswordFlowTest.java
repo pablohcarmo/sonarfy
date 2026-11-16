@@ -75,9 +75,10 @@ class ForgotPasswordFlowTest {
 
 
         UserService userService = new UserService(userRepository, mock(PermissionRepository.class),
-                mock(PasswordEncoder.class), jwtService, authEmailService, mock(ApplicationEventPublisher.class));
+                mock(PasswordEncoder.class), jwtService, authEmailService, mock(ApplicationEventPublisher.class),
+                mock(br.com.pablohcarmo.sonarfy.services.RefreshTokenService.class));
         AuthController controller = new AuthController(userService, jwtService, authEmailService,
-                mock(AuthService.class));
+                mock(AuthService.class), mock(br.com.pablohcarmo.sonarfy.services.RefreshTokenService.class));
 
         validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();

@@ -46,6 +46,9 @@ class AuthControllerTest {
     @Mock
     private AuthService authService;
 
+    @Mock
+    private br.com.pablohcarmo.sonarfy.services.RefreshTokenService refreshTokens;
+
 
     @InjectMocks
     private AuthController authController;

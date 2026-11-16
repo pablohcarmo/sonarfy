@@ -1,7 +1,7 @@
 package br.com.pablohcarmo.sonarfy.services;
 
 import br.com.pablohcarmo.sonarfy.dto.LoginDto;
-import br.com.pablohcarmo.sonarfy.dto.LoginResponseDto;
+import br.com.pablohcarmo.sonarfy.dto.RotationDto;
 import br.com.pablohcarmo.sonarfy.entities.User;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import org.springframework.http.HttpStatus;
@@ -17,20 +17,21 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final String dummyPasswordHash;
-    private final JwtService jwtService;
+    private final RefreshTokenService refreshTokens;
 
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
-                       JwtService jwtService
+                       RefreshTokenService refreshTokens
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
-        this.jwtService = jwtService;
+        this.refreshTokens = refreshTokens;
         this.dummyPasswordHash =
                 passwordEncoder.encode("dummy-login-password");
     }
 
-    public LoginResponseDto login(LoginDto dto) {
+    // Valida as credenciais antes de criar uma sessão independente de dispositivo.
+    public RotationDto login(LoginDto dto) {
         String login = dto.getLogin().trim();
         String handle = login.startsWith("@") ? login.substring(1) : login;
 
@@ -54,13 +55,6 @@ public class AuthService {
             );
         }
 
-        String accessToken =
-                jwtService.generateAccessToken(user.getId().toString());
-
-        return new LoginResponseDto(
-                accessToken,
-                "Bearer",
-                JwtService.ACCESS_TOKEN_TTL_SECONDS
-        );
+        return new RotationDto(user.getId(), refreshTokens.issue(user, dto.isRememberMe()), dto.isRememberMe());
     }
 }

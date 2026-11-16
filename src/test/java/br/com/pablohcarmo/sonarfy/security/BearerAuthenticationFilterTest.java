@@ -47,6 +47,7 @@ class BearerAuthenticationFilterTest {
     @Test
     void pendingEmailKeepsRegistrationBearerForController() throws Exception {
         request.setServletPath("/api/auth/update-pending-email");
+        request.setRequestURI("/api/auth/update-pending-email");
         request.addHeader("Authorization", "Bearer registration-token");
         filter.doFilter(request, response, chain);
         verify(chain).doFilter(request, response);

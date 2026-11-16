@@ -45,7 +45,8 @@ em um banco novo inicializado com o schema consolidado atualizado.
 `false`. A rotação copia essa preferência para cada sucessor e a retorna no
 `RotationDto`, sem consultar uma escolha reenviada pelo cliente. Os dois valores
 mantêm 30 dias de validade por inatividade, sem prazo absoluto. O uso dessa
-preferência para cookies será implementado na entrega HTTP seguinte.
+preferência determina se o cookie HTTP emitido no login e refresh é persistente
+ou de sessão. O refresh permanece exclusivamente no cookie, não no JSON.
 
 Cada dispositivo possui uma família identificada por `session_id`. A rotação
 marca o hash anterior com `used_at` e cria um sucessor com validade de 30 dias
@@ -64,10 +65,19 @@ a revogação é confirmada antes da resposta 401, sem `noRollbackFor` genérico
 O resultado contém o ID do usuário, a preferência lembrar-me e o token bruto, ocultado no
 `toString()`. Não retorna entidades JPA.
 
+Troca e recuperação de senha usam o mesmo bloqueio pessimista na linha de usuário
+e revogam todas as suas sessões na transação que altera hash e data da senha.
+A revogação ocorre antes de modificar a entidade, pois `revokeAll` a recarrega
+sob bloqueio. Uma rotação que confirmar antes terá seu sucessor removido; uma
+que adquirir o bloqueio depois encontrará a sessão revogada. Rollback restaura
+senha e sessões. Não há alteração de schema nem migration adicional.
+`PasswordResetPostgresTest` repete os cenários de senha, revogação, rollback e
+concorrência no PostgreSQL importado, usando validação de schema, sem DDL automático.
+
 Hashes históricos devem permanecer enquanto a sessão puder ser renovada.
 O expurgo automático de famílias inteiramente expiradas segue pendente; apagar
 apenas registros consumidos perderia a detecção de reutilização. A política
-de cookies fica para a integração HTTP; esta entrega não impõe prazo absoluto.
+de cookies está descrita em [autenticação](api/authentication.md); não há prazo absoluto.
 
 ```powershell
 psql -h <host> -p <porta> -U <usuario> -d <banco> -v ON_ERROR_STOP=1 -f db/migrations/003_create_refresh_tokens.sql
@@ -142,6 +152,31 @@ Cada cenário usa transação com rollback. Usuários e logs de teste não perma
 no banco, mas sequências de IDs podem avançar, conforme o comportamento do PostgreSQL.
 
 ## Evidências anteriores
+
+### Revogação por senha em 16/11/2026
+
+- `./mvnw.cmd test`: 491 testes reportados, zero falhas/erros, 29 ignorados.
+- PostgreSQL 17.9 descartável, porta 55434, schema consolidado importado:
+  `ExistingSchemaIntegrationTest`, `RefreshTokenPostgresTest` e
+  `PasswordResetPostgresTest`: 39 testes reportados, zero falhas/erros e um
+  ignorado. O caso legado de cutoff nullable é exclusivo do H2, pois o schema
+  PostgreSQL exige `password_updated_at NOT NULL`; missing iat com cutoff
+  preenchido também foi validado no PostgreSQL.
+- Cobertura inclui troca e recuperação de senha, revogação de todos os
+  dispositivos e históricos, preservação de outro usuário, concorrência entre
+  senha e refresh, validação recusada e restauração de sessões por rollback.
+- Nenhuma migration ou alteração no banco da aplicação nesta correção.
+
+### Aplicação no banco local em 11/11/2026
+
+Após autorização, foram aplicadas as migrations 004 e 005, nessa ordem, no banco
+`sonarfy` do contêiner ativo `sonarfy_test_db` (PostgreSQL 17.9, porta local 5433).
+A inspeção prévia confirmou a migration 003 e a ausência das colunas novas.
+A tabela `refresh_tokens` estava vazia e permaneceu vazia; colunas, nulabilidade,
+default `remember_me=false` e índice de sessão foram conferidos após o commit.
+O backup anterior da tabela está em
+`target/db-backups/sonarfy-before-refresh-004-005-20261111.dump` (não versionado).
+Não foi executada suíte com criação/remoção de tabelas nesse banco.
 
 ### Preferência lembrar-me em 10/11/2026
 

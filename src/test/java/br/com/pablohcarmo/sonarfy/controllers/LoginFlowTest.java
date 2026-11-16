@@ -38,9 +38,11 @@ class LoginFlowTest {
         encoder = spy(new BCryptPasswordEncoder(4));
         JwtService jwt = new JwtService();
         ReflectionTestUtils.setField(jwt, "secretKey", SECRET);
-        AuthService auth = new AuthService(repository, encoder, jwt);
+        RefreshTokenService refreshTokens = mock(RefreshTokenService.class);
+        when(refreshTokens.issue(any(User.class), anyBoolean())).thenReturn("test-refresh");
+        AuthService auth = new AuthService(repository, encoder, refreshTokens);
         AuthController controller = new AuthController(mock(UserService.class), jwt,
-                mock(AuthEmailService.class), auth);
+                mock(AuthEmailService.class), auth, refreshTokens);
         validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
         mvc = MockMvcBuilders.standaloneSetup(controller).setValidator(validator).build();
