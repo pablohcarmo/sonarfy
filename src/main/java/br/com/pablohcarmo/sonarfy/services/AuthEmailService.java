@@ -116,6 +116,7 @@ public class AuthEmailService {
         return "Reset password email sent successfully! Please check your inbox.";
     }
 
+    // O fragmento será consumido pela tela de configurações, sem enviar o token ao servidor web.
     public String sendPasswordChangeEmail(User user, String changeToken) {
         if (!user.isVerified()) {
             throw new ResponseStatusException(
@@ -125,11 +126,14 @@ public class AuthEmailService {
 
         emailCooldownService.reserveOrThrow(user.getId(), user.getEmail(), true);
 
+        String frontendBase = frontendUrl.replaceAll("/+$", "");
+        String accountPath = frontendBase.endsWith("/pages") ? "/account.html" : "/pages/account.html";
+        String changeLink = frontendBase + accountPath + "#password-change-token=" + changeToken;
         String subject = "Autorização para troca de senha - Sonarfy";
         String body = "Olá, " + user.getName() + " " + user.getSurname() +
                 "\n\nRecebemos uma solicitação de troca de senha estando autenticado." +
-                "\nUse o token abaixo na tela de configurações da sua conta:" +
-                "\n\n" + changeToken +
+                "\nAcesse o link abaixo para trocar sua senha nas configurações da conta:" +
+                "\n\n" + changeLink +
                 "\n\nEste token é válido por 15 minutos e não pode ser usado para redefinir uma senha esquecida." +
                 " Se você não solicitou essa alteração, ignore este e-mail." +
                 "\n\nAtenciosamente,\nEquipe Sonarfy";
