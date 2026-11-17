@@ -369,9 +369,14 @@ class AuthEmailServiceTest {
         verify(userRepository, never()).save(any());
     }
 
-    @Test
-    void shouldSendDistinctPasswordChangeAuthorizationToken() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "http://localhost:3000", "http://localhost:3000/",
+            "http://localhost:3000/pages", "http://localhost:3000/pages/"
+    })
+    void shouldSendDistinctPasswordChangeAuthorizationToken(String frontendBase) {
         sampleUser.setVerified(true);
+        ReflectionTestUtils.setField(authEmailService, "frontendUrl", frontendBase);
 
         authEmailService.sendPasswordChangeEmail(sampleUser, "change-token");
 
@@ -380,7 +385,7 @@ class AuthEmailServiceTest {
         order.verify(emailService).sendEmail(
                 eq(sampleUser.getEmail()),
                 eq("Autorização para troca de senha - Sonarfy"),
-                argThat(body -> body.contains("change-token")
+                argThat(body -> body.contains("http://localhost:3000/pages/account.html#password-change-token=change-token")
                         && body.contains("não pode ser usado para redefinir uma senha esquecida")));
     }
 }

@@ -4,6 +4,8 @@ A tela de configurações usa os endpoints existentes, sem rota `/me/settings`.
 Este documento cobre a entrega 1; os contratos de troca de e-mail, Spotify e
 senha serão alinhados nas entregas seguintes. A [preparação da troca de e-mail](email-change.md)
 documenta solicitação e confirmação, com ativação controlada e integração frontend pendente.
+A [troca de senha](password-change.md) descreve o contrato do botão de envio e o
+consumo futuro do link autenticado.
 
 1. Consultar `GET /api/users/me` com Bearer `access` para carregar os valores.
 2. Enviar `PUT /api/users/me` com os seis campos: `name`, `surname`, `handle`,

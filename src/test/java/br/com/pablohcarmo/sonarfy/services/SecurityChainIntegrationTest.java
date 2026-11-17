@@ -435,4 +435,166 @@ class SecurityChainIntegrationTest {
                 .andExpect(header().string("Access-Control-Allow-Credentials", "true"));
     }
 
+
+    // A identidade permanece por ID e o destinatario acompanha o email persistido atual.
+    @Test
+    void passwordRequestUsesCurrentEmailAndEnforcesCooldown() throws Exception {
+        String access = jwt.generateAccessToken(user.getId().toString());
+        user.setEmail("changed@example.com");
+        users.saveAndFlush(user);
+        String token = requestPasswordLink(access, "changed@example.com");
+        assertEquals(user.getId().toString(), jwt.validatePasswordChangeTokenAndGetUserId(token));
+        assertNull(jwt.validatePasswordResetTokenAndGetUserId(token));
+        var decoded = JWT.decode(token);
+        assertEquals(900, decoded.getExpiresAtAsInstant().getEpochSecond()
+                - decoded.getIssuedAtAsInstant().getEpochSecond());
+        mvc.perform(post("/api/users/me/password-change-request").header("Authorization", "Bearer " + access))
+                .andExpect(status().isTooManyRequests()).andExpect(header().doesNotExist("Retry-After"));
+        verify(transport, times(1)).sendEmail(anyString(), anyString(), anyString());
+    }
+
+    // As duas rotas exigem acesso valido e rejeitam tokens de operacao usados como Bearer.
+    @ParameterizedTest
+    @ValueSource(strings = {"missing", "invalid", "password_change", "password_reset", "inactive", "unverified"})
+    void passwordEndpointsRequireEligibleAccess(String scenario) throws Exception {
+        String bearer = switch (scenario) {
+            case "password_change" -> jwt.generatePasswordChangeToken(user.getId().toString());
+            case "password_reset" -> jwt.generatePasswordResetToken(user.getId().toString());
+            case "invalid" -> "invalid";
+            default -> jwt.generateAccessToken(user.getId().toString());
+        };
+        if (scenario.equals("inactive")) user.setActive(false);
+        if (scenario.equals("unverified")) user.setVerified(false);
+        users.saveAndFlush(user);
+        for (String path : java.util.List.of("/api/users/me/password-change-request", "/api/users/me/password")) {
+            var request = request(path.endsWith("request") ? HttpMethod.POST : HttpMethod.PUT, path);
+            if (!scenario.equals("missing")) request.header("Authorization", "Bearer " + bearer);
+            mvc.perform(request).andExpect(status().isUnauthorized());
+        }
+        verifyNoInteractions(transport);
+    }
+
+    // Falha conhecida do transporte mantem a reserva persistida.
+    @Test
+    void passwordEmailFailurePreservesCooldown() throws Exception {
+        String access = jwt.generateAccessToken(user.getId().toString());
+        doThrow(new br.com.pablohcarmo.sonarfy.exceptions.EmailDeliveryException("Delivery failed", null))
+                .when(transport).sendEmail(anyString(), anyString(), anyString());
+        var failure = assertThrows(jakarta.servlet.ServletException.class,
+                () -> mvc.perform(post("/api/users/me/password-change-request")
+                        .header("Authorization", "Bearer " + access)));
+        assertInstanceOf(br.com.pablohcarmo.sonarfy.exceptions.EmailDeliveryException.class, failure.getCause());
+        mvc.perform(post("/api/users/me/password-change-request").header("Authorization", "Bearer " + access))
+                .andExpect(status().isTooManyRequests());
+        verify(transport, times(1)).sendEmail(anyString(), anyString(), anyString());
+    }
+
+    // Erros HTTP preservam senha, sessoes e autorizacao para uma tentativa valida.
+    @ParameterizedTest
+    @ValueSource(strings = {"missing-current", "wrong-current", "mismatch", "same", "short",
+            "reset-purpose", "other-user", "expired"})
+    void passwordValidationDoesNotConsumeAuthorization(String scenario) throws Exception {
+        String access = jwt.generateAccessToken(user.getId().toString());
+        String token = requestPasswordLink(access, user.getEmail());
+        String originalHash = users.findById(user.getId()).orElseThrow().getPassword();
+        String refresh = context.getBean(RefreshTokenService.class).issue(user);
+        String supplied = switch (scenario) {
+            case "reset-purpose" -> jwt.generatePasswordResetToken(user.getId().toString());
+            case "other-user" -> jwt.generatePasswordChangeToken(otherPasswordUser().getId().toString());
+            case "expired" -> JWT.create().withIssuer("sonarfy-api").withSubject(user.getId().toString())
+                    .withClaim("purpose", "password_change").withIssuedAt(Instant.now().minusSeconds(1000))
+                    .withExpiresAt(Instant.now().minusSeconds(100)).sign(Algorithm.HMAC256(signingKey));
+            default -> token;
+        };
+        String current = scenario.equals("missing-current") ? null
+                : scenario.equals("wrong-current") ? "Wrong123!" : "Correct123!";
+        String next = scenario.equals("same") ? "Correct123!" : scenario.equals("short") ? "short" : "Changed123!";
+        String confirmation = scenario.equals("mismatch") ? "Mismatch123!" : next;
+        mvc.perform(put("/api/users/me/password").header("Authorization", "Bearer " + access)
+                        .contentType(MediaType.APPLICATION_JSON).content(passwordBody(supplied, current, next, confirmation)))
+                .andExpect(scenario.equals("other-user") ? status().isForbidden() : status().isBadRequest());
+        assertEquals(originalHash, users.findById(user.getId()).orElseThrow().getPassword());
+        assertNotNull(context.getBean(RefreshTokenService.class).rotate(refresh));
+        mvc.perform(put("/api/users/me/password").header("Authorization", "Bearer " + access)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(passwordBody(token, "Correct123!", "Changed123!", "Changed123!")))
+                .andExpect(status().isOk());
+    }
+
+    // Sucesso rejeita replay e revoga todos os refresh, mantendo o prazo do access.
+    @Test
+    void passwordChangeRevokesSessionsAndRejectsReplayAndPublicReuse() throws Exception {
+        String access = jwt.generateAccessToken(user.getId().toString());
+        String token = requestPasswordLink(access, user.getEmail());
+        var sessions = context.getBean(RefreshTokenService.class);
+        String original = sessions.issue(user);
+        String successor = sessions.rotate(original).refreshToken();
+        String device = sessions.issue(user);
+        String body = passwordBody(token, "Correct123!", "Changed123!", "Changed123!");
+        mvc.perform(post("/api/auth/reset-password").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest());
+        mvc.perform(put("/api/users/me/password").header("Authorization", "Bearer " + access)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(content().string("Password updated successfully."));
+        assertTrue(encoder.matches("Changed123!", users.findById(user.getId()).orElseThrow().getPassword()));
+        mvc.perform(put("/api/users/me/password").header("Authorization", "Bearer " + access)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(passwordBody(token, "Changed123!", "Another123!", "Another123!")))
+                .andExpect(status().isBadRequest());
+        for (String refresh : java.util.List.of(original, successor, device)) {
+            mvc.perform(post("/api/auth/refresh").cookie(new jakarta.servlet.http.Cookie("sonarfy_refresh", refresh)))
+                    .andExpect(status().isUnauthorized());
+        }
+        mvc.perform(get("/api/users/me").header("Authorization", "Bearer " + access)).andExpect(status().isOk());
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"login\":\"user@example.com\",\"password\":\"Changed123!\"}"))
+                .andExpect(status().isOk());
+    }
+
+    // Extrai o fragmento em memoria sem imprimir o link ou o token.
+    private String requestPasswordLink(String access, String recipient) throws Exception {
+        // A conta existe antes da emissão; evita o corte temporal no mesmo segundo do cadastro.
+        new JdbcTemplate(dataSource).update("UPDATE users SET password_updated_at = ? WHERE user_id = ?",
+                java.time.OffsetDateTime.now().minusMinutes(1), user.getId());
+        mvc.perform(post("/api/users/me/password-change-request").header("Authorization", "Bearer " + access))
+                .andExpect(status().isOk()).andExpect(content().string(
+                        "Password change authorization email sent successfully. Please check your inbox."));
+        var body = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(transport).sendEmail(anyString(), anyString(), body.capture());
+        assertTrue(org.mockito.Mockito.mockingDetails(transport).getInvocations().stream()
+                .filter(i -> i.getMethod().getName().equals("sendEmail"))
+                .allMatch(i -> recipient.equals(i.getArgument(0))), "Email must use the current recipient");
+        String marker = "http://localhost:3000/pages/account.html#password-change-token=";
+        String message = body.getValue();
+        assertTrue(message.contains(marker), "Email must contain the account authorization link");
+        return message.substring(message.indexOf(marker) + marker.length()).split("\\s")[0];
+    }
+
+    // Monta o JSON sem expor valores nas mensagens de teste.
+    private String passwordBody(String token, String current, String next, String confirmation) throws Exception {
+        var fields = new java.util.LinkedHashMap<String, String>();
+        fields.put("token", token);
+        if (current != null) fields.put("currentPassword", current);
+        fields.put("newPassword", next);
+        fields.put("confirmNewPassword", confirmation);
+        return new ObjectMapper().writeValueAsString(fields);
+    }
+
+    // Outra identidade persistida permite verificar o 403 apos validar o token.
+    private User otherPasswordUser() {
+        User other = new User();
+        other.setHandle("other-password");
+        other.setEmail("other@example.com");
+        other.setName("Other");
+        other.setSurname("User");
+        other.setDisplayName("Other User");
+        other.setPassword(encoder.encode("Other123!"));
+        other.setVerified(true);
+        other.setPermission(user.getPermission());
+        other = users.saveAndFlush(other);
+        new JdbcTemplate(dataSource).update("UPDATE users SET password_updated_at = ? WHERE user_id = ?",
+                java.time.OffsetDateTime.now().minusMinutes(1), other.getId());
+        return other;
+    }
+
 }

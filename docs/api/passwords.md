@@ -86,8 +86,28 @@ O token enviado possui finalidade `password_change`, distinta de
 
 Sucesso: HTTP 200, texto `Password change authorization email sent successfully. Please check your inbox.`
 Essa mensagem indica que o transporte não reportou erro, não comprova entrega.
-Conta não verificada retorna 403; cooldown retorna 429. Diferentemente da solicitação
-pública, falhas de entrega não são ocultadas por uma resposta genérica neste fluxo.
+Sem Bearer válido, ou com conta inativa/não verificada, a cadeia HTTP retorna 401.
+Cooldown retorna 429, sem `Retry-After` ou prazo restante no corpo. A configuração
+`app.email.cooldown-seconds` tem padrão de 30 segundos e a reserva é compartilhada
+com ativação e recuperação; falha SMTP não libera essa reserva. Falhas conhecidas
+de entrega propagam como erro de servidor (500 no tratamento padrão), sem formato
+contratual de erro estável. Não interpretar esse erro como confirmação de entrega.
+
+O e-mail textual existente contém o link:
+
+```text
+{app.frontend-url}/pages/account.html#password-change-token=TOKEN_DE_AUTORIZACAO
+```
+
+Barras finais da base são removidas antes de compor o caminho. Se a base já termina
+em `/pages`, acrescenta-se somente `/account.html`, evitando `/pages/pages/`.
+O fragmento não é
+enviado ao servidor web na navegação. O futuro consumidor deve extraí-lo em memória,
+limpar a URL e usá-lo apenas no JSON do PUT autenticado; não usar esse token como
+Bearer nem encaminhá-lo para `/api/auth/reset-password`. A leitura do fragmento e
+conclusão pela tela ainda dependem da próxima etapa do frontend.
+O link não altera a senha automaticamente e não substitui o login.
+Consulte o [guia de integração](../integrations/password-change.md).
 
 ## Trocar senha estando autenticado
 
@@ -118,7 +138,7 @@ O `SecurityConfig` libera somente os métodos e caminhos públicos listados no
 [contrato de autenticação](authentication.md) e exige autenticação nas demais
 requisições, com sessões stateless. Faça login e envie o JWT de acesso como
 `Authorization: Bearer <accessToken>` nas requisições autenticadas.
-O filtro estabelece o principal com o e-mail da conta ativa e verificada.
+O filtro identifica pelo ID imutável do token de acesso e carrega a conta ativa e verificada.
 Veja o [contrato de autenticação](authentication.md).
 
 O token no JSON autoriza a alteração da senha, mas não autentica a requisição HTTP.
@@ -160,8 +180,9 @@ para cada endpoint.
 | Mesmo token reutilizado ou disputado | No máximo uma alteração | PasswordResetIntegrationTest |
 
 A ausência isolada de `currentPassword` decorre de `@NotBlank`; o teste atual de
-DTO inválido do controller combina mais de um campo inválido. Não interpretar essa
-cobertura como um teste HTTP isolado de cada campo.
+DTO inválido do controller combina mais de um campo inválido. A cobertura HTTP em
+`SecurityChainIntegrationTest` verifica separadamente a ausência de `currentPassword`,
+além de senha atual incorreta, confirmação divergente, senha repetida e curta.
 
 Os testes de serviço e integração confirmam as regras de negócio; a validação
 Bean Validation ocorre na entrada HTTP. Consulte o README para executar a suíte.
@@ -186,3 +207,15 @@ não são afetados. Access tokens já emitidos podem continuar válidos por até
 15 minutos. O cliente deve descartar credenciais locais e fazer novo login.
 O fluxo síncrono pode revelar diferenças de duração nas respostas.
 
+
+## Cobertura da preparação do link autenticado
+
+`SecurityChainIntegrationTest` cobre solicitação e conclusão com controllers,
+segurança, serviços, JWT e JPA reais em H2 isolado. Apenas o transporte de e-mail
+é simulado. Confere destinatário após atualização persistida do e-mail com o mesmo
+ID, link no fragmento, validade de 900 segundos, cooldown, falha de envio mantendo
+reserva, rejeição de Bearer inadequado, propósitos separados, validações de senha,
+replay, revogação dos refresh e login com a nova senha. A atualização do e-mail
+no preparo do teste não executa o fluxo de confirmação de troca de endereço.
+A cobertura de concorrência e rollback existente permanece em
+`PasswordResetIntegrationTest`; não equivale a uma corrida HTTP nova.
