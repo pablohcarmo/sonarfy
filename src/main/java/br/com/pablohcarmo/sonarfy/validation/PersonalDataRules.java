@@ -2,6 +2,7 @@ package br.com.pablohcarmo.sonarfy.validation;
 
 import java.time.LocalDate;
 import java.time.Period;
+import java.util.Locale;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -11,6 +12,11 @@ public final class PersonalDataRules {
     public static final String LOCATION = "^[a-zA-ZÀ-ÿ\\s.'-]+$";
 
     private PersonalDataRules() {}
+
+    // Cadastro e edição usam a mesma representação, independente do idioma do servidor.
+    public static String normalizeHandle(String handle) {
+        return handle == null ? null : handle.toLowerCase(Locale.ROOT);
+    }
 
     // Cadastro e edição exigem pelo menos 13 anos completos.
     public static void validateBirthDate(LocalDate birthDate) {

@@ -18,6 +18,58 @@ consumo futuro do link autenticado.
    [autenticação](authentication.md); se a renovação falhar, solicitar login.
    A edição em si não revoga sessões.
 
+## Edição do handle
+
+O username é editável e segue o mesmo formato do cadastro: de 1 a 15 caracteres,
+com letras ASCII, números, `_`, `-` e `.`. Não enviar prefixo `@`, espaços ou acentos.
+Cadastro e edição convertem letras para minúsculas antes de consultar unicidade e
+salvar; o PUT retorna o valor canônico, que deve substituir o valor local do campo.
+Exemplo: `Maria.Silva-9` é salvo e retornado como `maria.silva-9`.
+
+É possível manter o próprio handle, inclusive enviando outra caixa. Outra conta
+com o mesmo valor sem diferenciar maiúsculas/minúsculas causa `409`, sem atualização
+parcial dos demais campos. Formato inválido causa `400`. ID, e-mail, senha e sessões
+permanecem os mesmos. Login aceita a nova identificação; o handle anterior deixa
+de identificar a conta quando o valor é alterado além da caixa.
+
+A alteração não migra handles existentes em lote. Não há endpoint novo nem migration.
+A localização e a revisão da data de nascimento pertencem às próximas entregas.
+
+### Evidências da normalização do handle — 17/11/2026
+
+- Suíte imediatamente após criar a branch: 578 reportados, zero falhas/erros e
+  57 ignorados (`.\mvnw.cmd test`).
+- Testes direcionados (`PersonalDataIntegrationTest,UserServiceTest`): 75 reportados,
+  zero falhas/erros e um ignorado.
+- Suíte completa final: 595 reportados, zero falhas/erros e 57 ignorados.
+- Cobertura HTTP com segurança, serviços e JPA reais sobre H2 isolado: normalização
+  no cadastro e edição, manutenção do próprio handle, caracteres permitidos e limite
+  de 15, rejeição atômica de entradas inválidas, conflito sem diferenciar caixa,
+  login com o handle atualizado e preservação de access e refresh existentes.
+- Transporte de e-mail simulado. Sem envio SMTP real, execução manual no Postman,
+  validação no navegador ou execução PostgreSQL nesta entrega. O teste concorrente
+  PostgreSQL existente permanece opt-in e foi ignorado; nenhuma migration foi aplicada.
+- Coleção JSON analisada sintaticamente; exemplo em caixa mista mantém a asserção
+  de resposta em minúsculas. Código e testes somam 87 linhas alteradas.
+- `UpdateUserDto` já é um record. Nenhum DTO precisou ser alterado para compartilhar
+  a normalização no serviço. Contratos JSON e demais regras cadastrais preservados.
+
+### Validação manual do handle relatada pelo usuário
+
+- Entrada com 16 caracteres: 400; manutenção do próprio handle: 200.
+- Prefixo `@` e espaços: 400; letras, números, hífen, underscore e ponto: 200.
+- Handle ocupado por outra conta: 409.
+- Consulta confirmou persistência em minúsculas após edição em caixa mista.
+- Login com o novo handle em minúsculas e maiúsculas: 200; handle anterior: 401.
+- Login seguido de edição do handle e refresh da sessão: 200. Nova edição
+  autenticada após o refresh também retornou 200.
+- Consultas com o access token anterior à edição e com o emitido após o refresh:
+  ambas retornaram 200, confirmando a preservação do acesso pelo ID imutável.
+
+Resultados executados manualmente pelo usuário no Postman. Tokens, senhas e
+identificadores da conta de teste foram omitidos deste registro. Cadastro em caixa
+mista e seus conflitos foram cobertos automaticamente, sem validação manual relatada.
+
 Nome/sobrenome são independentes do nome de exibição do perfil (`displayName`).
 O cadastro gera seu valor inicial; a atualização de dados pessoais o preserva.
 Não enviar `displayName` no PUT. Sua edição pertence à página de perfil e fica

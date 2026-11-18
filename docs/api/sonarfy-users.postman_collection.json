@@ -49,7 +49,7 @@
       ]
     },
     {
-      "name": "Replace six personal fields",
+      "name": "Replace personal fields and normalize handle",
       "request": {
         "method": "PUT",
         "url": "{{baseUrl}}/api/users/me",
@@ -61,13 +61,14 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\",\n  \"birthDate\": \"2000-05-15\"\n}",
+          "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"Maria.Silva\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\",\n  \"birthDate\": \"2000-05-15\"\n}",
           "options": {
             "raw": {
               "language": "json"
             }
           }
-        }
+        },
+        "description": "PUT completo com handle em caixa mista: resposta e persistência em minúsculas. Formato do cadastro: 1–15 caracteres ASCII, números, _, - e ponto; sem @ ou espaços. Outra conta com o mesmo handle sem diferenciar caixa retorna 409. Atualiza os dados da conta de teste; não executar em conta real."
       },
       "event": [
         {
