@@ -108,6 +108,17 @@ permanece igual, inclusive `active` e `profilePicture`.
 | `city`, `country` | Padrão de localização do cadastro: letras, espaços, apóstrofos, hífens e pontos; até 100 caracteres cada |
 | `birthDate` | Data ISO `YYYY-MM-DD` no passado, com pelo menos 13 anos completos na data atual do servidor |
 
+`birthDate` deve ser uma string com uma data de calendário válida, com mês e dia
+de dois dígitos. Não enviar horário, fuso, timestamp numérico ou array. Por exemplo,
+`2000-02-29` é válido; `2001-02-29`, `2000-02-30`, `31/12/2000` e
+`2000-01-01T00:00:00` retornam `400`. A mesma leitura estrita vale no cadastro.
+
+Quem completa 13 anos na data atual do servidor já é elegível; quem só completa
+amanhã ainda recebe `400`. Para nascidos em 29/02, o cálculo existente de anos
+completos atinge a idade em 01/03 nos anos não bissextos. Não há idade máxima
+adicional nesta entrega. Omissão, `null`, vazio, data de hoje ou futura são rejeitados.
+Uma recusa preserva os demais dados e sessões.
+
 Cadastro e edição convertem letras para minúsculas usando `Locale.ROOT` antes de
 consultar a unicidade e persistir. A resposta do PUT e consultas posteriores retornam
 essa representação: `Maria.Silva-9` resulta em `maria.silva-9`. Os caracteres

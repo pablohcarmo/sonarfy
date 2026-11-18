@@ -1,5 +1,7 @@
 package br.com.pablohcarmo.sonarfy.dto;
 
+import br.com.pablohcarmo.sonarfy.validation.BirthDateDeserializer;
+import tools.jackson.databind.annotation.JsonDeserialize;
 import jakarta.validation.constraints.*;
 import br.com.pablohcarmo.sonarfy.validation.PersonalDataRules;
 
@@ -45,6 +47,7 @@ public class NewUserDto {
 
     @NotNull(message = "Birth date is required")
     @Past(message = "Birth date must be in the past")
+    @JsonDeserialize(using = BirthDateDeserializer.class)
     private LocalDate birthDate;
 
     public NewUserDto() {
