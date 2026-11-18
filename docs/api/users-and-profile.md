@@ -119,7 +119,14 @@ completos atinge a idade em 01/03 nos anos não bissextos. Não há idade máxim
 adicional nesta entrega. Omissão, `null`, vazio, data de hoje ou futura são rejeitados.
 Uma recusa preserva os demais dados e sessões.
 
-É permitido manter o próprio handle ou alterar apenas sua caixa. Um handle ocupado
+Cadastro e edição convertem letras para minúsculas usando `Locale.ROOT` antes de
+consultar a unicidade e persistir. A resposta do PUT e consultas posteriores retornam
+essa representação: `Maria.Silva-9` resulta em `maria.silva-9`. Os caracteres
+permitidos e o limite de 15 permanecem iguais aos do cadastro; espaços, prefixo
+`@`, acentos, barras e outros símbolos são rejeitados com `400`, sem correção silenciosa.
+Handles antigos não são regravados em lote; passam à forma minúscula quando editados.
+
+É permitido manter o próprio handle ou enviar apenas uma variação de caixa. Um handle ocupado
 por outra conta recebe `409`, sem distinção entre maiúsculas e minúsculas.
 A transação e o índice PostgreSQL `uk_users_handle_ci` protegem também contra
 colisões concorrentes; somente a violação desse índice com SQLSTATE `23505` é
