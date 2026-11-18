@@ -81,8 +81,9 @@ Segurança, controllers, serviços, cliente HTTP e JPA são reais. Somente o Geo
 - Dados do GeoNames exigem atribuição; preservar a referência ao integrar a UI.
 
 A simulação valida o consumidor HTTP e seus resultados; não comprova disponibilidade,
-quota ou conteúdo atual do GeoNames real. Não houve validação de navegador,
-SMTP real, PostgreSQL, CI remoto ou migrations nesta entrega.
+quota ou conteúdo atual do GeoNames real. Não houve validação de navegador ou
+SMTP real. PostgreSQL e o diagnóstico do CI estão registrados na revisão abaixo;
+nenhuma migration foi aplicada no banco da aplicação.
 
 O diff supera o alvo aproximado de 300 linhas por incluir a substituição do DTO
 mutável de cadastro por record, integração HTTP, adaptação dos testes existentes,
@@ -122,7 +123,8 @@ os fluxos com regras diferentes ou sem cobertura das falhas externas.
 - Revisão final antes do push: links locais e coleções JSON conferidos, incluindo
   corpos com placeholders. Suíte completa com simulação repetida: 641 reportados,
   zero falhas/erros e 57 ignorados. O diff final de código, testes, mock e
-  configurações executáveis soma 608 linhas alteradas, sem os artefatos documentais.
+  configurações executáveis somava 608 linhas alteradas no primeiro push, sem os
+  artefatos documentais.
 
 ## Validação manual relatada pelo usuário — 18/11/2026
 
@@ -139,3 +141,25 @@ Essas verificações reais foram executadas pelo usuário, separadamente dos tes
 automatizados com simulação. Cadastro de conta nova com `cityId` ainda não teve
 validação manual relatada. Dados pessoais, credenciais e identificadores de conta
 foram omitidos deste registro.
+
+## Correção do teste PostgreSQL no CI — 18/11/2026
+
+Os logs de CI fornecidos pelo usuário mostraram a suíte padrão aprovada (630
+reportados, zero falhas/erros e 65 ignorados) e duas falhas na etapa PostgreSQL:
+`ExistingSchemaIntegrationTest.registrationLoginAndAccessLogWorkWithImportedSchema`
+esperava 201, mas ainda enviava `city`/`country` sem o `cityId` obrigatório e recebia
+400. O payload de teste foi atualizado e passou a conferir também os nomes derivados.
+Não foi necessária mudança no código de produção ou no schema.
+
+Reprodução local em PostgreSQL 17.9 descartável separado, com `db/tables.sql`:
+
+```powershell
+.\mvnw.cmd test '-Dtest=ExistingSchemaIntegrationTest,RefreshTokenPostgresTest,PasswordResetPostgresTest' '-Dsonarfy.test.existing-schema=true'
+```
+
+Resultado: 39 reportados, zero falhas/erros e um ignorado. O provedor GeoNames e o
+transporte de e-mail são simulados nesses testes de persistência. O contêiner foi
+encerrado após a execução; o banco da aplicação não foi acessado. O CI remoto
+ainda precisa executar a correção. O ajuste acrescenta quatro linhas alteradas
+de teste (adições + remoções), totalizando 612 linhas no diff de código e testes
+com a simulação executável.
