@@ -48,6 +48,11 @@ public class AuthSpotifyService {
         this.redirectUri = redirectUri;
     }
 
+    // Reutiliza cliente e autenticação, distinguindo a revogação confirmada.
+    public SpotifyTokenResponseDto refresh(String refreshToken) {
+        return requestTokens(Map.of("grant_type", "refresh_token", "refresh_token", refreshToken), true);
+    }
+
     public SpotifyTokenResponseDto exchangeCode(String code) {
         if (code == null || code.isBlank()) {
             throw new ResponseStatusException(
@@ -56,21 +61,20 @@ public class AuthSpotifyService {
             );
         }
 
-        // Cabeçalho de autenticação usando as credenciais do Sonarfy.
+        return requestTokens(Map.of("grant_type", "authorization_code", "code", code,
+                "redirect_uri", redirectUri), false);
+    }
+
+    private SpotifyTokenResponseDto requestTokens(Map<String, String> form, boolean refresh) {
         var headers = new HttpHeaders();
         headers.setBasicAuth(clientId, clientSecret);
-
-        Map<String, String> form = Map.of(
-                "grant_type", "authorization_code",
-                "code", code,
-                "redirect_uri", redirectUri
-        );
 
         // Solicita ao Spotify a troca do código de autorização por token
         try {
             return spotifyTokenClient.exchangeCode(
                     headers.getFirst(HttpHeaders.AUTHORIZATION), form);
         } catch (FeignException e) {
+            if (refresh && e.status() == 400 && isInvalidGrant(e)) throw new AuthorizationRevoked();
             // Retry-After pode gerar RetryableException até para 4xx: o status tem prioridade.
             if (e.status() >= 400) {
                 boolean rejected = e.status() < 500 && e.status() != 429;
@@ -85,6 +89,21 @@ public class AuthSpotifyService {
                 }
             }
             throw new SpotifyIntegrationException(Category.UNAVAILABLE);
+        }
+    }
+
+    static final class AuthorizationRevoked extends RuntimeException {
+        AuthorizationRevoked() { super("Spotify reauthorization required."); }
+    }
+
+    // Examina somente o código OAuth, sem propagar corpo ou causa externa.
+    private static boolean isInvalidGrant(FeignException exception) {
+        try {
+            var body = tools.jackson.databind.json.JsonMapper.builder().build()
+                    .readTree(exception.contentUTF8());
+            return body != null && "invalid_grant".equals(body.path("error").asText());
+        } catch (RuntimeException ignored) {
+            return false;
         }
     }
 

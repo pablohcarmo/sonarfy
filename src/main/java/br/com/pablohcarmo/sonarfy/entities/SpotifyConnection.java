@@ -1,6 +1,7 @@
 package br.com.pablohcarmo.sonarfy.entities;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreType;
+import br.com.pablohcarmo.sonarfy.enums.SpotifyConnectionStatus;
 import jakarta.persistence.*;
 import java.time.OffsetDateTime;
 
@@ -17,9 +18,9 @@ public class SpotifyConnection {
     @JoinColumn(name = "user_id", nullable = false, unique = true)
     private User user;
 
-    @Column(name = "access_token_encrypted", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "access_token_encrypted", columnDefinition = "TEXT")
     private String accessTokenEncrypted;
-    @Column(name = "refresh_token_encrypted", nullable = false, columnDefinition = "TEXT")
+    @Column(name = "refresh_token_encrypted", columnDefinition = "TEXT")
     private String refreshTokenEncrypted;
     @Column(name = "token_type", nullable = false)
     private String tokenType;
@@ -32,6 +33,10 @@ public class SpotifyConnection {
     @Column(name = "connected_at", nullable = false, updatable = false)
     private OffsetDateTime connectedAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 32)
+    private SpotifyConnectionStatus status = SpotifyConnectionStatus.CONNECTED;
+
     protected SpotifyConnection() {}
 
     public SpotifyConnection(User user, OffsetDateTime connectedAt) {
@@ -42,6 +47,7 @@ public class SpotifyConnection {
     public void updateTokens(String accessTokenEncrypted, String refreshTokenEncrypted,
                              String tokenType, String scopes, OffsetDateTime expiresAt,
                              OffsetDateTime updatedAt) {
+        this.status = SpotifyConnectionStatus.CONNECTED;
         this.accessTokenEncrypted = accessTokenEncrypted;
         this.refreshTokenEncrypted = refreshTokenEncrypted;
         this.tokenType = tokenType;
@@ -56,6 +62,15 @@ public class SpotifyConnection {
         this.refreshTokenEncrypted = refreshTokenEncrypted;
     }
 
+    // Descarta credenciais rejeitadas e conserva a identidade da conexão para reconectar.
+    public void requireReauthorization() {
+        status = SpotifyConnectionStatus.REAUTHORIZATION_REQUIRED;
+        accessTokenEncrypted = null;
+        refreshTokenEncrypted = null;
+        updatedAt = OffsetDateTime.now(java.time.ZoneOffset.UTC);
+    }
+
+    public SpotifyConnectionStatus getStatus() { return status; }
     public Long getId() { return id; }
     public User getUser() { return user; }
     public String getAccessTokenEncrypted() { return accessTokenEncrypted; }

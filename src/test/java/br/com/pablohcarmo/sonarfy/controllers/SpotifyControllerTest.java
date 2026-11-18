@@ -346,11 +346,12 @@ class SpotifyControllerTest {
         verifyNoInteractions(connections, tokens);
     }
 
-    @Test
-    void connectionReturnsOnlyPublicFieldsForAuthenticatedUserIgnoringSuppliedId() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = SpotifyConnectionStatus.class, names = {"CONNECTED", "REAUTHORIZATION_REQUIRED"})
+    void connectionReturnsOnlyPublicFieldsForAuthenticatedUserIgnoringSuppliedId(SpotifyConnectionStatus connectionStatus) throws Exception {
         var connectedAt = OffsetDateTime.parse("2026-11-01T12:00:00Z");
         when(connections.getConnection(42L)).thenReturn(
-                new SpotifyConnectionResponseDto(SpotifyConnectionStatus.CONNECTED, connectedAt));
+                new SpotifyConnectionResponseDto(connectionStatus, connectedAt));
 
         var result = mvc.perform(get("/api/spotify/connection")
                         .header("Authorization", "Bearer " + jwt.generateAccessToken("42"))
@@ -358,7 +359,7 @@ class SpotifyControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.status").value("CONNECTED"))
+                .andExpect(jsonPath("$.status").value(connectionStatus.name()))
                 .andExpect(jsonPath("$.connectedAt").isString())
                 .andReturn();
         var json = new ObjectMapper().readTree(result.getResponse().getContentAsString());

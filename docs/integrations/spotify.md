@@ -1,13 +1,136 @@
 # Spotify — autorização, callback e troca de tokens
 
+## Renovação sob demanda
+
+`SpotifyAccessTokenService.getValidAccessToken(userId)` é uma operação interna,
+sem endpoint ou agendamento. Reutiliza o acesso com mais de 60 segundos restantes;
+no limite ou abaixo dele, renova. O ID deve vir de identidade confiável do backend.
+Retorna `Optional.empty()` para conta desabilitada, conexão ausente ou reconexão
+necessária; o estado local distingue os dois últimos casos. O token retornado é
+restrito ao backend: não serializar, registrar em logs ou incluir em eventos.
+
+O formulário usa `grant_type=refresh_token`, o refresh token decifrado em memória
+e Basic Auth do aplicativo. Uma resposta válida substitui o acesso; refresh token
+omitido preserva a cifra anterior; novo valor não vazio substitui o anterior.
+Campo presente vazio é inválido. Escopo omitido preserva o anterior. Tipo Bearer,
+acesso não vazio e validade entre 1 e 3.600 segundos continuam obrigatórios.
+A expiração parte do início da chamada, conservadoramente.
+
+Somente HTTP 400 com JSON OAuth `error=invalid_grant` confirma credencial inválida:
+remove ambos os tokens e persiste `REAUTHORIZATION_REQUIRED`. Novas tentativas
+internas não chamam o provedor nesse estado. Autorizar novamente restaura
+`CONNECTED`; DELETE remove a conexão em qualquer estado. Resposta 200 vazia,
+nula ou malformada não é revogação. Outros 4xx, 429, 5xx, transporte e timeout
+preservam credenciais e propagam erro seguro. O cliente não repete automaticamente
+requisições, inclusive após timeout ou Retry-After.
+
+A transação própria (`REQUIRES_NEW`) impede que rollback posterior do futuro
+consumidor desfaça tokens já rotacionados. Não chamar enquanto o consumidor mantém
+bloqueio sobre o mesmo usuário/conexão. A ordem é usuário → conexão, com recarga
+sob bloqueio, compartilhada com o callback. A chamada HTTP mantém os bloqueios;
+conexão e leitura têm timeout de cinco segundos cada. Uma segunda renovação espera
+e reavalia a validade persistida. DELETE pode esperar a renovação, mas quando
+termina nenhuma renovação anterior recria credenciais. A rotação de chaves bloqueia
+e recarrega a conexão antes de recriptografar; linhas sem tokens ficam fora do lote.
+
+Timeout após o provedor aceitar uma rotação é ambíguo: preservamos credenciais
+locais, mas não podemos garantir que o token anterior continue aceito. Falha de
+persistência após sucesso remoto também não pode ser revertida no Spotify.
+Uma rejeição futura confirmada conduz à reconexão.
+
+O [guia oficial](https://developer.spotify.com/documentation/web-api/tutorials/refreshing-tokens)
+permite ausência do refresh token na resposta e exige nova autorização para
+`invalid_grant`. O [comunicado de expiração](https://developer.spotify.com/blog/2026-06-18-refresh-token-expiration)
+informa seis meses desde a autorização, sem extensão pela renovação. Não usamos
+`connectedAt` para prever essa expiração: ele preserva a conexão original, sem
+registrar cada reautorização. A detecção nesta etapa é reativa a `invalid_grant`.
+
+### Persistência e implantação
+
+A migração 007 adiciona `status` com padrão `CONNECTED` às conexões existentes,
+permite tokens nulos e exige via CHECK ambos os tokens para `CONNECTED`, ou ambos
+nulos para `REAUTHORIZATION_REQUIRED`. Metadados e data original são preservados.
+Aplicar antes do deploy, após as migrações anteriores e mediante autorização
+operacional. Não aplicar `db/tables.sql` a banco existente. Versões antigas do
+backend não interpretam o novo estado e não devem coexistir após habilitar a renovação.
+
+### Verificação reproduzível
+
+`SpotifyAccessTokenServiceTest` usa serviço transacional, Feign e Spring Security
+reais contra provedor HTTP simulado local via HttpServer. Cobre campos opcionais,
+revogação, reconexão, falhas HTTP, JSON inválido/nulo, timeout sem retry, rollback
+do consumidor, concorrência e rotação de chaves. Não usa Spotify real ou Postman manual.
+
+```powershell
+.\mvnw.cmd test '-Dtest=SpotifyAccessTokenServiceTest'
+```
+
+Para PostgreSQL, usar exclusivamente contêiner descartável separado: o contexto
+cria e remove tabelas. O modo abaixo usa somente o banco `sonarfy_spotify_refresh_test`
+em loopback, usuário `spotify_test` e senha sintética `isolated-test-password`.
+Porta padrão 55447; no CI, 5432 via `-Dsonarfy.test.spotify-port=5432`.
+
+```powershell
+docker run --detach --name sonarfy-spotify-refresh-test --publish 127.0.0.1:55447:5432 --env POSTGRES_DB=sonarfy_spotify_refresh_test --env POSTGRES_USER=spotify_test --env POSTGRES_PASSWORD=isolated-test-password postgres:17
+.\mvnw.cmd test '-Dtest=SpotifyAccessTokenServiceTest' '-Dsonarfy.test.spotify-postgres=true'
+docker rm --force sonarfy-spotify-refresh-test
+```
+
+O workflow prepara esse banco separado e executa a suíte em PostgreSQL. Sua
+configuração não constitui evidência de CI remoto aprovado. A coleção
+[JSON importável](../api/sonarfy-spotify.postman_collection.json) cobre as rotas
+existentes. Executar individualmente: autorização e desconexão têm efeitos;
+callback exige código/state de uma tentativa real de uso único.
+
+Validação local desta entrega em 18/11/2026:
+
+- Suíte completa com `-Dsonarfy.test.location=true` e simulação GeoNames ativa:
+  665 reportados, zero falhas/erros, 57 ignorados.
+- `SpotifyAccessTokenServiceTest` em PostgreSQL 17 descartável: 23 cenários,
+  zero falhas/erros ou ignorados, com cliente HTTP e cadeia de segurança reais.
+- Schema completo e migrações 001/007 executados somente em outro banco
+  descartável do mesmo contêiner. A migração preservou credenciais sintéticas
+  preexistentes e o CHECK rejeitou estados incompatíveis com os tokens.
+- JSON importável analisado, scripts Postman verificados sintaticamente e YAML
+  do workflow analisado. Não houve execução manual da coleção no Postman,
+  renovação contra Spotify real ou consulta/execução de CI remoto nesta entrega.
+
+Aplicação local autorizada pelo usuário em 18/11/2026: migração 007 executada
+com sucesso no banco `sonarfy` em `localhost:5433`, em transação. Antes da execução,
+a coluna `status` estava ausente. Após COMMIT, foram confirmados o padrão
+`CONNECTED`, a nulabilidade dos tokens e o CHECK validado. A única conexão
+existente continuou com ambos os tokens presentes; seus valores não foram
+consultados ou registrados. O GET autenticado e uma nova autorização real ainda
+precisam ser repetidos pelo usuário para confirmar o comportamento da aplicação.
+
+### Validação manual posterior e pendência
+
+Após a aplicação local da migração 007, o usuário confirmou pelo Postman que
+`GET /api/spotify/connection` retorna HTTP 200 com `CONNECTED` e preserva
+`connectedAt`, inclusive após reiniciar a aplicação. No debugger, a chamada ao
+serviço interno retornou acesso disponível. O fragmento que consulta somente a
+expiração persistida indicou `renovacaoExecutada=false`: o acesso ainda estava
+fora da janela de renovação. Isso não comprova renovação contra Spotify real.
+
+- [ ] Validar renovação real em outra sessão: manter a autorização existente,
+  aguardar restarem no máximo 60 segundos de validade e acionar o serviço interno
+  pelo proxy Spring. Confirmar acesso disponível, avanço da expiração persistida
+  e manutenção de `CONNECTED`, sem exibir tokens. Depois verificar revogação e
+  reconexão com uma conta Spotify de teste.
+
+O usuário optou por adiar essa validação. Não foi antecipada a expiração no banco
+da aplicação. A pendência deve constar nas limitações do PR; testes automatizados
+com provedor simulado não substituem essa evidência real. Nenhuma mudança no
+frontend faz parte desta entrega.
+
 ## Estado atual
 
 ### Consulta, conexão e desconexão
 
 `GET /api/spotify/connection` exige Bearer Sonarfy e retorna HTTP 200 com
-`status` (`CONNECTED` ou `DISCONNECTED`) e `connectedAt` (nulo sem conexão).
+`status` (`CONNECTED`, `DISCONNECTED` ou `REAUTHORIZATION_REQUIRED`) e `connectedAt` (nulo sem conexão).
 Conectado significa credenciais armazenadas: o vencimento do access token não
-produz `REAUTHORIZATION_REQUIRED` nesta etapa. Nenhum token é exposto.
+produz `REAUTHORIZATION_REQUIRED`; esse estado exige rejeição confirmada na renovação. Nenhum token é exposto.
 
 `DELETE /api/spotify/connection` exige o mesmo Bearer e retorna HTTP 204 sem
 corpo, inclusive se já desconectado. As duas rotas usam `Cache-Control: no-store`
@@ -27,7 +150,7 @@ gravação após desconectar.
 
 Antes do deploy em banco existente, aplicar a migração
 `db/migrations/002_add_spotify_authorization_version.sql` (ver guia de persistência).
-Renovação automática e sincronização seguem pendentes.
+A renovação sob demanda é interna; sincronização segue pendente.
 
 O backend expõe a rota autenticada `POST /api/spotify/authorization`, monta a URL
 de autorização e recebe o retorno do navegador em `GET /api/spotify/callback`, que
@@ -36,8 +159,7 @@ redireciona (`HTTP 302 Found`, `Cache-Control: no-store`) para a URL configurada
 `SPOTIFY_FRONTEND_REDIRECT_URI` acrescentando `?spotify=<resultado>`. Access token e
 refresh token são armazenados cifrados com AES-GCM e nunca são retornados ao navegador.
 Reconexões atualizam a mesma conexão e preservam `connected_at`. A migração deve ser
-aplicada antes do deploy em bancos existentes; renovação automática e sincronização
-continuam pendentes.
+aplicada antes do deploy em bancos existentes; sincronização continua pendente.
 
 A rota de início exige `Authorization: Bearer <accessToken>`, não recebe `userId` e resolve
 o usuário pelo ID imutável autenticado. Consulta e desconexão usam a mesma identidade,
@@ -62,7 +184,8 @@ externo (`accounts.spotify.com`), o frontend integra-se aos quatro endpoints aba
   }
   ```
   Quando não há conexão ativa, retorna `{"status":"DISCONNECTED","connectedAt":null}`.
-  *(Nota: até a implementação da renovação automática, `CONNECTED` indica que há credenciais cifradas persistidas para o usuário, e `REAUTHORIZATION_REQUIRED` ainda não é emitido).*
+  `CONNECTED` indica credenciais armazenadas, sem garantir autorização válida no provedor.
+  `REAUTHORIZATION_REQUIRED` conserva `connectedAt` e exige iniciar novamente a autorização.
 
 ### 2. Iniciar autorização (`POST /api/spotify/authorization`)
 - **Requisição:** `POST /api/spotify/authorization` com cabeçalho `Authorization: Bearer <accessToken>`, sem corpo.
@@ -176,7 +299,8 @@ logs específicos desse caminho.
 
 Antes de disponibilizar esta versão em um banco existente, aplique as migrações
 `db/migrations/001_create_spotify_connection.sql` e
-`db/migrations/002_add_spotify_authorization_version.sql`, nesta ordem, conforme o
+`db/migrations/002_add_spotify_authorization_version.sql` e
+`db/migrations/007_add_spotify_connection_status.sql`, nesta ordem, conforme o
 [guia de persistência](../persistence.md#inicialização-e-atualização-do-banco).
 Com `ddl-auto=none`, a aplicação não cria `spotify_connection` automaticamente.
 Para um banco vazio, use o schema completo em `db/tables.sql`.
@@ -372,7 +496,7 @@ a persistência e concorrência são cobertas pelo teste PostgreSQL opt-in da CI
 
 ## Próximas entregas
 
-- Renovação automática dos tokens e transição para `REAUTHORIZATION_REQUIRED` quando aplicável.
+- Integrar o serviço interno de acesso aos futuros consumidores de sincronização.
 - Tratamento do limite global de autorizações pendentes (issue #34).
 - Sincronização de escutas e consulta de dados musicais.
 - Observabilidade de falhas de persistência.

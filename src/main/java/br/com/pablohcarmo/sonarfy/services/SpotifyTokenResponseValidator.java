@@ -8,9 +8,18 @@ final class SpotifyTokenResponseValidator {
     private SpotifyTokenResponseValidator() {}
 
     static void validate(SpotifyTokenResponseDto response) {
+        validate(response, true);
+    }
+
+    static void validateRefresh(SpotifyTokenResponseDto response) {
+        validate(response, false);
+    }
+
+    private static void validate(SpotifyTokenResponseDto response, boolean initial) {
         if (response == null
                 || response.accessToken() == null || response.accessToken().isBlank()
-                || response.refreshToken() == null || response.refreshToken().isBlank()
+                || (initial && response.refreshToken() == null)
+                || (response.refreshToken() != null && response.refreshToken().isBlank())
                 || !"Bearer".equalsIgnoreCase(response.tokenType())
                 || response.expiresIn() == null
                 || response.expiresIn() < 1L || response.expiresIn() > 3600L) {
