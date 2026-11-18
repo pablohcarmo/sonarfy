@@ -117,7 +117,7 @@ class UserServiceTest {
         NewUserDto dto = new NewUserDto();
         dto.setName("Pablo");
         dto.setSurname("Carmo");
-        dto.setHandle("@pablo");
+        dto.setHandle("@PaBlo");
         dto.setEmail("pablo@sonarfy.com");
         dto.setPassword("Secret123!");
         dto.setCity("Brasilia");
@@ -149,7 +149,8 @@ class UserServiceTest {
         assertEquals(JwtService.PENDING_REGISTRATION_TTL_SECONDS, response.expiresInSeconds());
 
         verify(eventPublisher).publishEvent(new ActivationEmailRequested(10L));
-        verify(userRepository).save(argThat(user -> "Pablo Carmo".equals(user.getDisplayName())));
+        verify(userRepository).save(argThat(user -> "Pablo Carmo".equals(user.getDisplayName())
+                && "pablo".equals(user.getHandle())));
         verifyNoInteractions(authEmailService);
         verify(jwtService, times(1)).generateRegistrationToken("10");
     }

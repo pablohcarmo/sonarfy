@@ -71,7 +71,7 @@ class PersonalDataIntegrationTest {
 
     // A resposta preserva o contrato JSON mesmo após a conversão para record.
     @ParameterizedTest
-    @ValueSource(strings = {"original", "ORIGINAL", "new.handle"})
+    @ValueSource(strings = {"original", "ORIGINAL", "new.handle", "A_Z-9.x", "12345", "ABCDEFGHIJKLMNO"})
     void updatesPersonalDataAndPreservesPrivateAndProfileFields(String handle) throws Exception {
         User other = account("other");
         var input = payload();
@@ -87,7 +87,8 @@ class PersonalDataIntegrationTest {
         input.put("wallpaper", "ignored");
         input.put("biography", "ignored");
         input.put("displayName", "ignored");
-        update(user, input).andExpect(status().isOk()).andExpect(jsonPath("$.handle").value(handle))
+        String expectedHandle = handle.toLowerCase(Locale.ROOT);
+        update(user, input).andExpect(status().isOk()).andExpect(jsonPath("$.handle").value(expectedHandle))
                 .andExpect(jsonPath("$.active").value(true)).andExpect(jsonPath("$.isActive").doesNotExist())
                 .andExpect(jsonPath("$.profilePicture").value("avatar"))
                 .andExpect(jsonPath("$.displayName").doesNotExist());
@@ -106,7 +107,7 @@ class PersonalDataIntegrationTest {
         assertEquals("bio", saved.getBiography());
         assertEquals("Original", users.findById(other.getId()).orElseThrow().getName());
         mvc.perform(get("/api/users/me").header("Authorization", bearer(user)))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.handle").value(handle));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.handle").value(expectedHandle));
     }
 
     // Campos omitidos, nulos, vazios, fora do formato ou do limite não persistem parcialmente.
@@ -152,6 +153,68 @@ class PersonalDataIntegrationTest {
         var input = payload(); input.put("handle", "OCCUPIED");
         update(user, input).andExpect(status().isConflict());
         assertEquals("Original", users.findById(user.getId()).orElseThrow().getName());
+    }
+
+    // Cadastro e edição rejeitam os mesmos caracteres e limites sem modificar a conta.
+    @ParameterizedTest
+    @ValueSource(strings = {"@valid", " valid", "valid ", "two words", "caf\u00e9", "a/b", "a!b", "a+b", "AAAAAAAAAAAAAAAA"})
+    void registrationAndUpdateRejectInvalidHandles(String handle) throws Exception {
+        User before = users.findById(user.getId()).orElseThrow();
+        var input = payload();
+        input.put("handle", handle);
+        update(user, input).andExpect(status().isBadRequest());
+        input.put("email", "new@example.com");
+        input.put("password", "Registration123!");
+        mvc.perform(post("/api/auth/register").contentType("application/json")
+                        .content(json.writeValueAsString(input))).andExpect(status().isBadRequest());
+        assertEquals(1, users.count());
+        User after = users.findById(user.getId()).orElseThrow();
+        assertEquals(before.getHandle(), after.getHandle());
+        assertEquals(before.getName(), after.getName());
+        assertEquals(before.getLastUpdateDate(), after.getLastUpdateDate());
+    }
+
+    // O cadastro persiste a forma canônica e continua recusando duplicatas em outra caixa.
+    @ParameterizedTest
+    @ValueSource(strings = {"New.Handle", "A_Z-9.x", "12345", "ABCDEFGHIJKLMNO"})
+    void registrationNormalizesHandleAndRejectsCaseInsensitiveDuplicate(String handle) throws Exception {
+        var input = payload();
+        input.put("handle", handle);
+        input.put("email", "new@example.com");
+        input.put("password", "Registration123!");
+        mvc.perform(post("/api/auth/register").contentType("application/json")
+                        .content(json.writeValueAsString(input))).andExpect(status().isCreated());
+        assertEquals(handle.toLowerCase(Locale.ROOT), users.findByEmailIgnoreCase("new@example.com")
+                .orElseThrow().getHandle());
+        input.put("email", "duplicate@example.com");
+        input.put("handle", handle.toUpperCase(Locale.ROOT));
+        mvc.perform(post("/api/auth/register").contentType("application/json")
+                        .content(json.writeValueAsString(input))).andExpect(status().isConflict());
+        assertEquals(2, users.count());
+    }
+
+    // A edição preserva sessões e ID; somente o handle atualizado autentica a conta.
+    @Test
+    void loginUsesUpdatedHandleWhileExistingAccessAndRefreshRemainValid() throws Exception {
+        user.setPassword(context.getBean(org.springframework.security.crypto.password.PasswordEncoder.class)
+                .encode("HandleTest123!"));
+        users.saveAndFlush(user);
+        String access = bearer(user);
+        String refresh = context.getBean(RefreshTokenService.class).issue(user);
+        var input = payload();
+        input.put("handle", "New.Name-9");
+        update(user, input).andExpect(status().isOk()).andExpect(jsonPath("$.handle").value("new.name-9"));
+        for (String login : List.of("new.name-9", "NEW.NAME-9", "original")) {
+            mvc.perform(post("/api/auth/login").header("X-Sonarfy-CSRF", "1").contentType("application/json")
+                            .content(json.writeValueAsString(Map.of("login", login, "password", "HandleTest123!"))))
+                    .andExpect(login.equals("original") ? status().isUnauthorized() : status().isOk());
+        }
+        mvc.perform(get("/api/users/me").header("Authorization", access))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(user.getId()))
+                .andExpect(jsonPath("$.handle").value("new.name-9"));
+        mvc.perform(post("/api/auth/refresh").header("X-Sonarfy-CSRF", "1")
+                        .cookie(new jakarta.servlet.http.Cookie("sonarfy_refresh", refresh)))
+                .andExpect(status().isOk());
     }
 
     @ParameterizedTest

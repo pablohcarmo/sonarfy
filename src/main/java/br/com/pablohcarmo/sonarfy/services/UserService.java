@@ -65,7 +65,7 @@ public class UserService implements UserDetailsService {
     public RegisterResponseDto newUser(NewUserDto newUserDto) {
         PersonalDataRules.validateBirthDate(newUserDto.getBirthDate());
 
-        String cleanHandle = cleanHandle(newUserDto.getHandle());
+        String cleanHandle = PersonalDataRules.normalizeHandle(cleanHandle(newUserDto.getHandle()));
 
         // Verificar se já existe um usuário com o mesmo email ou handle
         boolean userExists = userRepository.findByEmailIgnoreCaseOrHandleIgnoreCase(
@@ -143,13 +143,14 @@ public class UserService implements UserDetailsService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
         entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE);
-        userRepository.findByHandleIgnoreCase(dto.handle())
+        String handle = PersonalDataRules.normalizeHandle(dto.handle());
+        userRepository.findByHandleIgnoreCase(handle)
                 .filter(owner -> !owner.getId().equals(user.getId()))
                 .ifPresent(owner -> { throw new ResponseStatusException(HttpStatus.CONFLICT, "Handle is already in use."); });
 
         user.setName(dto.name());
         user.setSurname(dto.surname());
-        user.setHandle(dto.handle());
+        user.setHandle(handle);
         user.setBirthDate(dto.birthDate());
         user.setCity(dto.city());
         user.setCountry(dto.country());

@@ -37,7 +37,7 @@ O corpo da requisição é representado por `NewUserDto`:
 | --- | --- | --- |
 | `name` | `@NotBlank` e `@Pattern` (apenas letras, espaços Simples, apóstrofos e hífens entre palavras) | Usado junto com `surname` (com `strip()`) para compor `displayName` limitado a 60 pontos de código Unicode |
 | `surname` | `@NotBlank` e `@Pattern` (apenas letras, espaços simples, apóstrofos e hífens entre palavras) | Compõe `displayName` persistido em `users.display_name` |
-| `handle` | `@NotBlank` e `@Pattern("^[a-zA-Z0-9_.-]+$")` | Se enviado com `@` inicial, `cleanHandle` remove o prefixo; unicidade verificada sem distinção de maiúsculas/minúsculas |
+| `handle` | `@NotBlank`, `@Size(max = 15)` e `@Pattern("^[a-zA-Z0-9_.-]+$")` | Convertido para minúsculas com `Locale.ROOT` antes de consultar unicidade e persistir; comparação sem distinção de caixa. `@` e espaços são rejeitados na entrada HTTP |
 | `email` | `@NotBlank` e `@Email` | Unicidade verificada sem distinção de maiúsculas/minúsculas (`findByEmailIgnoreCaseOrHandleIgnoreCase` e índice `uk_users_email_ci`) |
 | `password` | `@NotBlank` e `@Size(min = 8)` | Rejeita senhas com mais de **72 bytes em UTF-8** (`400 Bad Request`) antes do hash BCrypt |
 | `city` | `@NotBlank` e `@Pattern("^[a-zA-ZÀ-ÿ\\s.'-]+$")` | Persistido no cadastro do usuário |
