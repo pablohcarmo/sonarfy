@@ -88,24 +88,25 @@ O corpo da requisição é representado por `UpdateUserDto`:
   "name": "Maria Clara",
   "surname": "Silva",
   "handle": "maria.silva",
-  "city": "Campinas",
-  "country": "Brasil",
+  "cityId": 3467865,
   "birthDate": "2000-05-15"
 }
 ```
 
 ### Substituição dos dados pessoais
 
-Os seis campos são obrigatórios: omissão, `null` ou texto em branco recebem `400`.
-O PUT substitui esses seis valores; clientes devem carregar o GET e enviar também
-os valores não alterados. `UpdateUserDto` e `UserDto` são records; o JSON de resposta
+Os campos `name`, `surname`, `handle` e `birthDate` são obrigatórios e substituídos
+pelo PUT. `cityId` é opcional: omissão ou `null` preservam cidade e país existentes.
+Quando enviado, deve ser positivo e o backend obtém a localização no GeoNames.
+`city` e `country` são somente dados de resposta; enviá-los no PUT não os altera.
+Clientes devem carregar o GET e enviar os quatro campos, inclusive os não alterados. `UpdateUserDto` e `UserDto` são records; o JSON de resposta
 permanece igual, inclusive `active` e `profilePicture`.
 
 | Campo | Regras compartilhadas com o cadastro |
 | --- | --- |
 | `name`, `surname` | Letras latinas, espaços, apóstrofos e hífens conforme padrão do cadastro; até 50 caracteres cada |
 | `handle` | Letras ASCII, números, `_`, `-`, `.`; entre 1 e 15 caracteres, sem prefixo `@` ou espaços |
-| `city`, `country` | Padrão de localização do cadastro: letras, espaços, apóstrofos, hífens e pontos; até 100 caracteres cada |
+| `cityId` | Opcional e positivo; seleciona uma cidade validada no GeoNames. Cidade e país são derivados pelo backend |
 | `birthDate` | Data ISO `YYYY-MM-DD` no passado, com pelo menos 13 anos completos na data atual do servidor |
 
 `birthDate` deve ser uma string com uma data de calendário válida, com mês e dia
@@ -131,7 +132,9 @@ por outra conta recebe `409`, sem distinção entre maiúsculas e minúsculas.
 A transação e o índice PostgreSQL `uk_users_handle_ci` protegem também contra
 colisões concorrentes; somente a violação desse índice com SQLSTATE `23505` é
 traduzida em conflito de handle. Outros erros de persistência não viram `409`.
-Uma atualização rejeitada não persiste parcialmente.
+Uma atualização rejeitada não persiste parcialmente. Erros de seleção retornam
+`400`; indisponibilidade, quota, timeout ou resposta inválida do provedor retornam
+`503`. Sem `cityId`, a edição não depende do provedor. Veja [localização](locations.md).
 
 A identidade vem exclusivamente do Bearer. Propriedades adicionais não são
 aplicadas: `id`, e-mail, senha, permissão, estado da conta, `displayName`, avatar,

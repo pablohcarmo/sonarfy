@@ -130,6 +130,7 @@ O `SecurityConfig` permite acesso sem login somente aos pares de método e camin
 | POST | `/api/auth/reset-password` |
 | POST | `/api/auth/email-change-confirmation` (quando o fluxo estiver habilitado) |
 | GET | `/api/auth/verify` |
+| GET | `/api/locations/cities` |
 | PATCH | `/api/auth/update-pending-email` |
 
 Esses endpoints mantêm suas validações de entrada e tokens específicos. Outros

@@ -1,0 +1,12 @@
+version: 1
+id: 08414925-134c-48b6-afbe-6ba50155bc1c
+name: GeoNames
+slug: geonames
+protocol: http
+port: 4500
+scenarios:
+  - name: default
+    path: ./default.js
+    default: true
+interceptRequests: true
+origin: secure.geonames.org

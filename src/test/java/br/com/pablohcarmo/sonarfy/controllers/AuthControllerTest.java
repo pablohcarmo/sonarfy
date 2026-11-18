@@ -73,8 +73,7 @@ class AuthControllerTest {
                     "handle": "pablo",
                     "email": "pablo@sonarfy.com",
                     "password": "SenhaForte123!",
-                    "city": "Brasilia",
-                    "country": "Brasil",
+                    "cityId": 1,
                     "birthDate": "2000-01-01"
                 }
                 """;

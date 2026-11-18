@@ -112,7 +112,7 @@ class PersonalDataIntegrationTest {
 
     // Campos omitidos, nulos, vazios, fora do formato ou do limite não persistem parcialmente.
     @ParameterizedTest
-    @CsvSource({"name,51", "surname,51", "handle,16", "city,101", "country,101", "birthDate,0"})
+    @CsvSource({"name,51", "surname,51", "handle,16", "birthDate,0"})
     void rejectsInvalidFieldsAtomically(String field, int overflow) throws Exception {
         for (String invalid : Arrays.asList(null, "", " ", "123!", "A".repeat(overflow))) {
             var input = payload();
@@ -221,7 +221,6 @@ class PersonalDataIntegrationTest {
         var input = payload();
         input.put("name", "A".repeat(50)); input.put("surname", "B".repeat(50));
         input.put("handle", "h".repeat(15));
-        input.put("city", "C".repeat(100)); input.put("country", "D".repeat(100));
         update(user, input).andExpect(status().isOk());
         User saved = users.findById(user.getId()).orElseThrow();
         assertEquals("Chosen profile name", saved.getDisplayName());
@@ -360,7 +359,7 @@ class PersonalDataIntegrationTest {
 
     private Map<String, Object> payload() {
         return new HashMap<>(Map.of("name", "Maria", "surname", "Silva", "handle", "maria",
-                "city", "Campinas", "country", "Brasil", "birthDate", "2000-01-01"));
+                "cityId", 2, "birthDate", "2000-01-01"));
     }
 
     private User account(String handle) {

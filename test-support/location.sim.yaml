@@ -1,0 +1,9 @@
+simulation: location-validation
+routing: path
+mocks:
+  - name: GeoNames
+    routeKey: geonames
+    origin:
+      - secure.geonames.org
+    interceptRequests: true
+    path: test-support/geonames

@@ -1,6 +1,7 @@
 package br.com.pablohcarmo.sonarfy.services;
 
 import br.com.pablohcarmo.sonarfy.dto.*;
+import br.com.pablohcarmo.sonarfy.client.GeoNamesClient;
 import br.com.pablohcarmo.sonarfy.entities.Permission;
 import br.com.pablohcarmo.sonarfy.entities.User;
 import br.com.pablohcarmo.sonarfy.events.ActivationEmailRequested;
@@ -44,6 +45,7 @@ public class UserService implements UserDetailsService {
     private final AuthEmailService authEmailService;
     private final ApplicationEventPublisher eventPublisher;
     private final RefreshTokenService refreshTokens;
+    private final GeoNamesClient cities;
     private static final Logger logger = LoggerFactory.getLogger(UserService.class);
 
     public UserService (UserRepository userRepository,
@@ -51,7 +53,7 @@ public class UserService implements UserDetailsService {
                         PasswordEncoder passwordEncoder,
                         JwtService jwtService,
                         AuthEmailService authEmailService,
-                        ApplicationEventPublisher eventPublisher, RefreshTokenService refreshTokens) {
+                        ApplicationEventPublisher eventPublisher, RefreshTokenService refreshTokens, GeoNamesClient cities) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.permissionRepository = permissionRepository;
@@ -59,17 +61,18 @@ public class UserService implements UserDetailsService {
         this.authEmailService = authEmailService;
         this.eventPublisher = eventPublisher;
         this.refreshTokens = refreshTokens;
+        this.cities = cities;
     }
 
     @Transactional
     public RegisterResponseDto newUser(NewUserDto newUserDto) {
-        PersonalDataRules.validateBirthDate(newUserDto.getBirthDate());
+        PersonalDataRules.validateBirthDate(newUserDto.birthDate());
 
-        String cleanHandle = PersonalDataRules.normalizeHandle(cleanHandle(newUserDto.getHandle()));
+        String cleanHandle = PersonalDataRules.normalizeHandle(cleanHandle(newUserDto.handle()));
 
         // Verificar se já existe um usuário com o mesmo email ou handle
         boolean userExists = userRepository.findByEmailIgnoreCaseOrHandleIgnoreCase(
-                newUserDto.getEmail(), cleanHandle
+                newUserDto.email(), cleanHandle
         ).isPresent();
 
         if (userExists) {
@@ -79,7 +82,7 @@ public class UserService implements UserDetailsService {
             );
         }
 
-        String password = newUserDto.getPassword();
+        String password = newUserDto.password();
         if (password.getBytes(StandardCharsets.UTF_8).length > 72) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
@@ -87,16 +90,17 @@ public class UserService implements UserDetailsService {
             );
         }
 
+        CityDto location = cities.resolve(newUserDto.cityId());
         User user = new User();
-        user.setName(newUserDto.getName());
-        user.setSurname(newUserDto.getSurname());
-        user.setDisplayName(PersonalDataRules.displayName(newUserDto.getName(), newUserDto.getSurname()));
+        user.setName(newUserDto.name());
+        user.setSurname(newUserDto.surname());
+        user.setDisplayName(PersonalDataRules.displayName(newUserDto.name(), newUserDto.surname()));
         user.setHandle(cleanHandle);
-        user.setEmail(newUserDto.getEmail());
+        user.setEmail(newUserDto.email());
         user.setPassword(passwordEncoder.encode(password));
-        user.setCity(newUserDto.getCity());
-        user.setCountry(newUserDto.getCountry());
-        user.setBirthDate(newUserDto.getBirthDate());
+        user.setCity(location.name());
+        user.setCountry(location.country());
+        user.setBirthDate(newUserDto.birthDate());
 
         // Define a permissão do usuário como "ROLE_USER" por padrão
         Permission defaultPermission = permissionRepository.findByName("ROLE_USER")
@@ -140,6 +144,7 @@ public class UserService implements UserDetailsService {
     @Transactional
     public UserDto updateRegister(Long userId, UpdateUserDto dto) {
         PersonalDataRules.validateBirthDate(dto.birthDate());
+        CityDto location = dto.cityId() == null ? null : cities.resolve(dto.cityId());
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
         entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE);
@@ -152,8 +157,10 @@ public class UserService implements UserDetailsService {
         user.setSurname(dto.surname());
         user.setHandle(handle);
         user.setBirthDate(dto.birthDate());
-        user.setCity(dto.city());
-        user.setCountry(dto.country());
+        if (location != null) {
+            user.setCity(location.name());
+            user.setCountry(location.country());
+        }
         try {
             userRepository.saveAndFlush(user);
         } catch (DataIntegrityViolationException exception) {
