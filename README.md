@@ -57,11 +57,12 @@ consulta de álbuns e artistas permanecem para entregas posteriores. Consulte a
 ## Contratos da API
 
 O projeto usa Java 21, Spring Boot 4.1.0 e java-jwt 4.4.0.
-Consulte o [índice geral da documentação da API](docs/api/README.md) para o mapa completo dos endpoints e o isolamento dos 5 propósitos de tokens JWT:
+Consulte o [índice geral da documentação da API](docs/api/README.md) para o mapa completo dos endpoints e o isolamento dos seis propósitos de tokens JWT:
 
 - [Cadastro, retificação de e-mail pendente e ativação de conta](docs/api/registration.md)
 - [Login e autenticação HTTP Bearer](docs/api/authentication.md)
 - [Recuperação e troca de senha](docs/api/passwords.md) e [coleção oficial do Postman](docs/api/sonarfy-passwords.postman_collection.json) (ajuste a variável `baseUrl`, ex.: `http://localhost:8080`)
+- [Integração da troca autenticada de senha](docs/integrations/password-change.md): envio do link, cooldown, conclusão e novo login.
 - [Conta e perfil do usuário (`/api/users/me` e `/api/profile/me`)](docs/api/users-and-profile.md)
 - [Integração das configurações: dados pessoais](docs/integrations/user-settings.md), com [coleção Postman importável](docs/api/sonarfy-users.postman_collection.json).
 - [Troca de e-mail: solicitação, confirmação e fila](docs/integrations/email-change.md) — ativação controlada; [contrato e coleção Postman](docs/api/email-changes.md).
@@ -71,12 +72,18 @@ Consulte o [índice geral da documentação da API](docs/api/README.md) para o m
 | --- | --- | --- |
 | Solicitar recuperação | `POST /api/auth/forgot-password` | `email` |
 | Redefinir senha esquecida | `POST /api/auth/reset-password` | `token`, `newPassword`, `confirmNewPassword` |
-| Solicitar token de troca autenticada | `POST /api/users/me/password-change-request` | Sem corpo |
+| Solicitar link de troca autenticada | `POST /api/users/me/password-change-request` | Sem corpo |
 | Trocar senha autenticada | `PUT /api/users/me/password` | `token`, `currentPassword`, `newPassword`, `confirmNewPassword` |
 
 As requisições com corpo usam `Content-Type: application/json`. Na solicitação
 pública, o e-mail vai no JSON. Recuperação e troca usam DTOs separados:
 a recuperação não exige a senha esquecida; a troca exige a senha atual.
+
+A solicitação autenticada usa o ID imutável para localizar o e-mail atual da conta.
+O link enviado leva às configurações com o token no fragmento da URL. A leitura
+desse fragmento e a integração do botão no frontend permanecem para outra etapa.
+Após concluir a troca, o cliente deve descartar as credenciais locais e solicitar
+novo login; todos os refresh tokens são revogados.
 
 As rotas `/api/users/**` exigem o token de acesso retornado por `POST /api/auth/login`,
 enviado no cabeçalho `Authorization: Bearer <accessToken>`. O filtro estabelece a
@@ -92,11 +99,13 @@ para os mapeamentos e o teste opcional contra o PostgreSQL existente.
 
 ## E-mails de conta e intervalo entre tentativas
 
-Ativação e recuperação de senha compartilham um intervalo mínimo de 30 segundos,
+Ativação, recuperação e troca autenticada de senha compartilham um intervalo mínimo de 30 segundos,
 configurável por `app.email.cooldown-seconds`. O campo `lastEmailSentAt` registra
 a última tentativa autorizada, não a confirmação de entrega. A reserva é confirmada
 no banco antes do envio e permanece válida mesmo se o SMTP falhar. Um envio de
-ativação pode, portanto, impedir temporariamente um envio de recuperação.
+ativação pode, portanto, impedir temporariamente um envio de recuperação ou troca de senha.
+Na solicitação autenticada, o cooldown retorna 429, sem `Retry-After`;
+sucesso no envio retorna 200 e não comprova entrega na caixa de entrada.
 
 Cadastro e alteração de e-mail pendente publicam um evento dentro da transação.
 O envio de ativação ocorre após o commit: falhas de entrega não desfazem o cadastro
@@ -109,7 +118,8 @@ reenvio. A solução não garante entrega nem elimina diferenças de tempo de re
 
 ### Testes da reserva de e-mail
 
-`mvn test` executa os testes unitários e de integração, usando H2 isolado por padrão.
+`.\mvnw.cmd test` no Windows (ou `./mvnw test` em Unix) executa os testes unitários
+e de integração, usando H2 isolado por padrão.
 Os testes de integração usam serviços, proxies Spring e transações reais, com
 transporte simulado. Para validar concorrência também em PostgreSQL, use um banco
 descartável exclusivo: o contexto de testes cria e remove as tabelas mapeadas.
@@ -152,7 +162,12 @@ de PostgreSQL descritas acima.
 
 ## Status do projeto
 
-O projeto está em desenvolvimento, com foco inicial na modelagem de funcionalidades, experiência do usuário e prototipação das principais telas.
+O projeto está em desenvolvimento. O backend já possui fluxos de cadastro,
+ativação, autenticação e sessões, atualização de dados pessoais, recuperação e
+troca de senha, troca verificada de e-mail e conexão com Spotify, com contratos e
+limitações descritos nos guias acima. As funcionalidades sociais listadas como
+previstas e a integração das telas evoluem em entregas separadas. A disponibilidade
+de um endpoint não significa que o fluxo correspondente já esteja integrado no frontend.
 
 ## Observação
 
