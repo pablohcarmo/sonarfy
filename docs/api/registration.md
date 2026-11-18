@@ -44,6 +44,14 @@ O corpo da requisição é representado por `NewUserDto`:
 | `country` | `@NotBlank` e `@Pattern("^[a-zA-ZÀ-ÿ\\s.'-]+$")` | Persistido no cadastro do usuário |
 | `birthDate` | `@NotNull` e `@Past` | Idade mínima de **13 anos completos** na data atual (`400 Bad Request` caso menor de 13 anos) |
 
+`birthDate` é lido estritamente como string `YYYY-MM-DD`, com data existente no
+calendário. Datas inexistentes, texto com horário/fuso, timestamps numéricos e arrays
+retornam `400`, assim como omissão, `null`, vazio, data atual/futura e idade inferior
+a 13 anos completos. O aniversário de 13 anos na data atual do servidor já atende
+ao requisito. Para nascimento em 29/02, o cálculo existente completa a idade em
+01/03 nos anos não bissextos. A edição aplica as mesmas regras; consulte
+[dados cadastrais](users-and-profile.md). Cadastro recusado não cria uma conta.
+
 Os limites de nome/sobrenome (50), handle (15) e cidade/país (100) são validados
 também na entrada, em alinhamento com o schema e a edição de dados pessoais.
 

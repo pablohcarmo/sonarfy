@@ -134,6 +134,87 @@ class PersonalDataIntegrationTest {
         assertEquals("Original", users.findById(user.getId()).orElseThrow().getName());
     }
 
+    // Os dois endpoints rejeitam datas ausentes, impossíveis ou fora do formato contratado.
+    @ParameterizedTest
+    @ValueSource(strings = {"omitted", "null", "", " ", "2000-02-30", "2001-02-29", "2002-02-29", "2000-13-01",
+            "2000-01-32", "31/12/2000", "2000-1-1", "invalid", "2000-01-01T00:00:00",
+            "2000-01-01T00:00:00Z", "array", "number"})
+    void rejectsInvalidBirthDatesInRegistrationAndUpdate(String value) throws Exception {
+        var input = payload();
+        if (value.equals("omitted")) input.remove("birthDate");
+        else input.put("birthDate", switch (value) {
+            case "null" -> null;
+            case "array" -> List.of(2000, 1, 1);
+            case "number" -> 946684800000L;
+            default -> value;
+        });
+        assertBirthDateRejectedAtomically(input);
+    }
+
+    // A idade mínima vale nos dois fluxos, incluindo o aniversário de hoje e de amanhã.
+    @ParameterizedTest
+    @ValueSource(ints = {-1, 0, 1, 2, 3})
+    void verifiesAgeBoundaryInRegistrationAndUpdate(int scenario) throws Exception {
+        LocalDate today = LocalDate.now();
+        LocalDate birth = switch (scenario) {
+            case -1 -> today.minusYears(13).minusDays(1);
+            case 0 -> today.minusYears(13);
+            case 1 -> today.minusYears(13).plusDays(1);
+            case 2 -> today;
+            default -> today.plusDays(1);
+        };
+        var input = payload();
+        input.put("birthDate", birth.toString());
+        if (scenario > 0) {
+            assertBirthDateRejectedAtomically(input);
+        } else {
+            update(user, input).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.birthDate").value(birth.toString()));
+            assertEquals(birth, users.findById(user.getId()).orElseThrow().getBirthDate());
+            input.put("email", "birth-test@example.com");
+            input.put("handle", "birth-test");
+            input.put("password", "BirthTest123!");
+            mvc.perform(post("/api/auth/register").contentType("application/json")
+                            .content(json.writeValueAsString(input))).andExpect(status().isCreated());
+            assertEquals(birth, users.findByEmailIgnoreCase("birth-test@example.com").orElseThrow().getBirthDate());
+        }
+    }
+
+    // Datas bissextas válidas mantêm o dia na persistência e na resposta HTTP.
+    @Test
+    void preservesValidLeapDateInBothFlows() throws Exception {
+        var input = payload();
+        input.put("birthDate", "2000-02-29");
+        update(user, input).andExpect(status().isOk()).andExpect(jsonPath("$.birthDate").value("2000-02-29"));
+        input.put("email", "leap@example.com");
+        input.put("handle", "leap");
+        input.put("password", "BirthTest123!");
+        mvc.perform(post("/api/auth/register").contentType("application/json")
+                        .content(json.writeValueAsString(input))).andExpect(status().isCreated());
+        assertEquals(LocalDate.of(2000, 2, 29), users.findByEmailIgnoreCase("leap@example.com")
+                .orElseThrow().getBirthDate());
+    }
+
+    // Recusa não altera dados, auditoria ou sessões; cadastro inválido não cria conta.
+    private void assertBirthDateRejectedAtomically(Map<String, Object> input) throws Exception {
+        User before = users.findById(user.getId()).orElseThrow();
+        String refresh = context.getBean(RefreshTokenService.class).issue(user);
+        update(user, input).andExpect(status().isBadRequest());
+        input.put("email", "invalid-birth@example.com");
+        input.put("password", "BirthTest123!");
+        mvc.perform(post("/api/auth/register").contentType("application/json")
+                        .content(json.writeValueAsString(input))).andExpect(status().isBadRequest());
+        assertEquals(1, users.count());
+        User after = users.findById(user.getId()).orElseThrow();
+        assertEquals(before.getBirthDate(), after.getBirthDate());
+        assertEquals(before.getName(), after.getName());
+        assertEquals(before.getHandle(), after.getHandle());
+        assertEquals(before.getCity(), after.getCity());
+        assertEquals(before.getCountry(), after.getCountry());
+        assertEquals(before.getLastUpdateDate(), after.getLastUpdateDate());
+        assertNotNull(context.getBean(RefreshTokenService.class).rotate(refresh));
+    }
+
     @Test
     void acceptsSchemaLimitsWithoutChangingDisplayName() throws Exception {
         var input = payload();

@@ -18,6 +18,82 @@ consumo futuro do link autenticado.
    [autenticação](authentication.md); se a renovação falhar, solicitar login.
    A edição em si não revoga sessões.
 
+## Edição da data de nascimento
+
+Cadastro e edição recebem `birthDate` como string `YYYY-MM-DD`, sem horário ou
+fuso e sem espaços. A data deve existir, estar no passado e representar pelo
+menos 13 anos completos na data atual do servidor. O aniversário de 13 anos hoje
+já é aceito; se ocorrer amanhã, a requisição é recusada. Para nascimento em 29/02,
+o cálculo existente completa anos em 01/03 nos anos não bissextos.
+
+Antes desta revisão, o desserializador padrão aceitava texto com horário e arrays
+de três números. A leitura compartilhada dos dois DTOs agora rejeita essas coerções
+com `400`, assim como datas inexistentes, valores numéricos, omissão, `null` e vazio.
+Entradas válidas continuam retornando `201` no cadastro e `200` no PUT; este
+retorna `birthDate` como string ISO. Uma recusa não cria conta nem altera dados,
+auditoria ou sessões existentes. Não há idade máxima nova nem alteração de schema.
+
+Para validar manualmente no Postman, usar conta de teste e enviar os seis campos
+no PUT, preservando os valores carregados pelo GET. Variar somente `birthDate`:
+
+| Entrada | Resultado esperado |
+| --- | --- |
+| Data de nascimento de quem completa 13 anos hoje | 200 |
+| Data de nascimento de quem completou 13 anos ontem | 200 |
+| Data de nascimento de quem só completa 13 anos amanhã | 400 |
+| Hoje ou uma data futura | 400 |
+| `2000-02-29` | 200 e a mesma data no GET |
+| `2001-02-29` ou `2000-02-30` | 400 |
+| `31/12/2000` ou `2000-01-01T00:00:00` | 400 |
+| Campo omitido, `null`, vazio, array ou número | 400 |
+
+Calcular os limites considerando a data do servidor, principalmente perto da
+meia-noite. Após uma recusa, conferir os dados pelo GET. No cadastro, os mesmos
+casos válidos retornam 201; usar e-mail e handle exclusivos de teste. A pasta
+**Birth date validation** da coleção JSON contém exemplos de formato e calendário.
+Os limites etários podem ser conferidos alterando a data nos exemplos válidos.
+
+`BirthDateRulesTest` fixa datas de referência para verificar aniversários comuns
+e em 29/02. `PersonalDataIntegrationTest` exercita ambos os endpoints pela cadeia
+real de segurança sobre H2 isolado, incluindo persistência, auditoria e preservação
+de refresh em entradas recusadas. O transporte de e-mail é simulado.
+
+### Evidências da revisão da data de nascimento — 17/11/2026
+
+- Branch independente baseada em `main` no commit `90344e8`; não inclui o PR de handle.
+- Suíte imediatamente após a criação da branch: 578 reportados, zero falhas/erros
+  e 57 ignorados (`.\mvnw.cmd test`).
+- Testes direcionados (`PersonalDataIntegrationTest,BirthDateRulesTest`): 52 reportados,
+  zero falhas/erros e um ignorado.
+- Suíte completa final: 606 reportados, zero falhas/erros e 57 ignorados.
+- A cobertura nova reúne 21 cenários HTTP nos dois endpoints e sete cenários de
+  idade com datas fixas, mantendo os testes anteriores. O teste concorrente de
+  PostgreSQL permanece opt-in e não foi executado nesta entrega.
+- Coleção JSON validada sintaticamente; oito exemplos de data com asserções de
+  status e Bearer herdado. Nenhuma execução manual no Postman foi realizada pelo
+  agente, nem validação de navegador, SMTP real ou CI remoto.
+- Sem migrations, acesso ao banco da aplicação ou alterações no frontend.
+- Código e testes: 148 linhas alteradas, incluindo os arquivos novos.
+
+### Validação manual da data de nascimento — 18/11/2026
+
+O usuário confirmou no Postman:
+
+- Datas de nascimento em 1999 aceitas com 200 e em 2020 recusadas com 400.
+- `2013-11-19`: 400; `2013-11-18`: 200, considerando o servidor em 18/11/2026.
+- Array `[2000, 1, 1]`: 400.
+- Data inexistente `2002-02-30`: 400.
+- Data inexistente `2002-02-29`: resultado final confirmado como 400.
+- Data bissexta válida `2000-02-29`: 200.
+
+O caso exato `2002-02-29` foi acrescentado à cobertura automatizada de cadastro e
+edição. A execução posterior de `PersonalDataIntegrationTest` reportou 46 testes,
+zero falhas/erros e um ignorado. Antes do push, a suíte completa foi executada
+novamente: 607 reportados, zero falhas/erros e 57 ignorados.
+A preservação dos dados após recusa está coberta automaticamente;
+uma conferência manual pelo GET e o teste manual de texto com horário não foram
+relatados. Nenhuma credencial ou identificador de conta foi registrado.
+
 Nome/sobrenome são independentes do nome de exibição do perfil (`displayName`).
 O cadastro gera seu valor inicial; a atualização de dados pessoais o preserva.
 Não enviar `displayName` no PUT. Sua edição pertence à página de perfil e fica
