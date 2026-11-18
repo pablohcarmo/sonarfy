@@ -37,6 +37,40 @@ jobs:
       - name: Execute automated tests
         run: ./mvnw test
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pinned Postman CLI
+        run: npm install --global postman-cli@1.85.0
+
+      - name: Execute location HTTP tests with GeoNames simulation
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          simulation_log="$RUNNER_TEMP/geonames-simulation.log"
+          setsid postman simulation run test-support/location.sim.yaml --port 55441 --no-history --output ndjson > "$simulation_log" 2>&1 &
+          simulation_pid=$!
+          trap 'kill -- -"$simulation_pid" 2>/dev/null || true; wait "$simulation_pid" 2>/dev/null || true' EXIT
+          ready=false
+          for attempt in {1..60}; do
+            if ! kill -0 "$simulation_pid" 2>/dev/null; then
+              cat "$simulation_log"
+              exit 1
+            fi
+            if curl --fail --silent --max-time 1 'http://127.0.0.1:55441/geonames/searchJSON?name_startsWith=Camp&maxRows=10&featureClass=P&orderby=population&lang=pt&username=test-only' > /dev/null; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != true ]; then
+            cat "$simulation_log"
+            exit 1
+          fi
+          ./mvnw test -Dtest=LocationIntegrationTest -Dsonarfy.test.location=true
+
       - name: Validate versioned schema and Spotify migration in disposable PostgreSQL
         env:
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}

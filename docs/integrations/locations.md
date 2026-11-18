@@ -114,6 +114,8 @@ os fluxos com regras diferentes ou sem cobertura das falhas externas.
   MockMvc e a cadeia real de segurança, não navegador.
 - O teste de localização é opt-in porque exige a simulação em execução. A suíte
   padrão continua usando o cliente GeoNames simulado em memória nos testes antigos.
+  O workflow agora habilita esse teste explicitamente em uma etapa própria,
+  conforme a seção de CI abaixo.
 - Antes da atualização da base, o diff de código, testes, mock e configurações
   executáveis somava 602 linhas alteradas.
   Documentação, coleções JSON e contexto documental da simulação não entram no cálculo.
@@ -163,3 +165,47 @@ encerrado após a execução; o banco da aplicação não foi acessado. O CI rem
 ainda precisa executar a correção. O ajuste acrescenta quatro linhas alteradas
 de teste (adições + remoções), totalizando 612 linhas no diff de código e testes
 com a simulação executável.
+
+## Execução obrigatória da localização no CI
+
+O workflow `.github/workflows/ci.yml` instala Node.js 22 e Postman CLI 1.85.0,
+inicia a simulação em 55441 e espera até 60 tentativas por uma resposta HTTP de
+uma busca sintética. O processo precisa continuar ativo durante a espera; falha
+de inicialização impede o início dos testes.
+
+Após a prontidão, executa a suíte explicitamente:
+
+```bash
+./mvnw test -Dtest=LocationIntegrationTest -Dsonarfy.test.location=true
+```
+
+Um trap encerra o grupo de processos da simulação no final da etapa, inclusive
+quando os testes falham. A etapa tem limite de cinco minutos e preserva códigos
+de erro. Usa somente fixtures, H2 isolado e `--no-history`; não precisa de login
+Postman, `POSTMAN_API_KEY` ou credencial GeoNames real. Não publica recursos em
+workspaces. A suíte padrão e os testes PostgreSQL continuam em suas etapas próprias.
+
+Validação local deste ajuste: YAML analisado, gatilho de PR e comando opt-in
+conferidos, script Bash validado com `bash -n` e endpoint de prontidão consultado
+com a mesma URL do workflow. Os 19 cenários passaram novamente, sem falhas/erros
+ou ignorados, contra a simulação local. O ciclo completo do workflow Linux ainda
+precisa ser observado no GitHub; não foi declarado como executado remotamente.
+O diff acumulado de código e configuração executável passa de 612 para 646 linhas.
+
+## Condição para implantação
+
+O frontend atual ainda cadastra usando textos de cidade e país. Não disponibilizar
+isoladamente o backend com `cityId` obrigatório para esse consumidor. A liberação
+do contrato precisa acompanhar uma versão do cadastro que pesquise cidades e
+envie o identificador selecionado. Antes de disponibilizar, validar cadastro de
+conta de teste e edição contra o mesmo backend configurado. Esta entrega não
+implementa nem publica essa adaptação do frontend.
+
+## Pendência de proteção da quota
+
+A busca pública ainda encaminha cada consulta válida ao GeoNames. O limite de
+dez resultados não limita frequência. Antes de exposição pública ampliada,
+planejar cache com TTL e tamanho máximo e limitação de frequência, considerando
+que busca e seleção no cadastro compartilham a quota da mesma conta do provedor.
+Essa proteção não foi implementada neste ajuste de CI e deve ter escopo e testes
+próprios; nenhum fallback de país será usado quando a quota for excedida.
