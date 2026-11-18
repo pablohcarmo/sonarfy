@@ -1,0 +1,86 @@
+{
+  "info": {
+    "name": "Sonarfy - location selection and registration",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Contrato docs/api/locations.md. Executar requests individualmente. Configure baseUrl e credenciais de uma conta nova de TESTE apenas em variáveis locais. O cadastro cria conta e pode enviar e-mail. Não exportar valores preenchidos. Não executar automaticamente a coleção inteira."
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "cityId",
+      "value": ""
+    },
+    {
+      "key": "registrationEmail",
+      "value": ""
+    },
+    {
+      "key": "registrationPassword",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Search cities (public)",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "noauth"
+        },
+        "url": "{{baseUrl}}/api/locations/cities?q=Campinas"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('City selections', () => pm.expect(pm.response.json()).to.be.an('array'));",
+              "const choices = pm.response.json(); if (choices.length) pm.collectionVariables.set('cityId', choices[0].cityId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Register with selected city (creates account)",
+      "request": {
+        "method": "POST",
+        "auth": {
+          "type": "noauth"
+        },
+        "url": "{{baseUrl}}/api/auth/register",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"location.test\",\n  \"email\": \"{{registrationEmail}}\",\n  \"password\": \"{{registrationPassword}}\",\n  \"cityId\": {{cityId}},\n  \"birthDate\": \"2000-05-15\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201', () => pm.response.to.have.status(201));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

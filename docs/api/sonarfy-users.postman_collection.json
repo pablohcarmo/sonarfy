@@ -26,9 +26,36 @@
     {
       "key": "occupiedHandle",
       "value": "occupied.test"
+    },
+    {
+      "key": "cityId",
+      "value": ""
     }
   ],
   "item": [
+    {
+      "name": "Search cities (public)",
+      "request": {
+        "method": "GET",
+        "auth": {
+          "type": "noauth"
+        },
+        "url": "{{baseUrl}}/api/locations/cities?q=Campinas"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('City selections', () => pm.expect(pm.response.json()).to.be.an('array'));",
+              "const choices = pm.response.json(); if (choices.length) pm.collectionVariables.set('cityId', choices[0].cityId);"
+            ]
+          }
+        }
+      ]
+    },
     {
       "name": "Read personal data",
       "request": {
@@ -49,7 +76,7 @@
       ]
     },
     {
-      "name": "Replace personal fields and normalize handle",
+      "name": "Edit without changing location",
       "request": {
         "method": "PUT",
         "url": "{{baseUrl}}/api/users/me",
@@ -61,14 +88,50 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"Maria.Silva\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\",\n  \"birthDate\": \"2000-05-15\"\n}",
+          "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"birthDate\": \"2000-05-15\"\n}",
           "options": {
             "raw": {
               "language": "json"
             }
           }
         },
-        "description": "PUT completo com handle em caixa mista: resposta e persistência em minúsculas. Formato do cadastro: 1–15 caracteres ASCII, números, _, - e ponto; sem @ ou espaços. Outra conta com o mesmo handle sem diferenciar caixa retorna 409. Atualiza os dados da conta de teste; não executar em conta real."
+        "description": "Sem cityId, preserva cidade/país e não consulta o GeoNames. Enviar os quatro campos cadastrais."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"Updated handle\", () => pm.expect(pm.response.json().handle).to.eql(\"maria.silva\"));",
+              "pm.test(\"Existing JSON keys\", () => { const body = pm.response.json(); pm.expect(body).to.have.property(\"active\"); pm.expect(body).to.have.property(\"profilePicture\"); pm.expect(body).not.to.have.property(\"displayName\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Replace personal data and selected city",
+      "request": {
+        "method": "PUT",
+        "url": "{{baseUrl}}/api/users/me",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"Maria.Silva\",\n  \"birthDate\": \"2000-05-15\",\n  \"cityId\": {{cityId}}\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Enviar cityId obtido na busca para trocar a localização. País e cidade vêm do provedor. Requer GeoNames configurado; executar somente sobre conta de teste."
       },
       "event": [
         {
@@ -97,7 +160,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"@invalid\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\",\n  \"birthDate\": \"2000-05-15\"\n}",
+          "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"@invalid\",\n  \"birthDate\": \"2000-05-15\"\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -130,7 +193,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\"\n}",
+          "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\"\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -163,7 +226,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"{{occupiedHandle}}\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\",\n  \"birthDate\": \"2000-05-15\"\n}",
+          "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"{{occupiedHandle}}\",\n  \"birthDate\": \"2000-05-15\"\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -196,7 +259,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\",\n  \"birthDate\": \"2000-05-15\"\n}",
+          "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"birthDate\": \"2000-05-15\"\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -236,7 +299,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\",\n  \"birthDate\": \"2000-02-29\"\n}",
+              "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"birthDate\": \"2000-02-29\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -270,7 +333,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\",\n  \"birthDate\": \"2000-02-30\"\n}",
+              "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"birthDate\": \"2000-02-30\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -303,7 +366,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\",\n  \"birthDate\": \"2001-02-29\"\n}",
+              "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"birthDate\": \"2001-02-29\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -336,7 +399,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\",\n  \"birthDate\": \"2000-01-01T00:00:00\"\n}",
+              "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"birthDate\": \"2000-01-01T00:00:00\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -369,7 +432,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\",\n  \"birthDate\": [\n    2000,\n    1,\n    1\n  ]\n}",
+              "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"birthDate\": [\n    2000,\n    1,\n    1\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -402,7 +465,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\",\n  \"birthDate\": 946684800000\n}",
+              "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"birthDate\": 946684800000\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -435,7 +498,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\",\n  \"birthDate\": null\n}",
+              "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"birthDate\": null\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -468,7 +531,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"city\": \"Campinas\",\n  \"country\": \"Brasil\",\n  \"birthDate\": \"2999-01-01\"\n}",
+              "raw": "{\n  \"name\": \"Maria\",\n  \"surname\": \"Silva\",\n  \"handle\": \"maria.silva\",\n  \"birthDate\": \"2999-01-01\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

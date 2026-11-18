@@ -180,11 +180,13 @@ class ExistingSchemaIntegrationTest {
                 service, jwt, emails, new AuthService(users, encoder, refreshTokens), refreshTokens)).build();
         mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
                 {"name":"%s","surname":"%s","handle":"%s","email":"%s",
-                 "password":"TestPassword123!","city":"Brasilia","country":"Brasil",
+                 "password":"TestPassword123!","cityId":1,
                  "birthDate":"2000-01-01"}
                 """.formatted(name, surname, handle, email))).andExpect(status().isCreated());
         users.flush();
         var user = users.findByEmailIgnoreCase(email).orElseThrow();
+        assertEquals("Brasilia", user.getCity());
+        assertEquals("Brasil", user.getCountry());
         assertEquals(longName ? "A".repeat(50) + " " + "B".repeat(9) : "Schema Check", user.getDisplayName());
         String login = "{\"login\":\"" + email + "\",\"password\":\"TestPassword123!\"}";
         mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content(login))

@@ -71,6 +71,7 @@ public class SecurityConfig {
                     req.requestMatchers(
                             HttpMethod.GET,
                             "/api/auth/verify",
+                            "/api/locations/cities",
                             "/api/spotify/callback"
                     ).permitAll();
 

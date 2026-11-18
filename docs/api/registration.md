@@ -25,8 +25,7 @@ O corpo da requisição é representado por `NewUserDto`:
   "handle": "maria.silva",
   "email": "maria.silva@example.com",
   "password": "SenhaDeTeste123!",
-  "city": "São Paulo",
-  "country": "Brasil",
+  "cityId": 3448439,
   "birthDate": "2000-05-15"
 }
 ```
@@ -40,8 +39,7 @@ O corpo da requisição é representado por `NewUserDto`:
 | `handle` | `@NotBlank`, `@Size(max = 15)` e `@Pattern("^[a-zA-Z0-9_.-]+$")` | Convertido para minúsculas com `Locale.ROOT` antes de consultar unicidade e persistir; comparação sem distinção de caixa. `@` e espaços são rejeitados na entrada HTTP |
 | `email` | `@NotBlank` e `@Email` | Unicidade verificada sem distinção de maiúsculas/minúsculas (`findByEmailIgnoreCaseOrHandleIgnoreCase` e índice `uk_users_email_ci`) |
 | `password` | `@NotBlank` e `@Size(min = 8)` | Rejeita senhas com mais de **72 bytes em UTF-8** (`400 Bad Request`) antes do hash BCrypt |
-| `city` | `@NotBlank` e `@Pattern("^[a-zA-ZÀ-ÿ\\s.'-]+$")` | Persistido no cadastro do usuário |
-| `country` | `@NotBlank` e `@Pattern("^[a-zA-ZÀ-ÿ\\s.'-]+$")` | Persistido no cadastro do usuário |
+| `cityId` | `@NotNull` e `@Positive` | Identificador retornado pela busca de cidades. O backend deriva cidade e país do GeoNames; ID inexistente ou não pertencente à classe P retorna 400; falha do provedor retorna 503 |
 | `birthDate` | `@NotNull` e `@Past` | Idade mínima de **13 anos completos** na data atual (`400 Bad Request` caso menor de 13 anos) |
 
 `birthDate` é lido estritamente como string `YYYY-MM-DD`, com data existente no
@@ -52,8 +50,12 @@ ao requisito. Para nascimento em 29/02, o cálculo existente completa a idade em
 01/03 nos anos não bissextos. A edição aplica as mesmas regras; consulte
 [dados cadastrais](users-and-profile.md). Cadastro recusado não cria uma conta.
 
-Os limites de nome/sobrenome (50), handle (15) e cidade/país (100) são validados
-também na entrada, em alinhamento com o schema e a edição de dados pessoais.
+Os limites de nome/sobrenome (50) e handle (15) são validados na entrada. Cidade e
+país são dados do provedor, limitados a 100 caracteres antes da persistência.
+`NewUserDto` agora é um record. O consumidor deve substituir os textos `city` e
+`country` por `cityId`; os textos enviados são ignorados e não substituem o ID.
+Consulte o [contrato de localização](locations.md). Essa mudança exige adaptação
+do cadastro existente; o frontend não foi alterado nesta entrega.
 
 No momento da persistência:
 

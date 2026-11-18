@@ -25,6 +25,7 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
    - `GET /api/profile/me` e `PUT /api/profile/me` — Consulta e personalização de biografia, avatar (`profilePicture`) e capa (`UpdateProfileDto`).
    - Coleção Postman: [sonarfy-users.postman_collection.json](sonarfy-users.postman_collection.json).
    - Integração de dados pessoais: [configurações](../integrations/user-settings.md).
+   - [Localização](locations.md): `GET /api/locations/cities`, `cityId` no cadastro e seleção opcional na edição; país derivado no servidor.
    - [Troca de e-mail](email-changes.md): solicitação autenticada, confirmação com autorização própria e aviso ao endereço antigo, sob opção de ativação.
 5. **[Integração OAuth 2.0 com o Spotify](../integrations/spotify.md)**
    - `POST /api/spotify/authorization` — Geração autenticada da URL de autorização do Spotify e registro de `state` de uso único.
@@ -34,7 +35,7 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 
 ---
 
-## Mapa Consolidado de Endpoints (17 Rotas Ativas)
+## Mapa Consolidado de Endpoints
 
 | Método | Rota | Controller | Acesso | Contrato Detalhado |
 | --- | --- | --- | --- | --- |
@@ -42,6 +43,7 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 | `PATCH` | `/api/auth/update-pending-email` | `AuthController` | Público + Bearer `pending_registration` | [registration.md](registration.md#2-retificar-e-mail-pendente-antes-da-ativação) |
 | `POST` | `/api/auth/resend-activation-email` | `AuthController` | Público | [registration.md](registration.md#3-reenviar-e-mail-de-ativação) |
 | `GET` | `/api/auth/verify` | `AuthController` | Público + query `token` (`email_confirmation`) | [registration.md](registration.md#4-confirmar-e-mail-e-ativar-conta) |
+| `GET` | `/api/locations/cities` | `LocationController` | Público | [locations.md](locations.md) |
 | `POST` | `/api/auth/login` | `AuthController` | Público | [authentication.md](authentication.md#login) |
 | `POST` | `/api/auth/forgot-password` | `AuthController` | Público | [passwords.md](passwords.md#solicitar-recuperação) |
 | `POST` | `/api/auth/reset-password` | `AuthController` | Público + JSON `token` (`password_reset`) | [passwords.md](passwords.md#redefinir-senha-esquecida) |

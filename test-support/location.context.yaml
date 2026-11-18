@@ -1,0 +1,32 @@
+simulation: location-validation
+generated: '2026-11-18'
+purpose:
+  stands_in_for: GeoNames searchJSON and getJSON with synthetic city fixtures
+  unblocks: HTTP client, security and persistence verification without real credentials
+assumptions:
+  - id: geonames-city-identity
+    status: supported
+    claim: getJSON resolves a geonameId and searchJSON supports populated-place filtering and localized names
+    reason: Supported by the provider documentation; fixtures follow the documented JSON shape
+    verification: LocationIntegrationTest performs real HTTP requests through the Postman simulation
+    source: https://www.geonames.org/export/web-services.html
+    updated_at: '2026-11-18'
+  - id: geonames-status-body
+    status: supported
+    claim: GeoNames can report missing records and quota failures in a JSON status object
+    reason: Documented error codes 11 and 19 are modeled by the synthetic provider
+    verification: Integration tests verify 400 or 503 and unchanged account data and sessions
+    source: https://www.geonames.org/export/webservice-exception.html
+    updated_at: '2026-11-18'
+  - id: live-provider-readiness
+    status: unknown
+    claim: The configured production account has sufficient credits and its current results match the desired city selection
+    reason: No real GeoNames account, quota or current place data was queried during this delivery
+    verification: Requires separate manual verification using the deployment configuration
+    source: docs/integrations/locations.md
+    updated_at: '2026-11-18'
+fingerprints:
+  - id: initial-location-delivery
+    date: '2026-11-18'
+    commit: 90344e8-dirty
+    cli: '1.85.0'

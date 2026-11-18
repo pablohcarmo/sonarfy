@@ -50,7 +50,7 @@ class UserServiceTest {
         var failure = new org.springframework.dao.DataIntegrityViolationException("test", violation);
         when(userRepository.saveAndFlush(user)).thenThrow(failure);
         var dto = new br.com.pablohcarmo.sonarfy.dto.UpdateUserDto("Maria", "Silva", "maria",
-                "Campinas", "Brasil", LocalDate.of(2000, 1, 1));
+                null, LocalDate.of(2000, 1, 1));
         if (conflict) {
             assertEquals(HttpStatus.CONFLICT, assertThrows(ResponseStatusException.class,
                     () -> userService.updateRegister(1L, dto)).getStatusCode());
@@ -108,21 +108,16 @@ class UserServiceTest {
     @Mock
     private RefreshTokenService refreshTokens;
 
+    @Mock
+    private br.com.pablohcarmo.sonarfy.client.GeoNamesClient cities;
+
     @InjectMocks
     private UserService userService;
 
     @Test
     @DisplayName("Deve registrar novo usuário, publicar ativação e retornar RegisterResponseDto com registrationToken")
     void shouldRegisterNewUserSuccessfully() {
-        NewUserDto dto = new NewUserDto();
-        dto.setName("Pablo");
-        dto.setSurname("Carmo");
-        dto.setHandle("@PaBlo");
-        dto.setEmail("pablo@sonarfy.com");
-        dto.setPassword("Secret123!");
-        dto.setCity("Brasilia");
-        dto.setCountry("Brasil");
-        dto.setBirthDate(LocalDate.now().minusYears(25));
+        NewUserDto dto = new NewUserDto("Pablo", "Carmo", "@PaBlo", "pablo@sonarfy.com", "Secret123!", 1L, LocalDate.now().minusYears(25));
 
         Permission defaultPermission = new Permission();
         defaultPermission.setName("ROLE_USER");
@@ -141,6 +136,7 @@ class UserServiceTest {
         when(userRepository.save(any(User.class))).thenReturn(savedUser);
         when(jwtService.generateRegistrationToken("10")).thenReturn("token-retificacao-pendente");
 
+        when(cities.resolve(1L)).thenReturn(new br.com.pablohcarmo.sonarfy.dto.CityDto(1L, "Brasilia", "", "Brasil"));
         RegisterResponseDto response = userService.newUser(dto);
 
         assertNotNull(response);
@@ -158,8 +154,7 @@ class UserServiceTest {
     @Test
     @DisplayName("Deve lançar 400 Bad Request ao registrar usuário com menos de 13 anos")
     void shouldThrowBadRequestWhenUserIsUnder13() {
-        NewUserDto dto = new NewUserDto();
-        dto.setBirthDate(LocalDate.now().minusYears(10));
+        NewUserDto dto = new NewUserDto(null, null, null, null, null, 1L, LocalDate.now().minusYears(10));
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
                 userService.newUser(dto)
@@ -172,10 +167,7 @@ class UserServiceTest {
     @Test
     @DisplayName("Deve lançar 409 Conflict ao registrar usuário com e-mail ou handle duplicado")
     void shouldThrowConflictWhenUserAlreadyExists() {
-        NewUserDto dto = new NewUserDto();
-        dto.setEmail("existente@sonarfy.com");
-        dto.setHandle("existente");
-        dto.setBirthDate(LocalDate.now().minusYears(20));
+        NewUserDto dto = new NewUserDto(null, null, "existente", "existente@sonarfy.com", null, 1L, LocalDate.now().minusYears(20));
 
         when(userRepository.findByEmailIgnoreCaseOrHandleIgnoreCase("existente@sonarfy.com", "existente"))
                 .thenReturn(Optional.of(new User()));

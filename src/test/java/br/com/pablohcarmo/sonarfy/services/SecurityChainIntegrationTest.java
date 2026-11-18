@@ -227,7 +227,7 @@ class SecurityChainIntegrationTest {
         mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
                 {"name":"New","surname":"Account","handle":"new-account",
                  "email":"new@example.com","password":"TestPassword123!",
-                 "city":"Brasilia","country":"Brasil","birthDate":"2000-01-01"}
+                 "cityId":1,"birthDate":"2000-01-01"}
                 """))
                 .andExpect(status().isCreated());
         String credentials = "{\"login\":\"new@example.com\",\"password\":\"TestPassword123!\"}";

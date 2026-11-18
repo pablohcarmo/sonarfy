@@ -8,8 +8,9 @@ A [troca de senha](password-change.md) descreve o contrato do botão de envio e 
 consumo futuro do link autenticado.
 
 1. Consultar `GET /api/users/me` com Bearer `access` para carregar os valores.
-2. Enviar `PUT /api/users/me` com os seis campos: `name`, `surname`, `handle`,
-   `birthDate`, `country` e `city`, inclusive os que permanecerem iguais.
+2. Enviar `PUT /api/users/me` com `name`, `surname`, `handle` e `birthDate`, inclusive
+   os valores não alterados. Enviar `cityId` somente ao selecionar outra localização;
+   sem ele, a localização atual permanece igual. `city` e `country` são de resposta.
 3. Em `200`, atualizar o estado local com o `UserDto` retornado.
 4. Em `400`, manter as edições e corrigir os campos conforme
    [regras do contrato](../api/users-and-profile.md). Em `409`, solicitar outro
@@ -85,8 +86,9 @@ Entradas válidas continuam retornando `201` no cadastro e `200` no PUT; este
 retorna `birthDate` como string ISO. Uma recusa não cria conta nem altera dados,
 auditoria ou sessões existentes. Não há idade máxima nova nem alteração de schema.
 
-Para validar manualmente no Postman, usar conta de teste e enviar os seis campos
-no PUT, preservando os valores carregados pelo GET. Variar somente `birthDate`:
+Para validar manualmente no Postman, usar conta de teste e enviar `name`, `surname`,
+`handle` e `birthDate` no PUT, preservando os valores carregados pelo GET e omitindo
+`cityId` para manter a localização. Variar somente `birthDate`:
 
 | Entrada | Resultado esperado |
 | --- | --- |
@@ -153,13 +155,28 @@ fora desta entrega, assim como uma representação própria para consulta do per
 Avatar, capa e biografia pertencem ao `UpdateProfileDto`; não incluir esses campos
 na atualização de dados pessoais.
 
+## Seleção da localização
+
+Pesquisar `GET /api/locations/cities?q=Campinas`, apresentar nome, região e país e
+guardar `cityId` da opção escolhida. O país não é editado separadamente: o backend
+consulta o identificador e preenche os dois campos. A busca é pública para atender
+o cadastro, que passa a exigir `cityId`. Não presumir Brasil quando a busca falhar.
+
+Na edição, sem `cityId` a localização é preservada, inclusive em contas antigas,
+sem consulta remota. Textos `city` e `country` enviados pelo cliente são ignorados.
+Erros 400 de seleção e 503 do provedor não persistem parcialmente os dados.
+A seleção no frontend e a correção do Figma permanecem para outra etapa.
+Consulte [contrato, configuração e validação](locations.md).
+
 ## Consumidor inspecionado
 
 Em `C:/Projetos/sonarfy-frontend`, `pages/account.html` carrega `js/account.js`.
 O script ainda preenche dados fixos e simula o salvamento sem chamadas HTTP.
 Handle e país estão bloqueados na interface atual; a integração futura deverá
-permitir sua edição conforme o contrato aprovado. O cadastro envia os seis
-campos, inclusive país resolvido a partir da cidade.
+liberar o handle e manter o país preenchido somente pela cidade selecionada.
+O cadastro atual consulta o GeoNames diretamente e envia cidade/país como textos,
+com fallback para Brasil em falha. Deverá usar a busca do backend e enviar `cityId`;
+esse consumidor ainda não está adaptado ao novo contrato.
 
 Nenhum arquivo do frontend foi alterado e não houve validação no navegador.
 

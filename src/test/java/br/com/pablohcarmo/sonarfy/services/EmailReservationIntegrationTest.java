@@ -85,6 +85,12 @@ class EmailReservationIntegrationTest {
         @Bean PlatformTransactionManager transactionManager(EntityManagerFactory factory) {
             return new JpaTransactionManager(factory);
         }
+        @Bean br.com.pablohcarmo.sonarfy.client.GeoNamesClient locationClient() {
+            var client = mock(br.com.pablohcarmo.sonarfy.client.GeoNamesClient.class);
+            when(client.resolve(anyLong())).thenAnswer(call -> new br.com.pablohcarmo.sonarfy.dto.CityDto(
+                    call.getArgument(0), call.getArgument(0, Long.class) == 2L ? "Campinas" : "Brasilia", "", "Brasil"));
+            return client;
+        }
         @Bean EmailService emailService() { return mock(EmailService.class); }
         @Bean EmailTemplateService emailTemplateService() { return mock(EmailTemplateService.class); }
         @Bean JavaMailSender javaMailSender() { return mock(JavaMailSender.class); }
@@ -411,13 +417,7 @@ class EmailReservationIntegrationTest {
     }
 
     private NewUserDto registration() {
-        NewUserDto dto = new NewUserDto();
-        dto.setName("New");
-        dto.setSurname("Account");
-        dto.setEmail("new@example.com");
-        dto.setHandle("new-account");
-        dto.setPassword("TestPassword123!");
-        dto.setBirthDate(LocalDate.now().minusYears(20));
+        NewUserDto dto = new NewUserDto("New", "Account", "new-account", "new@example.com", "TestPassword123!", 1L, LocalDate.now().minusYears(20));
         return dto;
     }
 
@@ -430,7 +430,7 @@ class EmailReservationIntegrationTest {
         mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
                 {"name":"New","surname":"Account","handle":"new-account",
                  "email":"new@example.com","password":"%s",
-                 "city":"Brasilia","country":"Brasil","birthDate":"2000-01-01"}
+                 "cityId":1,"birthDate":"2000-01-01"}
                 """.formatted(password)))
                 .andExpect(status().isCreated());
         User saved = users.findByEmailIgnoreCase("new@example.com").orElseThrow();
@@ -462,7 +462,7 @@ class EmailReservationIntegrationTest {
         mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON).content("""
                 {"name":"New","surname":"Account","handle":"new-account",
                  "email":"new@example.com","password":"%s",
-                 "city":"Brasilia","country":"Brasil","birthDate":"2000-01-01"}
+                 "cityId":1,"birthDate":"2000-01-01"}
                 """.formatted(character.repeat(count))))
                 .andExpect(status().isBadRequest())
                 .andExpect(result -> assertEquals("Password must not exceed 72 bytes in UTF-8.",
