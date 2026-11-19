@@ -1,0 +1,164 @@
+{
+  "info": {
+    "name": "Sonarfy - profile reads",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Read-only contract: docs/api/profiles.md. Use an active verified TEST account; configure targetHandle for another eligible account. Store accessToken only locally and never export it. No profile mutations or Spotify calls."
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "targetHandle",
+      "value": ""
+    },
+    {
+      "key": "missingHandle",
+      "value": "missing-test-profile"
+    }
+  ],
+  "item": [
+    {
+      "name": "Read own profile",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/profile/me",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{accessToken}}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"No store\", () => pm.expect(pm.response.headers.get(\"Cache-Control\")).to.include(\"no-store\"));",
+              "pm.test(\"Profile fields only\", () => { const b = pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"viewer\"]); pm.expect(Object.keys(b.identity).sort()).to.eql([\"avatarUrl\",\"biography\",\"coverUrl\",\"displayName\",\"handle\",\"id\",\"joinedAt\",\"location\"]); pm.expect(Object.keys(b.viewer).sort()).to.eql([\"canEdit\",\"isSelf\"]); pm.expect(b.identity.joinedAt).to.match(/(Z|[+-][0-9]{2}:[0-9]{2})$/); });",
+              "pm.test(\"Own profile\", () => { const b=pm.response.json(); pm.expect(b.viewer.isSelf).to.eql(true); pm.expect(b.viewer.canEdit).to.eql(true); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Read another profile",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/profile/by-handle/{{targetHandle}}",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{accessToken}}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"No store\", () => pm.expect(pm.response.headers.get(\"Cache-Control\")).to.include(\"no-store\"));",
+              "pm.test(\"Profile fields only\", () => { const b = pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"viewer\"]); pm.expect(Object.keys(b.identity).sort()).to.eql([\"avatarUrl\",\"biography\",\"coverUrl\",\"displayName\",\"handle\",\"id\",\"joinedAt\",\"location\"]); pm.expect(Object.keys(b.viewer).sort()).to.eql([\"canEdit\",\"isSelf\"]); pm.expect(b.identity.joinedAt).to.match(/(Z|[+-][0-9]{2}:[0-9]{2})$/); });",
+              "pm.test(\"Other profile\", () => { const b=pm.response.json(); pm.expect(b.viewer.isSelf).to.eql(false); pm.expect(b.viewer.canEdit).to.eql(false); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Missing profile",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/profile/by-handle/{{missingHandle}}",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{accessToken}}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 404\", () => pm.response.to.have.status(404));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Anonymous own profile",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/profile/me",
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 401\", () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Anonymous other profile",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/profile/by-handle/{{targetHandle}}",
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 401\", () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -7,6 +7,7 @@ Este documento descreve os endpoints autenticados de consulta e atualização ca
 2. `PUT /api/users/me`
 3. `GET /api/profile/me`
 4. `PUT /api/profile/me`
+5. `GET /api/profile/by-handle/{handle}` — [contrato de leitura de perfil](profiles.md)
 
 As rotas de troca autenticada de senha (`POST /api/users/me/password-change-request` e `PUT /api/users/me/password`), também declaradas em `UserController`, estão documentadas no [contrato de recuperação e troca de senha](passwords.md).
 
@@ -29,7 +30,7 @@ Authorization: Bearer <accessToken>
 
 ## Representação de resposta comum (`UserDto`)
 
-Os quatro endpoints retornam HTTP `200 OK` com `Content-Type: application/json` serializando `UserDto`:
+GET/PUT `/api/users/me` e PUT `/api/profile/me` retornam HTTP `200 OK` com `Content-Type: application/json` serializando `UserDto`. GET `/api/profile/me` agora retorna [ProfileDto](profiles.md), sem dados cadastrais privados. O exemplo abaixo representa somente o contrato cadastral legado:
 
 ```json
 {
@@ -60,13 +61,13 @@ Os quatro endpoints retornam HTTP `200 OK` com `Content-Type: application/json` 
 
 ## 1. Consultar dados do usuário logado
 
-- `GET /api/users/me` (`UserController.getCurrentUser`)
-- `GET /api/profile/me` (`ProfileController.getCurrentUser`)
+- `GET /api/users/me` (`UserController.getCurrentUser`) retorna `UserDto` via `UserService.getUserRegister(userId)`.
+- `GET /api/profile/me` retorna `ProfileDto` via `ProfileService`, conforme [leitura de perfil](profiles.md).
 
-Ambos os endpoints não recebem corpo, identificam o usuário pelo ID autenticado e
-delegam para `UserService.getUserRegister(userId)`, retornando `200 OK` com o mesmo
-`UserDto`. Atualizações de dados e perfil bloqueiam/recarregam esse usuário antes
-de salvar, preservando alterações concorrentes de e-mail e senha.
+Ambos identificam a conta pelo ID autenticado. Consultas de perfil não retornam
+informações cadastrais privadas. PUT de perfil mantém o contrato legado nesta entrega.
+Atualizações bloqueiam/recarregam o usuário antes de salvar, preservando alterações
+concorrentes de e-mail e senha.
 
 Exemplo com `curl`:
 
@@ -178,7 +179,7 @@ O corpo da requisição é representado por `UpdateProfileDto`:
 
 | Situação | HTTP | Comportamento |
 | --- | --- | --- |
-| Consulta ou atualização realizada com sucesso | `200 OK` | Retorna `UserDto` em JSON |
+| Consulta ou atualização realizada com sucesso | `200 OK` | GET de perfil retorna `ProfileDto`; demais operações retornam `UserDto` |
 | Dado pessoal omitido, nulo, em branco, fora do formato/limite ou idade inferior a 13 anos | `400 Bad Request` | Nenhum dado pessoal é alterado |
 | Handle ocupado, inclusive por corrida concorrente ou variação de caixa | `409 Conflict` | Nenhum dado pessoal é alterado |
 | `biography` acima de 255 caracteres em `PUT /api/profile/me` ou JSON malformado | `400 Bad Request` | Rejeitado na validação de entrada |
@@ -195,3 +196,6 @@ O corpo da requisição é representado por `UpdateProfileDto`:
 | `SecurityChainIntegrationTest` | Acesso autenticado a `GET /api/users/me` após `POST /api/auth/login` e rejeição (`401`) para requisições anônimas, tokens inválidos ou contas não elegíveis |
 | `PersonalDataIntegrationTest` | GET/PUT pela cadeia real de segurança, persistência, limites, idade, isolamento, campos protegidos e rejeição de credenciais; corrida concorrente opt-in em PostgreSQL descartável |
 | `EmailChangeConfirmationPostgresTest` | Conta/perfil por ID após reutilização do e-mail antigo; edição concorrente de perfil preservando a troca confirmada |
+
+A consulta por handle retorna 404 para perfil ausente, inativo ou não verificado.
+`ProfileIntegrationTest` cobre os GETs de perfil pela cadeia real de segurança com H2 descartável.
