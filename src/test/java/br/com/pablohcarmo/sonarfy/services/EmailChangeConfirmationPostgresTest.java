@@ -243,7 +243,7 @@ class EmailChangeConfirmationPostgresTest {
                 .andExpect(jsonPath("$.email").doesNotExist());
         mvc.perform(put("/api/profile/me").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(actor))
                 .contentType("application/json").content("{\"biography\":\"Updated profile\"}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(user.getId()));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.identity.id").value(user.getId()));
         mvc.perform(put("/api/users/me").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(actor))
                 .contentType("application/json").content("""
                     {"name":"Stable","surname":"Actor","handle":"stable.actor","city":"Brasilia","country":"Brasil","birthDate":"2000-01-01"}
@@ -266,11 +266,11 @@ class EmailChangeConfirmationPostgresTest {
             loaded.countDown(); assertTrue(release.await(10, TimeUnit.SECONDS)); return Optional.of(cached);
         }).when(users).findById(user.getId());
         try (var pool = Executors.newSingleThreadExecutor()) {
-            var editing = pool.submit(() -> userService.updateProfile(user.getId(),
-                    new br.com.pablohcarmo.sonarfy.dto.UpdateProfileDto("Updated profile", null, null)));
+            var input = new br.com.pablohcarmo.sonarfy.dto.UpdateProfileDto(); input.setBiography("Updated profile");
+            var editing = pool.submit(() -> context.getBean(ProfileService.class).update(user.getId(), input));
             assertTrue(loaded.await(10, TimeUnit.SECONDS));
             try { confirm(token).andExpect(status().isOk()); } finally { release.countDown(); }
-            assertEquals("next@example.com", editing.get(20, TimeUnit.SECONDS).email());
+            assertEquals("Updated profile", editing.get(20, TimeUnit.SECONDS).identity().biography());
         }
         assertEquals("next@example.com", jdbc.queryForObject("SELECT email FROM users WHERE user_id = ?", String.class, user.getId()));
     }

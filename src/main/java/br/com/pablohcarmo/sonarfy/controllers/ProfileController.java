@@ -2,11 +2,8 @@ package br.com.pablohcarmo.sonarfy.controllers;
 
 import br.com.pablohcarmo.sonarfy.dto.UpdateProfileDto;
 import br.com.pablohcarmo.sonarfy.entities.User;
-import br.com.pablohcarmo.sonarfy.dto.UserDto;
-import br.com.pablohcarmo.sonarfy.services.UserService;
 import br.com.pablohcarmo.sonarfy.services.ProfileService;
 import br.com.pablohcarmo.sonarfy.dto.ProfileDto;
-import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,11 +13,9 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 @RequestMapping("/api/profile")
 public class ProfileController {
 
-    private final UserService userService;
     private final ProfileService profileService;
 
-    public ProfileController(UserService userService, ProfileService profileService) {
-        this.userService = userService;
+    public ProfileController(ProfileService profileService) {
         this.profileService = profileService;
     }
 
@@ -38,9 +33,11 @@ public class ProfileController {
                 .body(profileService.byHandle(handle, authenticatedUser.getId()));
     }
 
+    // Text edits use only the authenticated identity and return the same safe representation as GET.
     @PutMapping("/me")
-    public ResponseEntity<UserDto>updateProfile(@RequestBody @Valid UpdateProfileDto updateProfileDto, @AuthenticationPrincipal User authenticatedUser) {
-        // Envia os dados limpos para a camada de serviço, que vai atualizar o usuário logado e devolver o DTO correspondente
-        return ResponseEntity.ok(userService.updateProfile(authenticatedUser.getId(), updateProfileDto));
+    public ResponseEntity<ProfileDto> updateProfile(@RequestBody UpdateProfileDto input,
+                                                   @AuthenticationPrincipal User authenticatedUser) {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(profileService.update(authenticatedUser.getId(), input));
     }
 }

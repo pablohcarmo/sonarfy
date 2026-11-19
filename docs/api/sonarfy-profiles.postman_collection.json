@@ -1,8 +1,8 @@
 {
   "info": {
-    "name": "Sonarfy - profile reads",
+    "name": "Sonarfy - profile",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Read-only contract: docs/api/profiles.md. Use an active verified TEST account; configure targetHandle for another eligible account. Store accessToken only locally and never export it. No profile mutations or Spotify calls."
+    "description": "Contract: docs/api/profiles.md. Read requests and a separate text-edit folder that MUTATES the authenticated TEST account. Run mutations individually; save previous text before editing. Images are preserved. Store accessToken locally; never export credentials. No Azure or Spotify calls."
   },
   "variable": [
     {
@@ -157,6 +157,228 @@
               "pm.test(\"HTTP 401\", () => pm.response.to.have.status(401));"
             ]
           }
+        }
+      ]
+    },
+    {
+      "name": "Text edit - mutates TEST account",
+      "description": "Use a disposable test account. Save previous text before running. Empty body object preserves fields; null clears only biography. No image mutation.",
+      "item": [
+        {
+          "name": "Edit display name and biography",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/profile/me",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"displayName\": \"  DJ 123 🎵  \",\n  \"biography\": \"Music 🎧\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"No store\", () => pm.expect(pm.response.headers.get(\"Cache-Control\")).to.include(\"no-store\"));",
+                  "pm.test(\"Profile fields only\", () => { const b = pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"viewer\"]); pm.expect(Object.keys(b.identity).sort()).to.eql([\"avatarUrl\",\"biography\",\"coverUrl\",\"displayName\",\"handle\",\"id\",\"joinedAt\",\"location\"]); pm.expect(Object.keys(b.viewer).sort()).to.eql([\"canEdit\",\"isSelf\"]); pm.expect(b.identity.joinedAt).to.match(/(Z|[+-][0-9]{2}:[0-9]{2})$/); });",
+                  "pm.test(\"Normalized text and ownership\", () => { const b=pm.response.json(); pm.expect(b.identity.displayName).to.eql(\"DJ 123 \\u{1f3b5}\"); pm.expect(b.identity.biography).to.eql(\"Music \\u{1f3a7}\"); pm.expect(b.viewer.isSelf).to.eql(true); pm.expect(b.viewer.canEdit).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Clear biography only",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/profile/me",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"biography\":null}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"No store\", () => pm.expect(pm.response.headers.get(\"Cache-Control\")).to.include(\"no-store\"));",
+                  "pm.test(\"Profile fields only\", () => { const b = pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"viewer\"]); pm.expect(Object.keys(b.identity).sort()).to.eql([\"avatarUrl\",\"biography\",\"coverUrl\",\"displayName\",\"handle\",\"id\",\"joinedAt\",\"location\"]); pm.expect(Object.keys(b.viewer).sort()).to.eql([\"canEdit\",\"isSelf\"]); pm.expect(b.identity.joinedAt).to.match(/(Z|[+-][0-9]{2}:[0-9]{2})$/); });",
+                  "pm.test(\"Biography cleared\", () => pm.expect(pm.response.json().identity.biography).to.eql(null));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Preserve omitted fields",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/profile/me",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"No store\", () => pm.expect(pm.response.headers.get(\"Cache-Control\")).to.include(\"no-store\"));",
+                  "pm.test(\"Profile fields only\", () => { const b = pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"viewer\"]); pm.expect(Object.keys(b.identity).sort()).to.eql([\"avatarUrl\",\"biography\",\"coverUrl\",\"displayName\",\"handle\",\"id\",\"joinedAt\",\"location\"]); pm.expect(Object.keys(b.viewer).sort()).to.eql([\"canEdit\",\"isSelf\"]); pm.expect(b.identity.joinedAt).to.match(/(Z|[+-][0-9]{2}:[0-9]{2})$/); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject null display name",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/profile/me",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"displayName\":null,\"biography\":\"Must not persist\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject anonymous edit",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/profile/me",
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"displayName\":\"Unauthorized\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
         }
       ]
     }
