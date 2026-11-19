@@ -38,7 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class EmailChangeConfirmationPostgresTest {
     @Configuration
     @Import({EmailChangeConfirmationController.class, EmailChangeConfirmationService.class,
-            AuthController.class, AuthService.class, UserController.class, ProfileController.class})
+            AuthController.class, AuthService.class, UserController.class, ProfileController.class, ProfileService.class})
     static class Config extends EmailChangeRequestPostgresTest.Config {
         @Bean org.springframework.validation.beanvalidation.LocalValidatorFactoryBean validator() {
             return new org.springframework.validation.beanvalidation.LocalValidatorFactoryBean();
@@ -235,11 +235,12 @@ class EmailChangeConfirmationPostgresTest {
         confirm(jwt.generateEmailChangeToken(pending(user, "next@example.com"))).andExpect(status().isOk());
         var other = account("reclaimed");
         jdbc.update("UPDATE users SET email = 'original@example.com' WHERE user_id = ?", other.getId());
-        for (String path : List.of("/api/users/me", "/api/profile/me")) {
-            mvc.perform(get(path).with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(actor)))
-                    .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(user.getId()))
-                    .andExpect(jsonPath("$.email").value("next@example.com"));
-        }
+        mvc.perform(get("/api/users/me").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(actor)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(user.getId()))
+                .andExpect(jsonPath("$.email").value("next@example.com"));
+        mvc.perform(get("/api/profile/me").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(actor)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.identity.id").value(user.getId()))
+                .andExpect(jsonPath("$.email").doesNotExist());
         mvc.perform(put("/api/profile/me").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(actor))
                 .contentType("application/json").content("{\"biography\":\"Updated profile\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(user.getId()));

@@ -22,7 +22,9 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
    - Coleção Postman versionada: [sonarfy-passwords.postman_collection.json](sonarfy-passwords.postman_collection.json).
 4. **[Conta e Perfil do Usuário](users-and-profile.md)**
    - `GET /api/users/me` e `PUT /api/users/me` — Consulta e atualização de dados cadastrais (`UserDto` / `UpdateUserDto`).
-   - `GET /api/profile/me` e `PUT /api/profile/me` — Consulta e personalização de biografia, avatar (`profilePicture`) e capa (`UpdateProfileDto`).
+   - `GET /api/profile/me` e `GET /api/profile/by-handle/{handle}` — [Identidade de perfil sem dados privados](profiles.md).
+   - `PUT /api/profile/me` — Personalização existente (`UpdateProfileDto`), ainda com resposta `UserDto`.
+   - Coleção de leitura: [sonarfy-profiles.postman_collection.json](sonarfy-profiles.postman_collection.json).
    - Coleção Postman: [sonarfy-users.postman_collection.json](sonarfy-users.postman_collection.json).
    - Integração de dados pessoais: [configurações](../integrations/user-settings.md).
    - [Localização](locations.md): `GET /api/locations/cities`, `cityId` no cadastro e seleção opcional na edição; país derivado no servidor.
@@ -53,7 +55,8 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 | `POST` | `/api/users/me/email-change-request` | `EmailChangeController` | Bearer `access` + senha atual | [email-changes.md](email-changes.md) |
 | `POST` | `/api/auth/email-change-confirmation` | `EmailChangeConfirmationController` | JSON `token` (`email_change`) | [email-changes.md](email-changes.md) |
 | `PUT` | `/api/users/me/password` | `UserController` | Bearer `access` + JSON `token` (`password_change`) | [passwords.md](passwords.md#trocar-senha-estando-autenticado) |
-| `GET` | `/api/profile/me` | `ProfileController` | Bearer `access` | [users-and-profile.md](users-and-profile.md#1-consultar-dados-do-usuário-logado) |
+| `GET` | `/api/profile/me` | `ProfileController` | Bearer `access` | [profiles.md](profiles.md) |
+| `GET` | `/api/profile/by-handle/{handle}` | `ProfileController` | Bearer `access` | [profiles.md](profiles.md) |
 | `PUT` | `/api/profile/me` | `ProfileController` | Bearer `access` | [users-and-profile.md](users-and-profile.md#3-atualizar-perfil-público-bio-avatar-e-capa) |
 | `POST` | `/api/spotify/authorization` | `SpotifyController` | Bearer `access` | [spotify.md](../integrations/spotify.md) |
 | `GET` | `/api/spotify/callback` | `SpotifyController` | Público + `state` OAuth | [spotify.md](../integrations/spotify.md) |
