@@ -84,7 +84,8 @@ Exige Bearer access e `Content-Type: application/json`. Exemplo:
 
 O upload de avatar possui um endpoint separado com Azure Blob Storage e referências
 no banco relacional: [contrato de avatar](profile-avatar.md). Ele não altera a semântica
-do PUT textual. Wallpaper e migração de imagens legadas continuam pendentes.
+do PUT textual. Wallpaper usa [upload separado](profile-wallpaper.md), preservando
+proporção. Migração de imagens legadas continua pendente.
 
 Uma projeção seleciona apenas os campos de identidade em uma consulta ao usuário
 alvo, além da consulta de autenticação existente. Não carrega coleções ou associações

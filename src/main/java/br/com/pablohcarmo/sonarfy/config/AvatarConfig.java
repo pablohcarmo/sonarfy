@@ -5,7 +5,7 @@ import com.azure.identity.DefaultAzureCredentialBuilder;
 import com.azure.storage.blob.BlobContainerClientBuilder;
 import com.azure.storage.common.policy.RequestRetryOptions;
 import com.azure.storage.common.policy.RetryPolicyType;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.*;
 import jakarta.servlet.MultipartConfigElement;
@@ -13,8 +13,8 @@ import org.springframework.boot.servlet.MultipartConfigFactory;
 import org.springframework.util.unit.DataSize;
 
 @Configuration
-@ConditionalOnProperty(name = "app.avatar.enabled", havingValue = "true")
-@EnableConfigurationProperties(AvatarProperties.class)
+@ConditionalOnExpression("${app.avatar.enabled:false} or ${app.wallpaper.enabled:false}")
+@EnableConfigurationProperties({AvatarProperties.class, WallpaperProperties.class})
 @Import({AvatarImageProcessor.class, AvatarUploadService.class})
 public class AvatarConfig {
     // Aplica os limites no contêiner servlet e no processamento da imagem.

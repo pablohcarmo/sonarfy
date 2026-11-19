@@ -36,9 +36,15 @@ O frontend ainda precisa adaptar o limite atual de nome (50), `maxlength` em uni
 UTF-16 e mensagens, além de mapear a nova resposta do PUT. O backend não o altera
 nesta entrega. Não enviar avatar/capa pelo PUT textual: são ignorados, preservando
 as imagens existentes. Upload de avatar usa o endpoint separado com Azure Blob Storage;
-wallpaper continua pendente. Referências ficam no banco relacional. Não enviar URLs
+wallpaper usa sua própria rota de upload. Referências ficam no banco relacional. Não enviar URLs
 `blob:` locais como mídia persistente.
 
 A fatia de avatar está descrita em [mídia de perfil](profile-media.md). O adapter
 deverá enviar o arquivo para POST `/api/profile/me/avatar` e reconciliar o ProfileDto
 retornado. Não é necessário reenviar o nome/bio para associar a imagem ao perfil.
+
+Para capa, enviar o arquivo a POST `/api/profile/me/wallpaper` e mapear
+`identity.coverUrl` para `profile.cover`. A imagem não é recortada no backend;
+o frontend precisa definir o enquadramento responsivo e eventual ajuste visual de
+posição. Essa posição ainda não é persistida pela API. Não usar coordenadas de
+recorte de avatar para wallpaper. Ambos retornam o mesmo ProfileDto.

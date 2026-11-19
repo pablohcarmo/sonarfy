@@ -171,7 +171,7 @@ O corpo da requisição é representado por `UpdateProfileDto`:
 - Campos omitidos preservam valores. Nome enviado rejeita null/vazio/somente espaços;
   remove espaços Unicode das extremidades e aceita até 60 pontos de código, inclusive emojis.
 - Bio aceita até 150 pontos de código. Null ou texto vazio limpa a bio.
-- Avatar e wallpaper são preservados, inclusive se enviados. Avatar usa [upload separado](profile-avatar.md); wallpaper permanece pendente.
+- Avatar e wallpaper são preservados no PUT textual, inclusive se enviados. Usam uploads separados de [avatar](profile-avatar.md) e [wallpaper](profile-wallpaper.md).
 - Retorna `ProfileDto`, não mais `UserDto`. Consulte o [contrato completo](profiles.md#editar-texto--put-apiprofileme).
 
 ---

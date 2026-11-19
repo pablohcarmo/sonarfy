@@ -1,6 +1,6 @@
 # Mídia de perfil — avatar no Azure Blob Storage
 
-Primeira fatia: avatar persistente. O PUT textual permanece inalterado e continua
+Avatar e wallpaper persistentes. O PUT textual permanece inalterado e continua
 ignorando avatar/wallpaper. Frontend e Azure não são modificados automaticamente
 pelo backend. O container precisa existir; a aplicação não cria containers nem
 altera permissões públicas ao iniciar.
@@ -14,6 +14,24 @@ APP_AVATAR_ENABLED=true
 APP_AVATAR_ENDPOINT=https://stsonarfydev001.blob.core.windows.net
 APP_AVATAR_CONTAINER=images
 ```
+
+Para publicar também a rota de wallpaper, definir `APP_WALLPAPER_ENABLED=true`.
+As duas rotas têm flags independentes e usam o mesmo cliente Azure: endpoint,
+container, credenciais, timeout e limites de bytes/pixels continuam nas propriedades
+`app.avatar.*` por compatibilidade. É possível habilitar somente wallpaper; nesse
+caso ainda é obrigatório fornecer `APP_AVATAR_ENDPOINT`. Nenhuma flag é ligada
+automaticamente pela presença de credenciais.
+
+Wallpapers têm limites de saída próprios: `app.wallpaper.max-width=1600` e
+`app.wallpaper.max-height=600` (variáveis `APP_WALLPAPER_MAXWIDTH` e
+`APP_WALLPAPER_MAXHEIGHT`). Não fixam a proporção: cada imagem é reduzida para caber
+nessa caixa. Avatar mantém o recorte e saída quadrada existentes.
+
+Para testar wallpaper no Postman, usar POST `/api/profile/me/wallpaper`, Bearer e
+form-data `file` do tipo File. Conferir `identity.coverUrl`, GET posterior, leitura
+anônima da nova URL e exclusão da capa anterior gerenciada. Confirmar que o avatar
+não foi alterado. Imagem 3200×1200 deve resultar em PNG 1600×600; imagem 1200×800
+em 900×600. Não é necessário enviar nome/bio ou coordenadas de recorte.
 
 | Propriedade | Padrão | Variável de ambiente |
 | --- | --- | --- |
@@ -61,8 +79,8 @@ selecionados localmente, sem caminho absoluto compartilhado no JSON.
 
 ## Próximas fatias
 
-- Wallpaper: JPEG/PNG, limites iniciais de 5 MiB e 16 MP; referência visual de
-  1600×600, com enquadramento responsivo e recorte escolhido pelo usuário.
+- Integração visual de wallpaper: referência de 1600×600, com enquadramento
+  responsivo no frontend; o backend mantém a proporção e não faz recorte.
 - Capas de álbum: URLs de `images[]` do Spotify, selecionadas pelas dimensões
   disponíveis, sem upload pelo usuário ou cópia para Azure nesta entrega.
   Preservar arte completa, sem corte/sobreposição, com atribuição e link ao Spotify,
@@ -125,3 +143,63 @@ do perfil preservados. Isso valida o recorte central com o provedor real; seleç
 explícita por coordenadas permanece coberta pelos testes automatizados, sem
 confirmação manual no Azure nesta etapa. Não foram registrados dados pessoais ou
 credenciais na evidência.
+
+## Entrega de wallpaper — 19/11/2026
+
+- PR de avatar #73 confirmado integrado na main `b212f8e`, com Java CI aprovado.
+  Suíte local da main e suíte após criar `feat/profile-wallpaper-upload`: ambas
+  reportaram 708 testes, zero falhas/erros e 65 ignorados.
+- Suíte completa final (`.\mvnw.cmd test`): 715 testes reportados, zero falhas/erros,
+  65 ignorados. Inclui a regressão de avatar e o fluxo novo de wallpaper.
+- Os 30 cenários de `AvatarUploadIntegrationTest` passaram também em PostgreSQL
+  17.9 descartável, banco separado `sonarfy_avatar_test`, schema consolidado
+  importado e Hibernate em `validate`. O SDK Azure real usa o mesmo servidor HTTP
+  simulado descrito acima. Contêiner de teste removido ao terminar.
+- Cobertura inclui proporções em retrato/paisagem, ausência de ampliação, EXIF
+  retangular, metadados, isolamento entre avatar/capa, substituição, rollback,
+  falha de armazenamento, limites de arquivo e segurança HTTP real. Configuração
+  também verifica habilitação de wallpaper sem habilitar a rota de avatar.
+- Coleção ampliada para 18 requisições, com JSON e scripts verificados.
+  Postman manual, leitura pública e upload de wallpaper no Azure real ainda não
+  executados. CI remoto desta nova branch não executado.
+- Sem migration ou alterações no banco da aplicação, frontend, configuração local
+  ou Azure real. Posicionamento responsivo e persistência de posição continuam
+  fora do contrato. O lembrete local de frontend permanece fora do Git.
+
+No teste manual do wallpaper, o usuário identificou que enviar dois arquivos
+processava somente o primeiro. A validação foi corrigida em avatar e wallpaper:
+ambos rejeitam o pedido inteiro com 400 quando houver mais de um arquivo, inclusive
+em campos distintos. Testes pela segurança real verificam ausência de chamadas ao
+armazenamento e preservação das duas referências. Após reiniciar a versão corrigida,
+o usuário confirmou no Postman HTTP 400 nas duas rotas ao enviar múltiplas imagens.
+Essa confirmação manual de status não inclui inspeção adicional dos blobs ou das
+referências após a rejeição; a ausência de efeitos colaterais é coberta pelos testes.
+
+Suíte completa após a correção: 717 testes reportados, zero falhas/erros e 65
+ignorados. Os dois cenários novos cobrem avatar e wallpaper, cada um com arquivos
+na mesma chave ou em chaves diferentes. Coleção de 20 requisições validada como
+JSON e scripts; sem execução do runner ou repetição no PostgreSQL nesta correção.
+
+O usuário também confirmou manualmente upload e leitura pública de wallpaper no
+Azure real: original PNG 1366×768 resultou em 1067×600, e JPEG 950×885 em PNG
+644×600. A nova URL foi retornada com avatar e texto preservados. A substituição
+foi relatada no armazenamento, sem confirmação explícita de exclusão do blob
+anterior nesta etapa. Testes negativos de formatos incompatíveis seguem pendentes
+de execução manual. Estas evidências complementam o estado inicial descrito acima.
+
+Na sequência manual, o usuário confirmou GIF e TXT renomeado para PNG com HTTP 415,
+arquivo acima de 5 MiB com 413 e ausência da chave file com 400. A tentativa de arquivo
+corrompido retornou 401, portanto não comprova validação de conteúdo e precisa ser
+repetida com access token válido. Deixar o seletor de arquivo vazio retornou 415;
+isso não equivale a enviar um arquivo de zero bytes e pode representar pedido sem
+Content-Type multipart. Arquivos locais de teste de zero bytes e PNG de 20 MP abaixo
+de 5 MiB foram preparados em target/manual-media-tests, fora do versionamento.
+
+O usuário confirmou HTTP 400 para o arquivo de zero bytes e para o PNG válido de
+5000×4000 (20 MP, abaixo de 5 MiB), ambos enviados à rota de wallpaper. Os casos
+negativos desta sequência foram executados manualmente somente em wallpaper;
+repetição manual equivalente no avatar fica para depois. Ambas as rotas compartilham
+o processador de formato/bytes/pixels e possuem testes automatizados, mas isso não
+constitui evidência de execução manual de cada rota. O usuário informou testes
+anteriores de corrupção, sem novo resultado de conteúdo nessa sequência; a tentativa
+com 401 não foi considerada validação de arquivo corrompido.
