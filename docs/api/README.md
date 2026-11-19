@@ -23,8 +23,8 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 4. **[Conta e Perfil do Usuário](users-and-profile.md)**
    - `GET /api/users/me` e `PUT /api/users/me` — Consulta e atualização de dados cadastrais (`UserDto` / `UpdateUserDto`).
    - `GET /api/profile/me` e `GET /api/profile/by-handle/{handle}` — [Identidade de perfil sem dados privados](profiles.md).
-   - `PUT /api/profile/me` — Personalização existente (`UpdateProfileDto`), ainda com resposta `UserDto`.
-   - Coleção de leitura: [sonarfy-profiles.postman_collection.json](sonarfy-profiles.postman_collection.json).
+   - `PUT /api/profile/me` — Edição textual de nome e bio (`UpdateProfileDto`), com resposta `ProfileDto` e preservação de mídia.
+   - Coleção de consulta e edição: [sonarfy-profiles.postman_collection.json](sonarfy-profiles.postman_collection.json).
    - Coleção Postman: [sonarfy-users.postman_collection.json](sonarfy-users.postman_collection.json).
    - Integração de dados pessoais: [configurações](../integrations/user-settings.md).
    - [Localização](locations.md): `GET /api/locations/cities`, `cityId` no cadastro e seleção opcional na edição; país derivado no servidor.

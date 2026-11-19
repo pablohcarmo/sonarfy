@@ -30,7 +30,7 @@ Authorization: Bearer <accessToken>
 
 ## Representação de resposta comum (`UserDto`)
 
-GET/PUT `/api/users/me` e PUT `/api/profile/me` retornam HTTP `200 OK` com `Content-Type: application/json` serializando `UserDto`. GET `/api/profile/me` agora retorna [ProfileDto](profiles.md), sem dados cadastrais privados. O exemplo abaixo representa somente o contrato cadastral legado:
+GET/PUT `/api/users/me` retornam HTTP `200 OK` com `Content-Type: application/json` serializando `UserDto`. GET/PUT `/api/profile/me` retornam [ProfileDto](profiles.md), sem dados cadastrais privados. O exemplo abaixo representa somente o contrato cadastral:
 
 ```json
 {
@@ -65,7 +65,7 @@ GET/PUT `/api/users/me` e PUT `/api/profile/me` retornam HTTP `200 OK` com `Cont
 - `GET /api/profile/me` retorna `ProfileDto` via `ProfileService`, conforme [leitura de perfil](profiles.md).
 
 Ambos identificam a conta pelo ID autenticado. Consultas de perfil não retornam
-informações cadastrais privadas. PUT de perfil mantém o contrato legado nesta entrega.
+informações cadastrais privadas. PUT de perfil também retorna `ProfileDto`.
 Atualizações bloqueiam/recarregam o usuário antes de salvar, preservando alterações
 concorrentes de e-mail e senha.
 
@@ -153,7 +153,7 @@ Orientação para a tela: [configurações — dados pessoais](../integrations/u
 
 ---
 
-## 3. Atualizar perfil público (bio, avatar e capa)
+## 3. Atualizar perfil público (nome e bio)
 
 `PUT /api/profile/me` — exige `Authorization: Bearer <accessToken>` e `Content-Type: application/json`.
 
@@ -161,17 +161,18 @@ O corpo da requisição é representado por `UpdateProfileDto`:
 
 ```json
 {
-  "biography": "Colecionadora de vinis e fã de música brasileira.",
-  "avatar": "https://cdn.example.com/avatars/maria-novo.png",
-  "wallpaper": "https://cdn.example.com/wallpapers/vitrola.jpg"
+  "displayName": "Maria 123 🎵",
+  "biography": "Colecionadora de vinis e fã de música brasileira."
 }
 ```
 
 ### Validações e limites
 
-- `biography` possui a anotação `@Size(max = 255, message = "Biography must be at most 255 characters")` no `UpdateProfileDto`.
-  - **Atenção ao limite do banco de dados:** Na entidade `User` (`@Column(length = 150)`) e no schema SQL (`biography VARCHAR(150)` em `db/tables.sql`), a coluna possui limite de **150 caracteres**. Recomenda-se que clientes limitem `biography` a no máximo 150 caracteres para evitar erro de persistência no banco.
-- Os valores enviados em `avatar`, `wallpaper` e `biography` substituem os valores atuais do usuário e são retornados no `UserDto` (`200 OK`), onde `avatar` aparece na propriedade `"profilePicture"`.
+- Campos omitidos preservam valores. Nome enviado rejeita null/vazio/somente espaços;
+  remove espaços Unicode das extremidades e aceita até 60 pontos de código, inclusive emojis.
+- Bio aceita até 150 pontos de código. Null ou texto vazio limpa a bio.
+- Avatar e wallpaper são preservados, inclusive se enviados. Upload Azure será outra entrega.
+- Retorna `ProfileDto`, não mais `UserDto`. Consulte o [contrato completo](profiles.md#editar-texto--put-apiprofileme).
 
 ---
 
@@ -179,10 +180,10 @@ O corpo da requisição é representado por `UpdateProfileDto`:
 
 | Situação | HTTP | Comportamento |
 | --- | --- | --- |
-| Consulta ou atualização realizada com sucesso | `200 OK` | GET de perfil retorna `ProfileDto`; demais operações retornam `UserDto` |
+| Consulta ou atualização realizada com sucesso | `200 OK` | Perfil retorna `ProfileDto`; cadastro retorna `UserDto` |
 | Dado pessoal omitido, nulo, em branco, fora do formato/limite ou idade inferior a 13 anos | `400 Bad Request` | Nenhum dado pessoal é alterado |
 | Handle ocupado, inclusive por corrida concorrente ou variação de caixa | `409 Conflict` | Nenhum dado pessoal é alterado |
-| `biography` acima de 255 caracteres em `PUT /api/profile/me` ou JSON malformado | `400 Bad Request` | Rejeitado na validação de entrada |
+| Nome inválido, bio acima de 150 pontos de código ou JSON malformado no PUT de perfil | `400 Bad Request` | Nenhum campo do perfil é alterado |
 | Token Bearer ausente, inválido, expirado, de outro propósito ou usuário inativo/não verificado | `401 Unauthorized` | Rejeitado por `BearerAuthenticationFilter` / `SecurityConfig` |
 
 ---

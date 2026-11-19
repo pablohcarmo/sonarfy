@@ -178,20 +178,6 @@ public class UserService implements UserDetailsService {
     }
 
     @Transactional
-    public UserDto updateProfile(Long userId, UpdateProfileDto updateProfileDto) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found!"));
-        entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE);
-
-        user.setAvatar(updateProfileDto.getAvatar());
-        user.setWallpaper(updateProfileDto.getWallpaper());
-        user.setBiography(updateProfileDto.getBiography());
-
-        userRepository.saveAndFlush(user);
-        return getUserRegister(userId);
-    }
-
-    @Transactional
     public void changePassword(Long loggedInUserId, ChangePasswordDto dto) {
         // O DTO exige a senha atual na entrada HTTP. Mantemos também esta validação para chamadas diretas ao serviço, que não passam pelo @Valid do controller.
         if (dto.currentPassword() == null || dto.currentPassword().isBlank()) {
