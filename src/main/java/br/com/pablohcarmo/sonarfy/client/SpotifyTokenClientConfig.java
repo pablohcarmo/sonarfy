@@ -9,6 +9,9 @@ import java.util.concurrent.TimeUnit;
 public class SpotifyTokenClientConfig {
 
     @Bean
+    public feign.Retryer spotifyRetryer() { return feign.Retryer.NEVER_RETRY; }
+
+    @Bean
     public Request.Options spotifyRequestOptions() {
         return new Request.Options(5, TimeUnit.SECONDS, 5, TimeUnit.SECONDS, true);
     }

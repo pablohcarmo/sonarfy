@@ -58,6 +58,8 @@ public class SpotifyConnectionService {
         var connection = connections.findByUserId(userId)
                 .orElseGet(() -> new SpotifyConnection(user, now));
 
+        if (connection.getId() != null) entityManager.refresh(connection, LockModeType.PESSIMISTIC_WRITE);
+
         // Criptografa os dois tokens antes de atribuí-los à entidade persistida.
         // Tipo e escopos são mantidos conforme a resposta do Spotify; updated_at recebe a referência.
         connection.updateTokens(encryption.encrypt(tokens.accessToken(), userId, "access"),
@@ -84,7 +86,7 @@ public class SpotifyConnectionService {
 
                 // Se encontrar a conexão, cria um record e a data da conexão.
                 .map(connection -> new SpotifyConnectionResponseDto(
-                        SpotifyConnectionStatus.CONNECTED,
+                        connection.getStatus(),
                         connection.getConnectedAt()
                 ))
                 // Se não encontrar, cria um record com DISCONNECTED e sem data.

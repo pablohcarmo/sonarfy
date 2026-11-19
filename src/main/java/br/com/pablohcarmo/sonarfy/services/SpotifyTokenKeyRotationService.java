@@ -12,6 +12,8 @@ import java.util.Collections;
 
 @Service
 public class SpotifyTokenKeyRotationService {
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager em;
     private final SpotifyConnectionRepository connections;
     private final SpotifyTokenEncryptionService encryption;
 
@@ -36,6 +38,7 @@ public class SpotifyTokenKeyRotationService {
                 PageRequest.of(0, batchSize)
         );
         for (SpotifyConnection connection : batch) {
+            em.refresh(connection, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
             Long userId = connection.getUser().getId();
             String accessToken = encryption.reencrypt(
                     connection.getAccessTokenEncrypted(), userId, "access");

@@ -30,7 +30,7 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 5. **[Integração OAuth 2.0 com o Spotify](../integrations/spotify.md)**
    - `POST /api/spotify/authorization` — Geração autenticada da URL de autorização do Spotify e registro de `state` de uso único.
    - `GET /api/spotify/callback` — Processamento público do retorno OAuth, persistência cifrada (`AES-256-GCM`) e redirecionamento `302 Found` ao frontend (`SPOTIFY_FRONTEND_REDIRECT_URI?spotify=connected|denied|invalid_state|error`).
-   - `GET /api/spotify/connection` — Consulta autenticada do estado da conexão (`CONNECTED` / `DISCONNECTED` e `connectedAt`).
+   - `GET /api/spotify/connection` — Consulta autenticada do estado da conexão (`CONNECTED` / `DISCONNECTED` / `REAUTHORIZATION_REQUIRED` e `connectedAt`).
    - `DELETE /api/spotify/connection` — Desconexão idempotente com remoção das credenciais locais e invalidação de autorizações em trânsito.
 
 ---
