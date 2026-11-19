@@ -1,7 +1,9 @@
 package br.com.pablohcarmo.sonarfy.services;
 
 import br.com.pablohcarmo.sonarfy.config.AvatarProperties;
+import br.com.pablohcarmo.sonarfy.config.WallpaperProperties;
 import br.com.pablohcarmo.sonarfy.controllers.AvatarController;
+import br.com.pablohcarmo.sonarfy.controllers.WallpaperController;
 import br.com.pablohcarmo.sonarfy.entities.*;
 import br.com.pablohcarmo.sonarfy.repositories.*;
 import com.azure.storage.blob.BlobContainerClientBuilder;
@@ -38,7 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 // Segurança, JPA e SDK Azure reais; servidor local simula envio, leitura e exclusão de blobs.
 @SpringJUnitWebConfig(AvatarUploadIntegrationTest.Config.class)
-@TestPropertySource(properties = {"api.security.token.secret=avatar-test-secret", "app.avatar.enabled=true",
+@TestPropertySource(properties = {"api.security.token.secret=avatar-test-secret", "app.avatar.enabled=true", "app.wallpaper.enabled=true",
         "app.frontend-url=http://localhost:3000", "spring.mail.username=noreply@example.com"})
 class AvatarUploadIntegrationTest {
     static final Map<String, byte[]> blobs = new ConcurrentHashMap<>();
@@ -72,7 +74,7 @@ class AvatarUploadIntegrationTest {
         } catch (IOException exception) { throw new ExceptionInInitializerError(exception); }
     }
     @Configuration
-    @Import({AvatarController.class, AvatarUploadService.class, AvatarImageProcessor.class})
+    @Import({AvatarController.class, WallpaperController.class, AvatarUploadService.class, AvatarImageProcessor.class})
     static class Config extends ProfileIntegrationTest.Config {
         @Bean @Override DataSource dataSource(org.springframework.core.env.Environment env) {
             if (Boolean.getBoolean("sonarfy.test.avatar-postgres"))
@@ -87,6 +89,7 @@ class AvatarUploadIntegrationTest {
             return factory;
         }
         @Bean AvatarProperties avatarProperties() { return new AvatarProperties(null, "images", 5242880, 16000000, 512, 2); }
+        @Bean WallpaperProperties wallpaperProperties() { return new WallpaperProperties(1600, 600); }
         @Bean AzureAvatarStorage avatarStorage() {
             var container = new BlobContainerClientBuilder().endpoint("http://127.0.0.1:" + server.getAddress().getPort() + "/images")
                     .retryOptions(new RequestRetryOptions(RetryPolicyType.FIXED, 1, 2, null, null, null)).buildClient();
@@ -188,12 +191,7 @@ class AvatarUploadIntegrationTest {
     // Aplica as oito orientações EXIF e gera PNG sem os metadados originais.
     @ParameterizedTest @ValueSource(ints = {1,2,3,4,5,6,7,8})
     void appliesExifOrientation(int orientation) throws Exception {
-        byte[] jpeg = image("JPEG"), exif = new byte[32];
-        ByteBuffer tiff = ByteBuffer.wrap(exif).order(ByteOrder.LITTLE_ENDIAN);
-        tiff.put(new byte[]{'E','x','i','f',0,0}).putShort((short) 0x4949).putShort((short) 42).putInt(8)
-                .putShort((short) 1).putShort((short) 0x112).putShort((short) 3).putInt(1)
-                .putShort((short) orientation).putShort((short) 0).putInt(0);
-        byte[] source = concat(Arrays.copyOf(jpeg, 2), new byte[]{(byte) 0xff, (byte) 0xe1, 0, 34}, exif, Arrays.copyOfRange(jpeg, 2, jpeg.length));
+        byte[] source = withExif(image("JPEG"), orientation);
         upload(source).andExpect(status().isOk());
         byte[] png = blobs.values().iterator().next();
         assertNull(com.drew.imaging.ImageMetadataReader.readMetadata(new ByteArrayInputStream(png))
@@ -265,6 +263,92 @@ class AvatarUploadIntegrationTest {
         assertEquals(3, calls);
     }
 
+    // Mantém a imagem inteira dentro da caixa de saída, sem ampliar imagens pequenas.
+    @ParameterizedTest @ValueSource(strings = {"3200,1200,1600,600", "1200,2400,300,600", "1200,800,900,600", "225,225,225,225"})
+    void preservesWallpaperRatio(String dimensions) throws Exception {
+        int[] d = Arrays.stream(dimensions.split(",")).mapToInt(Integer::parseInt).toArray();
+        var picture = new BufferedImage(d[0], d[1], BufferedImage.TYPE_INT_RGB);
+        picture.setRGB(0, 0, 0xff0000); picture.setRGB(d[0] - 1, d[1] - 1, 0x0000ff);
+        var bytes = new ByteArrayOutputStream(); ImageIO.write(picture, "PNG", bytes);
+        wallpaper(bytes.toByteArray()).andExpect(status().isOk()).andExpect(jsonPath("$.identity.coverUrl").isString())
+                .andExpect(jsonPath("$.identity.avatarUrl").value("https://legacy.example/avatar"));
+        var decoded = ImageIO.read(new ByteArrayInputStream(blobs.values().iterator().next()));
+        assertEquals(d[2], decoded.getWidth()); assertEquals(d[3], decoded.getHeight());
+        String url = users.findById(actor.getId()).orElseThrow().getWallpaper();
+        assertTrue(URI.create(url).getPath().contains("/wallpapers/" + actor.getId() + "/"));
+    }
+
+    // A orientação troca as dimensões antes do redimensionamento, sem cortar a imagem.
+    @Test
+    void orientsRectangularWallpaperAndRemovesExif() throws Exception {
+        var picture = new BufferedImage(64, 32, BufferedImage.TYPE_INT_RGB);
+        for (int y = 0; y < 32; y++) for (int x = 0; x < 64; x++) picture.setRGB(x, y, x < 32 ? 0xff0000 : 0x0000ff);
+        var bytes = new ByteArrayOutputStream(); ImageIO.write(picture, "JPEG", bytes);
+        wallpaper(withExif(bytes.toByteArray(), 6)).andExpect(status().isOk());
+        byte[] png = blobs.values().iterator().next(); var decoded = ImageIO.read(new ByteArrayInputStream(png));
+        assertEquals(32, decoded.getWidth()); assertEquals(64, decoded.getHeight());
+        assertTrue(((decoded.getRGB(16, 16) >> 16) & 255) > 220);
+        assertTrue((decoded.getRGB(16, 48) & 255) > 220);
+        assertNull(com.drew.imaging.ImageMetadataReader.readMetadata(new ByteArrayInputStream(png))
+                .getFirstDirectoryOfType(com.drew.metadata.exif.ExifIFD0Directory.class));
+    }
+
+    // Substituir ou reverter wallpaper nunca remove o avatar nem a versão vigente.
+    @Test
+    void replacesWallpaperIndependentlyAndRollsBack() throws Exception {
+        upload(image("PNG")).andExpect(status().isOk());
+        String avatar = users.findById(actor.getId()).orElseThrow().getAvatar();
+        wallpaper(image("JPEG")).andExpect(status().isOk());
+        String previous = users.findById(actor.getId()).orElseThrow().getWallpaper();
+        wallpaper(image("PNG")).andExpect(status().isOk());
+        String current = users.findById(actor.getId()).orElseThrow().getWallpaper();
+        assertFalse(blobs.containsKey(URI.create(previous).getPath()));
+        assertTrue(blobs.containsKey(URI.create(avatar).getPath())); assertEquals(2, blobs.size());
+        putStatus = 500; wallpaper(image("PNG")).andExpect(status().isServiceUnavailable()); putStatus = 201;
+        doThrow(new org.springframework.dao.DataIntegrityViolationException("test rollback")).when(users).saveAndFlush(any(User.class));
+        assertThrows(Exception.class, () -> wallpaper(image("PNG")));
+        var saved = users.findById(actor.getId()).orElseThrow();
+        assertEquals(current, saved.getWallpaper()); assertEquals(avatar, saved.getAvatar()); assertEquals("bio", saved.getBiography());
+        assertEquals(2, blobs.size());
+    }
+
+    // A rota de wallpaper usa a segurança real e rejeita conteúdo fora da política comum.
+    @Test
+    void validatesWallpaperRequests() throws Exception {
+        mvc.perform(multipart("/api/profile/me/wallpaper").file(new MockMultipartFile("file", image("PNG"))))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(multipart("/api/profile/me/wallpaper").file(new MockMultipartFile("file", image("PNG")))
+                .header("Authorization", "Bearer " + jwt.generateRegistrationToken(actor.getId().toString())))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(multipart("/api/profile/me/wallpaper").header("Authorization", bearer())).andExpect(status().isBadRequest());
+        wallpaper("<svg/>".getBytes()).andExpect(status().isUnsupportedMediaType());
+        wallpaper(new byte[5242881]).andExpect(status().is(413));
+        byte[] pixels = image("PNG"); ByteBuffer.wrap(pixels, 16, 8).putInt(5000).putInt(5000);
+        wallpaper(pixels).andExpect(status().isBadRequest());
+        actor.setActive(false); users.saveAndFlush(actor);
+        wallpaper(image("PNG")).andExpect(status().isUnauthorized());
+        assertEquals(0, calls);
+    }
+
+    // Nenhuma rota processa parcialmente lotes, mesmo com campos diferentes para os arquivos.
+    @ParameterizedTest @ValueSource(strings = {"avatar", "wallpaper"})
+    void rejectsMultipleFilesAtomically(String route) throws Exception {
+        for (String field : new String[]{"file", "extra"}) {
+            mvc.perform(multipart("/api/profile/me/" + route)
+                    .file(new MockMultipartFile("file", "first.png", "image/png", image("PNG")))
+                    .file(new MockMultipartFile(field, "second.jpg", "image/jpeg", image("JPEG")))
+                    .header("Authorization", bearer())).andExpect(status().isBadRequest());
+        }
+        assertEquals(0, calls); assertTrue(blobs.isEmpty());
+        var saved = users.findById(actor.getId()).orElseThrow();
+        assertEquals("https://legacy.example/avatar", saved.getAvatar()); assertEquals("wallpaper", saved.getWallpaper());
+    }
+
+    private org.springframework.test.web.servlet.ResultActions wallpaper(byte[] bytes) throws Exception {
+        return mvc.perform(multipart("/api/profile/me/wallpaper").file(new MockMultipartFile("file", "wall.jpg", "image/jpeg", bytes))
+                .header("Authorization", bearer()));
+    }
+
     private org.springframework.test.web.servlet.ResultActions upload(byte[] bytes) throws Exception {
         return mvc.perform(multipart("/api/profile/me/avatar").file(new MockMultipartFile("file", "../../not-a-key.png", "image/png", bytes))
                 .param("userId", "9999").header("Authorization", bearer()));
@@ -275,6 +359,14 @@ class AvatarUploadIntegrationTest {
         for (int y = 0; y < 64; y++) for (int x = 0; x < 64; x++) image.setRGB(x, y, x < 32 && y < 32 ? 0xff0000 : 0x0000ff);
         var output = new ByteArrayOutputStream(); ImageIO.write(image, format, output); return output.toByteArray();
     }
+    private static byte[] withExif(byte[] jpeg, int orientation) throws IOException {
+        byte[] exif = new byte[32];
+        ByteBuffer.wrap(exif).order(ByteOrder.LITTLE_ENDIAN).put(new byte[]{'E','x','i','f',0,0})
+                .putShort((short) 0x4949).putShort((short) 42).putInt(8).putShort((short) 1)
+                .putShort((short) 0x112).putShort((short) 3).putInt(1).putShort((short) orientation).putShort((short) 0).putInt(0);
+        return concat(Arrays.copyOf(jpeg, 2), new byte[]{(byte) 0xff, (byte) 0xe1, 0, 34}, exif, Arrays.copyOfRange(jpeg, 2, jpeg.length));
+    }
+
     private static byte[] concat(byte[]... parts) throws IOException {
         var output = new ByteArrayOutputStream(); for (byte[] part : parts) output.write(part); return output.toByteArray();
     }

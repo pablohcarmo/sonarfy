@@ -28,11 +28,11 @@ public class AzureAvatarStorage {
         container.getBlobClient(key).deleteIfExistsWithResponse(DeleteSnapshotsOptionType.INCLUDE, null, timeout, Context.NONE);
     }
 
-    public String ownedKey(Long userId, String url) {
-        String prefix = url("avatars/" + userId + "/");
+    public String ownedKey(Long userId, String url, String folder) {
+        String prefix = url(folder + "/" + userId + "/");
         if (url == null || !url.startsWith(prefix)) return null;
         String suffix = url.substring(prefix.length());
         return suffix.matches("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}\\.png")
-                ? "avatars/" + userId + "/" + suffix : null;
+                ? folder + "/" + userId + "/" + suffix : null;
     }
 }

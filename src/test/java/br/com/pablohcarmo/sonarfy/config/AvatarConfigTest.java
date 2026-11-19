@@ -27,6 +27,12 @@ class AvatarConfigTest {
                     assertTrue(app.getBean(AzureAvatarStorage.class).url("avatar.png")
                             .startsWith("https://account.blob.core.windows.net/images/"));
                 });
+        context.withPropertyValues("app.wallpaper.enabled=true", "app.avatar.endpoint=https://account.blob.core.windows.net")
+                .run(app -> {
+                    assertNull(app.getStartupFailure());
+                    assertEquals(1600, app.getBean(WallpaperProperties.class).maxWidth());
+                    assertTrue(app.containsBean("avatarStorage"));
+                });
     }
 
     // Configuração inválida impede a inicialização do recurso.

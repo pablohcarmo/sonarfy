@@ -537,6 +537,233 @@
               }
             }
           ]
+        },
+        {
+          "name": "Reject two files - select both locally",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/profile/me/avatar",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Wallpaper upload - mutates TEST account and storage",
+      "description": "Requires app.wallpaper.enabled=true and shared Azure settings. JPEG/PNG is resized proportionally within 1600x600 without cropping or upscaling. Select a local file and run requests individually.",
+      "item": [
+        {
+          "name": "Upload wallpaper",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/profile/me/wallpaper",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Safe profile and wallpaper URL\", () => { const b=pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"viewer\"]); pm.expect(b.viewer.isSelf).to.eql(true); pm.expect(b.identity.coverUrl.startsWith(\"https://\")).to.eql(true); pm.collectionVariables.set(\"uploadedWallpaperUrl\",b.identity.coverUrl); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Read wallpaper anonymously",
+          "request": {
+            "method": "GET",
+            "url": "{{uploadedWallpaperUrl}}",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Public PNG\", () => { pm.response.to.have.status(200); pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"image/png\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Missing wallpaper file",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/profile/me/wallpaper",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "note",
+                  "type": "text",
+                  "value": "No file supplied"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Anonymous wallpaper upload",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/profile/me/wallpaper",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "note",
+                  "type": "text",
+                  "value": "No file supplied"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 401\", () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reject two files - select both locally",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/profile/me/wallpaper",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
         }
       ]
     }

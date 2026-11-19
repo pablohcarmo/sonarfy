@@ -6,7 +6,9 @@ de armazenamento válida. O recurso desabilitado não publica a rota de upload.
 
 ## Requisição e política inicial
 
-Enviar `multipart/form-data`, com uma parte de arquivo chamada `file`. Deixar o
+Enviar `multipart/form-data`, com exatamente um arquivo na parte chamada `file`.
+Múltiplos arquivos retornam 400 sem upload parcial, inclusive se forem enviados
+em campos com nomes diferentes. Deixar o
 cliente gerar o boundary; não enviar JSON ou base64. A identidade vem somente do
 Bearer. Nome original do arquivo, parâmetros de usuário e extensão não escolhem
 conta, caminho ou formato persistido.

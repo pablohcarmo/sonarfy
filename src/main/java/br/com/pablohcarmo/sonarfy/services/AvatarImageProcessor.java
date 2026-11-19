@@ -20,11 +20,20 @@ public class AvatarImageProcessor {
 
     // Limita bytes e pixels antes da decodificação; a nova imagem descarta os metadados originais.
     public byte[] png(MultipartFile file, Integer cropX, Integer cropY, Integer cropSize) {
-        if (file.isEmpty()) throw error(HttpStatus.BAD_REQUEST, "Avatar file is empty.");
-        if (file.getSize() > limits.maxBytes()) throw error(HttpStatus.PAYLOAD_TOO_LARGE, "Avatar exceeds the byte limit.");
+        return process(file, cropX, cropY, cropSize, limits.size(), limits.size(), true);
+    }
+
+    public byte[] wallpaper(MultipartFile file, int maxWidth, int maxHeight) {
+        return process(file, null, null, null, maxWidth, maxHeight, false);
+    }
+
+    private byte[] process(MultipartFile file, Integer cropX, Integer cropY, Integer cropSize,
+                           int maxWidth, int maxHeight, boolean square) {
+        if (file.isEmpty()) throw error(HttpStatus.BAD_REQUEST, "Image file is empty.");
+        if (file.getSize() > limits.maxBytes()) throw error(HttpStatus.PAYLOAD_TOO_LARGE, "Image exceeds the byte limit.");
         try (var source = file.getInputStream()) {
             byte[] bytes = source.readNBytes(limits.maxBytes() + 1);
-            if (bytes.length > limits.maxBytes()) throw error(HttpStatus.PAYLOAD_TOO_LARGE, "Avatar exceeds the byte limit.");
+            if (bytes.length > limits.maxBytes()) throw error(HttpStatus.PAYLOAD_TOO_LARGE, "Image exceeds the byte limit.");
             try (var input = new MemoryCacheImageInputStream(new ByteArrayInputStream(bytes))) {
                 var readers = ImageIO.getImageReaders(input);
                 if (!readers.hasNext()) throw error(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Use a JPEG or PNG image.");
@@ -36,9 +45,9 @@ public class AvatarImageProcessor {
                     reader.setInput(input);
                     int width = reader.getWidth(0), height = reader.getHeight(0);
                     if (width <= 0 || height <= 0 || (long) width * height > limits.maxPixels())
-                        throw error(HttpStatus.BAD_REQUEST, "Avatar exceeds the pixel limit.");
+                        throw error(HttpStatus.BAD_REQUEST, "Image exceeds the pixel limit.");
                     if (reader.getNumImages(true) != 1 || (format.equalsIgnoreCase("PNG") && animatedPng(bytes)))
-                        throw error(HttpStatus.BAD_REQUEST, "Avatar must be static.");
+                        throw error(HttpStatus.BAD_REQUEST, "Image must be static.");
                     BufferedImage image = reader.read(0);
                     int orientation = 1;
                     var exif = ImageMetadataReader.readMetadata(new ByteArrayInputStream(bytes)).getFirstDirectoryOfType(ExifIFD0Directory.class);
@@ -46,24 +55,33 @@ public class AvatarImageProcessor {
                         orientation = exif.getInt(ExifIFD0Directory.TAG_ORIENTATION);
                     if (orientation < 1 || orientation > 8) orientation = 1;
                     int orientedWidth = orientation >= 5 ? height : width, orientedHeight = orientation >= 5 ? width : height;
-                    boolean custom = cropX != null || cropY != null || cropSize != null;
-                    if (custom && (cropX == null || cropY == null || cropSize == null))
-                        throw error(HttpStatus.BAD_REQUEST, "Provide all crop coordinates.");
-                    int side = custom ? cropSize : Math.min(orientedWidth, orientedHeight);
-                    int x = custom ? cropX : (orientedWidth - side) / 2, y = custom ? cropY : (orientedHeight - side) / 2;
-                    if (side <= 0 || x < 0 || y < 0 || (long) x + side > orientedWidth || (long) y + side > orientedHeight)
-                        throw error(HttpStatus.BAD_REQUEST, "Crop is outside the oriented image.");
-                    // Coordenadas referem-se à imagem orientada; recorta sem alocar outra imagem completa.
-                    var bounds = transform(orientation, width, height).createInverse()
-                            .createTransformedShape(new java.awt.Rectangle(x, y, side, side)).getBounds();
-                    image = image.getSubimage(bounds.x, bounds.y, bounds.width, bounds.height);
-                    int size = limits.size();
-                    var result = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+                    int outputWidth, outputHeight;
+                    if (square) {
+                        boolean custom = cropX != null || cropY != null || cropSize != null;
+                        if (custom && (cropX == null || cropY == null || cropSize == null))
+                            throw error(HttpStatus.BAD_REQUEST, "Provide all crop coordinates.");
+                        int side = custom ? cropSize : Math.min(orientedWidth, orientedHeight);
+                        int x = custom ? cropX : (orientedWidth - side) / 2, y = custom ? cropY : (orientedHeight - side) / 2;
+                        if (side <= 0 || x < 0 || y < 0 || (long) x + side > orientedWidth || (long) y + side > orientedHeight)
+                            throw error(HttpStatus.BAD_REQUEST, "Crop is outside the oriented image.");
+                        // Coordenadas referem-se à imagem orientada; recorta sem alocar outra imagem completa.
+                        var bounds = transform(orientation, width, height).createInverse()
+                                .createTransformedShape(new java.awt.Rectangle(x, y, side, side)).getBounds();
+                        image = image.getSubimage(bounds.x, bounds.y, bounds.width, bounds.height);
+                        outputWidth = maxWidth; outputHeight = maxHeight;
+                    } else {
+                        double scale = Math.min(1d, Math.min((double) maxWidth / orientedWidth, (double) maxHeight / orientedHeight));
+                        outputWidth = Math.max(1, (int) Math.floor(orientedWidth * scale));
+                        outputHeight = Math.max(1, (int) Math.floor(orientedHeight * scale));
+                    }
+                    var result = new BufferedImage(outputWidth, outputHeight, BufferedImage.TYPE_INT_ARGB);
                     var graphics = result.createGraphics();
                     try {
                         graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-                        graphics.transform(transform(orientation, size, size));
-                        graphics.drawImage(image, 0, 0, size, size, null);
+                        int drawWidth = orientation >= 5 ? outputHeight : outputWidth;
+                        int drawHeight = orientation >= 5 ? outputWidth : outputHeight;
+                        graphics.transform(transform(orientation, drawWidth, drawHeight));
+                        graphics.drawImage(image, 0, 0, drawWidth, drawHeight, null);
                     } finally { graphics.dispose(); }
                     var output = new ByteArrayOutputStream();
                     ImageIO.write(result, "PNG", output);
