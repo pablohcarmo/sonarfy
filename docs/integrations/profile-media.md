@@ -43,7 +43,7 @@ habilitar a funcionalidade para usuários. [Referência oficial](https://learn.m
 
 1. Usar uma conta de teste e JPEG/PNG, quadrado ou retangular. Sem coordenadas, a
    API recorta o quadrado central. Para seleção explícita, enviar cropX/cropY/cropSize
-   em pixels após orientação EXIF; ver [pendência do frontend](../../FRONTEND-AVATAR-PENDENTE.md).
+   em pixels após orientação EXIF, conforme o contrato de upload de avatar.
 2. POST `/api/profile/me/avatar`, Bearer, Body form-data, chave `file` do tipo File.
    Não definir manualmente o header multipart com boundary incompleto.
 3. Em 200, reconciliar a tela com `ProfileDto` e confirmar pelo GET que a URL foi
@@ -105,8 +105,8 @@ selecionados localmente, sem caminho absoluto compartilhado no JSON.
 
 O backend agora aceita retângulos em retrato ou paisagem e recorta o quadrado central
 quando cropX/cropY/cropSize são omitidos. A seleção explícita usa pixels após EXIF;
-regras de tipo, bytes e pixels originais permanecem iguais. O frontend está pendente,
-registrado em [FRONTEND-AVATAR-PENDENTE.md](../../FRONTEND-AVATAR-PENDENTE.md).
+regras de tipo, bytes e pixels originais permanecem iguais. A interface de seleção
+do recorte no frontend permanece pendente.
 
 Suíte completa após a evolução: 708 testes reportados, zero falhas/erros, 65 ignorados.
 Os testes verificam recorte central, seleção explícita, retrato/paisagem, coordenadas

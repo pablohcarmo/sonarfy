@@ -47,7 +47,7 @@ enviados juntos. Representam coordenadas inteiras e lado quadrado positivo em pi
 da imagem original após orientação EXIF. Sem eles, usa o menor lado e centraliza,
 arredondando a margem para baixo. Não aceitar seleção fora dos limites, coordenadas
 negativas ou valores parciais/não inteiros (400). Bytes e pixels são limitados antes
-do recorte. [Pendência do frontend](../../FRONTEND-AVATAR-PENDENTE.md).
+do recorte. A interface de seleção do recorte no frontend permanece pendente.
 
 O servidor gera `avatars/{userId}/{UUID}.png` no container configurado. Upload usa
 criação condicional, sem sobrescrever outro blob. A URL pública estável é persistida
