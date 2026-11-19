@@ -82,9 +82,9 @@ Exige Bearer access e `Content-Type: application/json`. Exemplo:
 - A transação recarrega o usuário sob bloqueio antes de modificar texto, preservando
   alterações concorrentes de e-mail e senha. Não aceitar outro usuário pelo corpo.
 
-O armazenamento futuro de avatar e wallpaper será Azure Blob Storage, com referências
-no banco relacional. Upload, configuração Azure e migração de imagens não fazem parte
-desta entrega.
+O upload de avatar possui um endpoint separado com Azure Blob Storage e referências
+no banco relacional: [contrato de avatar](profile-avatar.md). Ele não altera a semântica
+do PUT textual. Wallpaper e migração de imagens legadas continuam pendentes.
 
 Uma projeção seleciona apenas os campos de identidade em uma consulta ao usuário
 alvo, além da consulta de autenticação existente. Não carrega coleções ou associações
