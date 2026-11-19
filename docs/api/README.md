@@ -24,6 +24,7 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
    - `GET /api/users/me` e `PUT /api/users/me` — Consulta e atualização de dados cadastrais (`UserDto` / `UpdateUserDto`).
    - `GET /api/profile/me` e `GET /api/profile/by-handle/{handle}` — [Identidade de perfil sem dados privados](profiles.md).
    - `PUT /api/profile/me` — Edição textual de nome e bio (`UpdateProfileDto`), com resposta `ProfileDto` e preservação de mídia.
+   - `POST /api/profile/me/avatar` — [Upload autenticado de avatar](profile-avatar.md), condicionado à configuração Azure.
    - Coleção de consulta e edição: [sonarfy-profiles.postman_collection.json](sonarfy-profiles.postman_collection.json).
    - Coleção Postman: [sonarfy-users.postman_collection.json](sonarfy-users.postman_collection.json).
    - Integração de dados pessoais: [configurações](../integrations/user-settings.md).
@@ -56,6 +57,7 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 | `POST` | `/api/auth/email-change-confirmation` | `EmailChangeConfirmationController` | JSON `token` (`email_change`) | [email-changes.md](email-changes.md) |
 | `PUT` | `/api/users/me/password` | `UserController` | Bearer `access` + JSON `token` (`password_change`) | [passwords.md](passwords.md#trocar-senha-estando-autenticado) |
 | `GET` | `/api/profile/me` | `ProfileController` | Bearer `access` | [profiles.md](profiles.md) |
+| `POST` | `/api/profile/me/avatar` | `AvatarController` | Bearer `access` | [profile-avatar.md](profile-avatar.md) |
 | `GET` | `/api/profile/by-handle/{handle}` | `ProfileController` | Bearer `access` | [profiles.md](profiles.md) |
 | `PUT` | `/api/profile/me` | `ProfileController` | Bearer `access` | [users-and-profile.md](users-and-profile.md#3-atualizar-perfil-público-bio-avatar-e-capa) |
 | `POST` | `/api/spotify/authorization` | `SpotifyController` | Bearer `access` | [spotify.md](../integrations/spotify.md) |
