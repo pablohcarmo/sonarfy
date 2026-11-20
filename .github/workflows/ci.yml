@@ -9,6 +9,19 @@ jobs:
   test:
     runs-on: ubuntu-latest
     services:
+      following-postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: sonarfy_following_test
+          POSTGRES_USER: following_test
+          POSTGRES_PASSWORD: isolated-following-test
+        ports:
+          - 55451:5432
+        options: >-
+          --health-cmd "pg_isready -U following_test -d sonarfy_following_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
       postgres:
         image: postgres:17
         env:
@@ -36,6 +49,22 @@ jobs:
 
       - name: Execute automated tests
         run: ./mvnw test
+
+      - name: Execute following HTTP, persistence and concurrency tests
+        timeout-minutes: 5
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.following-postgres.id }}
+        run: |
+          docker exec -i "$POSTGRES_CONTAINER" psql -U following_test -d sonarfy_following_test -v ON_ERROR_STOP=1 < db/tables.sql
+          ./mvnw test -Dtest=FollowingPostgresTest -Dsonarfy.test.following-postgres=true
+
+      - name: Upload following test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: following-postgres-test-reports
+          path: target/surefire-reports/*FollowingPostgresTest*
+          if-no-files-found: warn
 
       - uses: actions/setup-node@v4
         with:

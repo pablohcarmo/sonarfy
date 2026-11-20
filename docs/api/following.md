@@ -1,4 +1,4 @@
-﻿# Seguir e deixar de seguir
+# Seguir e deixar de seguir
 
 `PUT /api/profile/{targetId}/following` cria a relação; `DELETE` remove a relação.
 Ambos exigem `Authorization: Bearer <access token>`, não recebem corpo e retornam
@@ -60,3 +60,10 @@ O teste inclui HTTP MockMvc pela cadeia real de segurança, persistência Postgr
 24 mutações simultâneas em ambas as direções e espera observável em pg_stat_activity
 por transação de desativação controlada, para ator/alvo e PUT/DELETE.
 Não utiliza provedores externos. A suíte padrão pula os testes PostgreSQL opt-in.
+
+## Integração contínua
+
+O workflow Java CI provisiona um serviço PostgreSQL 17 exclusivo para esta suíte,
+inicializa db/tables.sql com ON_ERROR_STOP e executa FollowingPostgresTest com
+sonarfy.test.following-postgres=true. Falhas interrompem o job; os relatórios
+Surefire são disponibilizados no artefato following-postgres-test-reports.
