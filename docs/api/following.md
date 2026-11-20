@@ -21,7 +21,7 @@ em PUT repetido. DELETE afeta somente (ator, alvo), sem remover a direção inve
 ## Persistência e concorrência
 
 Reutiliza `User_Following` de `db/tables.sql`, incluindo PK composta, FKs,
-restrição de auto-follow e data padrão. Não requer migração nem índices novos.
+restrição de auto-follow e data padrão. O contrato de mutação não requer migração; o índice de leitura é descrito em [perfis](profiles.md).
 A transação adquire `FOR UPDATE` nas duas linhas de Users, uma por vez, por ID
 crescente, relê active/verified do banco e só então executa INSERT ON CONFLICT
 DO NOTHING ou DELETE. A consulta escalar evita estado antigo no contexto JPA.
@@ -37,9 +37,9 @@ não implementar desativação com remoção das relações ou decisões fora da
 Se a desativação confirmar primeiro, a mutação seguinte será rejeitada. Se a
 mutação confirmar primeiro, a desativação preservará seu resultado.
 
-Futuras contagens devem considerar apenas contas ativas; reativação volta a incluir
-relações preservadas, sem recriar relações apagadas. Contagens, listas,
-viewer.isFollowing e remoção de seguidor permanecem fora desta entrega.
+A leitura de contagens e viewer.isFollowing está descrita em [perfis](profiles.md).
+Contas inativas ou não verificadas não entram nas contagens. Reativação restaura
+somente relações preservadas. Listas e remoção de seguidor permanecem fora do escopo.
 
 ## Validação reproduzível
 

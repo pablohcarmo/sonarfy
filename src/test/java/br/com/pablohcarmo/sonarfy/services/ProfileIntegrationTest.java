@@ -56,6 +56,7 @@ class ProfileIntegrationTest {
 
     @BeforeEach
     void prepare() {
+        new org.springframework.jdbc.core.JdbcTemplate(context.getBean(DataSource.class)).execute("delete from user_following");
         users.deleteAll();
         new org.springframework.jdbc.core.JdbcTemplate(context.getBean(DataSource.class))
                 .execute("ALTER TABLE users ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP");
@@ -74,7 +75,7 @@ class ProfileIntegrationTest {
     void readsOwnProfileWithoutPrivateFields(String path) throws Exception {
         mvc.perform(get("/api/profile" + path).header("Authorization", bearer()))
                 .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
-                .andExpect(jsonPath("$.length()").value(2)).andExpect(jsonPath("$.identity.length()").value(8))
+                .andExpect(jsonPath("$.length()").value(3)).andExpect(jsonPath("$.identity.length()").value(8))
                 .andExpect(jsonPath("$.identity.id").value(actor.getId()))
                 .andExpect(jsonPath("$.identity.handle").value("owner"))
                 .andExpect(jsonPath("$.identity.displayName").value("D".repeat(60)))
@@ -97,7 +98,8 @@ class ProfileIntegrationTest {
                 .andExpect(jsonPath("$.identity.length()").value(8))
                 .andExpect(jsonPath("$.identity.avatarUrl").isEmpty()).andExpect(jsonPath("$.identity.biography").isEmpty())
                 .andExpect(jsonPath("$.viewer.isSelf").value(false)).andExpect(jsonPath("$.viewer.canEdit").value(false))
-                .andExpect(jsonPath("$.statistics").doesNotExist());
+                .andExpect(jsonPath("$.viewer.isFollowing").value(false))
+                .andExpect(jsonPath("$.statistics.followers").value(0)).andExpect(jsonPath("$.statistics.following").value(0));
         mvc.perform(get("/api/users/me").header("Authorization", bearer()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.email").value("owner@example.com"))
                 .andExpect(jsonPath("$.id").value(actor.getId())).andExpect(jsonPath("$.displayName").doesNotExist());
@@ -202,6 +204,88 @@ class ProfileIntegrationTest {
         actor.setActive(true); actor.setVerified(false); users.saveAndFlush(actor);
         mvc.perform(put("/api/profile/me").header("Authorization", access).contentType("application/json").content("{}"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // A direção do visitante é independente da relação inversa e das relações de terceiros.
+    @Test
+    void readsDirectionalRelationshipsAndCounts() throws Exception {
+        User target = account("target"), third = account("third");
+        var db = new org.springframework.jdbc.core.JdbcTemplate(context.getBean(DataSource.class));
+        db.update("insert into user_following (follower_id, following_id) values (?, ?), (?, ?)",
+                target.getId(), actor.getId(), third.getId(), target.getId());
+        mvc.perform(get("/api/profile/by-handle/TARGET").header("Authorization", bearer()))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.length()").value(3)).andExpect(jsonPath("$.viewer.length()").value(3))
+                .andExpect(jsonPath("$.statistics.length()").value(2)).andExpect(jsonPath("$.identity.length()").value(8))
+                .andExpect(jsonPath("$.viewer.isFollowing").value(false))
+                .andExpect(jsonPath("$.statistics.followers").value(1)).andExpect(jsonPath("$.statistics.following").value(1));
+        db.update("insert into user_following (follower_id, following_id) values (?, ?)", actor.getId(), target.getId());
+        mvc.perform(get("/api/profile/by-handle/target").header("Authorization", bearer()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.viewer.isFollowing").value(true))
+                .andExpect(jsonPath("$.statistics.followers").value(2));
+        for (String path : new String[]{"/me", "/by-handle/owner"})
+            mvc.perform(get("/api/profile" + path).header("Authorization", bearer()))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.viewer.isFollowing").value(false))
+                    .andExpect(jsonPath("$.statistics.followers").value(1)).andExpect(jsonPath("$.statistics.following").value(1));
+        mvc.perform(get("/api/profile/by-handle/target?actorId=" + actor.getId()).header("Authorization",
+                        "Bearer " + jwt.generateAccessToken(target.getId().toString())))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.viewer.isFollowing").value(false))
+                .andExpect(jsonPath("$.viewer.isSelf").value(true));
+        db.update("delete from user_following where follower_id = ? and following_id = ?", actor.getId(), target.getId());
+        mvc.perform(get("/api/profile/by-handle/target").header("Authorization", bearer()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.viewer.isFollowing").value(false))
+                .andExpect(jsonPath("$.statistics.followers").value(1)).andExpect(jsonPath("$.statistics.following").value(1));
+        mvc.perform(put("/api/profile/me").header("Authorization", bearer()).contentType("application/json").content("{}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.viewer.isFollowing").value(false))
+                .andExpect(jsonPath("$.statistics.followers").value(1)).andExpect(jsonPath("$.statistics.following").value(0));
+    }
+
+    // Mudanças de elegibilidade ocultam contagens sem apagar relações ou recriar relações removidas.
+    @ParameterizedTest @ValueSource(strings = {"active", "verified"})
+    void hidesIneligiblePeersAndRestoresOnlyPreservedRelationships(String column) throws Exception {
+        User target = account("target"), peer = account("peer");
+        var db = new org.springframework.jdbc.core.JdbcTemplate(context.getBean(DataSource.class));
+        db.update("insert into user_following (follower_id, following_id) values (?, ?), (?, ?)",
+                peer.getId(), target.getId(), target.getId(), peer.getId());
+        for (boolean eligible : new boolean[]{false, true}) {
+            db.update("update users set " + column + " = ? where user_id = ?", eligible, peer.getId());
+            mvc.perform(get("/api/profile/by-handle/target").header("Authorization", bearer()))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.statistics.followers").value(eligible ? 1 : 0))
+                    .andExpect(jsonPath("$.statistics.following").value(eligible ? 1 : 0));
+            org.junit.jupiter.api.Assertions.assertEquals(2, db.queryForObject("select count(*) from user_following", Integer.class));
+        }
+        db.update("delete from user_following where follower_id = ?", peer.getId());
+        db.update("update users set " + column + " = false where user_id = ?", peer.getId());
+        db.update("update users set " + column + " = true where user_id = ?", peer.getId());
+        mvc.perform(get("/api/profile/by-handle/target").header("Authorization", bearer()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.statistics.followers").value(0))
+                .andExpect(jsonPath("$.statistics.following").value(1));
+    }
+
+    // Uma transação concorrente não confirmada não mistura estado antigo e novo na resposta.
+    @Test
+    void readsCommittedSnapshotDuringEligibilityChange() throws Exception {
+        User target = account("target"), peer = account("peer");
+        var db = new org.springframework.jdbc.core.JdbcTemplate(context.getBean(DataSource.class));
+        db.update("insert into user_following (follower_id, following_id) values (?, ?), (?, ?)",
+                peer.getId(), target.getId(), target.getId(), peer.getId());
+        var pool = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            var tx = new org.springframework.transaction.support.TransactionTemplate(
+                    context.getBean(org.springframework.transaction.PlatformTransactionManager.class));
+            tx.executeWithoutResult(status -> {
+                db.update("update users set active = false where user_id = ?", peer.getId());
+                db.update("insert into user_following (follower_id, following_id) values (?, ?)", actor.getId(), target.getId());
+                var read = pool.submit(() -> mvc.perform(get("/api/profile/by-handle/target").header("Authorization", bearer()))
+                        .andExpect(status().isOk()).andExpect(jsonPath("$.viewer.isFollowing").value(false))
+                        .andExpect(jsonPath("$.statistics.followers").value(1)).andExpect(jsonPath("$.statistics.following").value(1)));
+                try { read.get(10, java.util.concurrent.TimeUnit.SECONDS); }
+                catch (Exception failure) { throw new AssertionError(failure); }
+            });
+            mvc.perform(get("/api/profile/by-handle/target").header("Authorization", bearer()))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.viewer.isFollowing").value(true))
+                    .andExpect(jsonPath("$.statistics.followers").value(1)).andExpect(jsonPath("$.statistics.following").value(0));
+        } finally { pool.shutdownNow(); }
     }
 
     private String bearer() { return "Bearer " + jwt.generateAccessToken(actor.getId().toString()); }

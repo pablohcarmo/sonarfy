@@ -66,6 +66,27 @@ jobs:
           path: target/surefire-reports/*FollowingPostgresTest*
           if-no-files-found: warn
 
+      - name: Execute profile relationship tests and validate lookup migration
+        timeout-minutes: 5
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.following-postgres.id }}
+        run: |
+          docker exec "$POSTGRES_CONTAINER" psql -U following_test -d postgres -v ON_ERROR_STOP=1 -c "CREATE USER profile_test WITH PASSWORD 'isolated-profile-test'"
+          docker exec "$POSTGRES_CONTAINER" createdb -U following_test -O profile_test sonarfy_profile_test
+          docker exec -i "$POSTGRES_CONTAINER" psql -U profile_test -d sonarfy_profile_test -v ON_ERROR_STOP=1 < db/tables.sql
+          docker exec "$POSTGRES_CONTAINER" psql -U profile_test -d sonarfy_profile_test -v ON_ERROR_STOP=1 -c 'DROP INDEX idx_user_following_following_follower'
+          docker exec -i "$POSTGRES_CONTAINER" psql -U profile_test -d sonarfy_profile_test -v ON_ERROR_STOP=1 < db/migrations/008_add_following_lookup_index.sql
+          docker exec -i "$POSTGRES_CONTAINER" psql -U profile_test -d sonarfy_profile_test -v ON_ERROR_STOP=1 < db/migrations/008_add_following_lookup_index.sql
+          ./mvnw test -Dtest=ProfileIntegrationTest -Dsonarfy.test.profile-postgres=true -Dsonarfy.test.profile-port=55451
+
+      - name: Upload profile test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: profile-relationship-test-reports
+          path: target/surefire-reports/*ProfileIntegrationTest*
+          if-no-files-found: warn
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
