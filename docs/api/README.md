@@ -25,6 +25,7 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
    - `GET /api/profile/me` e `GET /api/profile/by-handle/{handle}` — [Identidade de perfil sem dados privados](profiles.md).
    - `PUT /api/profile/me` — Edição textual de nome e bio (`UpdateProfileDto`), com resposta `ProfileDto` e preservação de mídia.
    - `POST /api/profile/me/avatar` — [Upload autenticado de avatar](profile-avatar.md), condicionado à configuração Azure.
+   - `PUT /api/profile/{targetId}/following` e `DELETE /api/profile/{targetId}/following` — [Seguir e deixar de seguir](following.md).
    - `POST /api/profile/me/wallpaper` — [Upload autenticado de capa](profile-wallpaper.md), preservando proporção.
    - Coleção de consulta e edição: [sonarfy-profiles.postman_collection.json](sonarfy-profiles.postman_collection.json).
    - Coleção Postman: [sonarfy-users.postman_collection.json](sonarfy-users.postman_collection.json).

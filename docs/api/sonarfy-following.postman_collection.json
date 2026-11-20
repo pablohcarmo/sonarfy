@@ -1,0 +1,75 @@
+{
+    "variable":  [
+                     {
+                         "key":  "baseUrl",
+                         "value":  "http://localhost:8080"
+                     },
+                     {
+                         "key":  "accessToken",
+                         "value":  ""
+                     },
+                     {
+                         "key":  "targetId",
+                         "value":  ""
+                     }
+                 ],
+    "info":  {
+                 "description":  "Mutates TEST relationships. Run individually. Contract: docs/api/following.md. Manual guide: docs/integrations/following.md. Keep credentials local.",
+                 "name":  "Sonarfy - Following (TEST accounts only)",
+                 "schema":  "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+             },
+    "item":  [
+                 {
+                     "request":  {
+                                     "method":  "PUT",
+                                     "url":  "{{baseUrl}}/api/profile/{{targetId}}/following",
+                                     "header":  [
+
+                                                ]
+                                 },
+                     "name":  "PUT following",
+                     "event":  [
+                                   {
+                                       "script":  {
+                                                      "exec":  [
+                                                                   "pm.test(\"204 without response data\", function () { pm.response.to.have.status(204); pm.expect(pm.response.text()).to.eql(\"\"); });"
+                                                               ],
+                                                      "type":  "text/javascript"
+                                                  },
+                                       "listen":  "test"
+                                   }
+                               ]
+                 },
+                 {
+                     "request":  {
+                                     "method":  "DELETE",
+                                     "url":  "{{baseUrl}}/api/profile/{{targetId}}/following",
+                                     "header":  [
+
+                                                ]
+                                 },
+                     "name":  "DELETE following",
+                     "event":  [
+                                   {
+                                       "script":  {
+                                                      "exec":  [
+                                                                   "pm.test(\"204 without response data\", function () { pm.response.to.have.status(204); pm.expect(pm.response.text()).to.eql(\"\"); });"
+                                                               ],
+                                                      "type":  "text/javascript"
+                                                  },
+                                       "listen":  "test"
+                                   }
+                               ]
+                 }
+             ],
+    "auth":  {
+                 "bearer":  [
+                                {
+                                    "key":  "token",
+                                    "type":  "string",
+                                    "value":  "{{accessToken}}"
+                                }
+                            ],
+                 "type":  "bearer"
+             }
+}
