@@ -48,8 +48,8 @@
             "exec": [
               "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
               "pm.test(\"No store\", () => pm.expect(pm.response.headers.get(\"Cache-Control\")).to.include(\"no-store\"));",
-              "pm.test(\"Profile fields only\", () => { const b = pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"viewer\"]); pm.expect(Object.keys(b.identity).sort()).to.eql([\"avatarUrl\",\"biography\",\"coverUrl\",\"displayName\",\"handle\",\"id\",\"joinedAt\",\"location\"]); pm.expect(Object.keys(b.viewer).sort()).to.eql([\"canEdit\",\"isSelf\"]); pm.expect(b.identity.joinedAt).to.match(/(Z|[+-][0-9]{2}:[0-9]{2})$/); });",
-              "pm.test(\"Own profile\", () => { const b=pm.response.json(); pm.expect(b.viewer.isSelf).to.eql(true); pm.expect(b.viewer.canEdit).to.eql(true); });"
+              "pm.test(\"Profile fields only\", () => { const b = pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"statistics\",\"viewer\"]); pm.expect(Object.keys(b.identity).sort()).to.eql([\"avatarUrl\",\"biography\",\"coverUrl\",\"displayName\",\"handle\",\"id\",\"joinedAt\",\"location\"]); pm.expect(Object.keys(b.viewer).sort()).to.eql([\"canEdit\",\"isFollowing\",\"isSelf\"]); pm.expect(b.viewer.isFollowing).to.be.a(\"boolean\"); pm.expect(Object.keys(b.statistics).sort()).to.eql([\"followers\",\"following\"]); [b.statistics.followers,b.statistics.following].forEach(n => { pm.expect(Number.isSafeInteger(n)).to.eql(true); pm.expect(n).to.be.at.least(0); }); pm.expect(b.identity.joinedAt).to.match(/(Z|[+-][0-9]{2}:[0-9]{2})$/); });",
+              "pm.test(\"Own profile\", () => { const b=pm.response.json(); pm.expect(b.viewer.isSelf).to.eql(true); pm.expect(b.viewer.canEdit).to.eql(true); pm.expect(b.viewer.isFollowing).to.eql(false); });"
             ]
           }
         }
@@ -80,7 +80,7 @@
             "exec": [
               "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
               "pm.test(\"No store\", () => pm.expect(pm.response.headers.get(\"Cache-Control\")).to.include(\"no-store\"));",
-              "pm.test(\"Profile fields only\", () => { const b = pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"viewer\"]); pm.expect(Object.keys(b.identity).sort()).to.eql([\"avatarUrl\",\"biography\",\"coverUrl\",\"displayName\",\"handle\",\"id\",\"joinedAt\",\"location\"]); pm.expect(Object.keys(b.viewer).sort()).to.eql([\"canEdit\",\"isSelf\"]); pm.expect(b.identity.joinedAt).to.match(/(Z|[+-][0-9]{2}:[0-9]{2})$/); });",
+              "pm.test(\"Profile fields only\", () => { const b = pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"statistics\",\"viewer\"]); pm.expect(Object.keys(b.identity).sort()).to.eql([\"avatarUrl\",\"biography\",\"coverUrl\",\"displayName\",\"handle\",\"id\",\"joinedAt\",\"location\"]); pm.expect(Object.keys(b.viewer).sort()).to.eql([\"canEdit\",\"isFollowing\",\"isSelf\"]); pm.expect(b.viewer.isFollowing).to.be.a(\"boolean\"); pm.expect(Object.keys(b.statistics).sort()).to.eql([\"followers\",\"following\"]); [b.statistics.followers,b.statistics.following].forEach(n => { pm.expect(Number.isSafeInteger(n)).to.eql(true); pm.expect(n).to.be.at.least(0); }); pm.expect(b.identity.joinedAt).to.match(/(Z|[+-][0-9]{2}:[0-9]{2})$/); });",
               "pm.test(\"Other profile\", () => { const b=pm.response.json(); pm.expect(b.viewer.isSelf).to.eql(false); pm.expect(b.viewer.canEdit).to.eql(false); });"
             ]
           }
@@ -203,8 +203,8 @@
                 "exec": [
                   "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
                   "pm.test(\"No store\", () => pm.expect(pm.response.headers.get(\"Cache-Control\")).to.include(\"no-store\"));",
-                  "pm.test(\"Profile fields only\", () => { const b = pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"viewer\"]); pm.expect(Object.keys(b.identity).sort()).to.eql([\"avatarUrl\",\"biography\",\"coverUrl\",\"displayName\",\"handle\",\"id\",\"joinedAt\",\"location\"]); pm.expect(Object.keys(b.viewer).sort()).to.eql([\"canEdit\",\"isSelf\"]); pm.expect(b.identity.joinedAt).to.match(/(Z|[+-][0-9]{2}:[0-9]{2})$/); });",
-                  "pm.test(\"Normalized text and ownership\", () => { const b=pm.response.json(); pm.expect(b.identity.displayName).to.eql(\"DJ 123 \\u{1f3b5}\"); pm.expect(b.identity.biography).to.eql(\"Music \\u{1f3a7}\"); pm.expect(b.viewer.isSelf).to.eql(true); pm.expect(b.viewer.canEdit).to.eql(true); });"
+                  "pm.test(\"Profile fields only\", () => { const b = pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"statistics\",\"viewer\"]); pm.expect(Object.keys(b.identity).sort()).to.eql([\"avatarUrl\",\"biography\",\"coverUrl\",\"displayName\",\"handle\",\"id\",\"joinedAt\",\"location\"]); pm.expect(Object.keys(b.viewer).sort()).to.eql([\"canEdit\",\"isFollowing\",\"isSelf\"]); pm.expect(b.viewer.isFollowing).to.be.a(\"boolean\"); pm.expect(Object.keys(b.statistics).sort()).to.eql([\"followers\",\"following\"]); [b.statistics.followers,b.statistics.following].forEach(n => { pm.expect(Number.isSafeInteger(n)).to.eql(true); pm.expect(n).to.be.at.least(0); }); pm.expect(b.identity.joinedAt).to.match(/(Z|[+-][0-9]{2}:[0-9]{2})$/); });",
+                  "pm.test(\"Normalized text and ownership\", () => { const b=pm.response.json(); pm.expect(b.identity.displayName).to.eql(\"DJ 123 \\u{1f3b5}\"); pm.expect(b.identity.biography).to.eql(\"Music \\u{1f3a7}\"); pm.expect(b.viewer.isSelf).to.eql(true); pm.expect(b.viewer.canEdit).to.eql(true); pm.expect(b.viewer.isFollowing).to.eql(false); });"
                 ]
               }
             }
@@ -249,7 +249,7 @@
                 "exec": [
                   "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
                   "pm.test(\"No store\", () => pm.expect(pm.response.headers.get(\"Cache-Control\")).to.include(\"no-store\"));",
-                  "pm.test(\"Profile fields only\", () => { const b = pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"viewer\"]); pm.expect(Object.keys(b.identity).sort()).to.eql([\"avatarUrl\",\"biography\",\"coverUrl\",\"displayName\",\"handle\",\"id\",\"joinedAt\",\"location\"]); pm.expect(Object.keys(b.viewer).sort()).to.eql([\"canEdit\",\"isSelf\"]); pm.expect(b.identity.joinedAt).to.match(/(Z|[+-][0-9]{2}:[0-9]{2})$/); });",
+                  "pm.test(\"Profile fields only\", () => { const b = pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"statistics\",\"viewer\"]); pm.expect(Object.keys(b.identity).sort()).to.eql([\"avatarUrl\",\"biography\",\"coverUrl\",\"displayName\",\"handle\",\"id\",\"joinedAt\",\"location\"]); pm.expect(Object.keys(b.viewer).sort()).to.eql([\"canEdit\",\"isFollowing\",\"isSelf\"]); pm.expect(b.viewer.isFollowing).to.be.a(\"boolean\"); pm.expect(Object.keys(b.statistics).sort()).to.eql([\"followers\",\"following\"]); [b.statistics.followers,b.statistics.following].forEach(n => { pm.expect(Number.isSafeInteger(n)).to.eql(true); pm.expect(n).to.be.at.least(0); }); pm.expect(b.identity.joinedAt).to.match(/(Z|[+-][0-9]{2}:[0-9]{2})$/); });",
                   "pm.test(\"Biography cleared\", () => pm.expect(pm.response.json().identity.biography).to.eql(null));"
                 ]
               }
@@ -295,7 +295,7 @@
                 "exec": [
                   "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
                   "pm.test(\"No store\", () => pm.expect(pm.response.headers.get(\"Cache-Control\")).to.include(\"no-store\"));",
-                  "pm.test(\"Profile fields only\", () => { const b = pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"viewer\"]); pm.expect(Object.keys(b.identity).sort()).to.eql([\"avatarUrl\",\"biography\",\"coverUrl\",\"displayName\",\"handle\",\"id\",\"joinedAt\",\"location\"]); pm.expect(Object.keys(b.viewer).sort()).to.eql([\"canEdit\",\"isSelf\"]); pm.expect(b.identity.joinedAt).to.match(/(Z|[+-][0-9]{2}:[0-9]{2})$/); });"
+                  "pm.test(\"Profile fields only\", () => { const b = pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"statistics\",\"viewer\"]); pm.expect(Object.keys(b.identity).sort()).to.eql([\"avatarUrl\",\"biography\",\"coverUrl\",\"displayName\",\"handle\",\"id\",\"joinedAt\",\"location\"]); pm.expect(Object.keys(b.viewer).sort()).to.eql([\"canEdit\",\"isFollowing\",\"isSelf\"]); pm.expect(b.viewer.isFollowing).to.be.a(\"boolean\"); pm.expect(Object.keys(b.statistics).sort()).to.eql([\"followers\",\"following\"]); [b.statistics.followers,b.statistics.following].forEach(n => { pm.expect(Number.isSafeInteger(n)).to.eql(true); pm.expect(n).to.be.at.least(0); }); pm.expect(b.identity.joinedAt).to.match(/(Z|[+-][0-9]{2}:[0-9]{2})$/); });"
                 ]
               }
             }
@@ -438,7 +438,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
-                  "pm.test(\"Safe profile and public URL\", () => { const b=pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"viewer\"]); pm.expect(b.viewer.isSelf).to.eql(true); pm.expect(b.identity.avatarUrl.startsWith(\"https://\")).to.eql(true); pm.expect(b.identity.avatarUrl).not.to.include(\"?\"); pm.collectionVariables.set(\"uploadedAvatarUrl\",b.identity.avatarUrl); });",
+                  "pm.test(\"Safe profile and public URL\", () => { const b=pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"statistics\",\"viewer\"]); pm.expect(b.viewer.isSelf).to.eql(true); pm.expect(b.identity.avatarUrl.startsWith(\"https://\")).to.eql(true); pm.expect(b.identity.avatarUrl).not.to.include(\"?\"); pm.collectionVariables.set(\"uploadedAvatarUrl\",b.identity.avatarUrl); });",
                   "pm.test(\"No store\", () => pm.expect(pm.response.headers.get(\"Cache-Control\")).to.include(\"no-store\"));"
                 ]
               }
@@ -622,7 +622,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
-                  "pm.test(\"Safe profile and wallpaper URL\", () => { const b=pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"viewer\"]); pm.expect(b.viewer.isSelf).to.eql(true); pm.expect(b.identity.coverUrl.startsWith(\"https://\")).to.eql(true); pm.collectionVariables.set(\"uploadedWallpaperUrl\",b.identity.coverUrl); });"
+                  "pm.test(\"Safe profile and wallpaper URL\", () => { const b=pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"identity\",\"statistics\",\"viewer\"]); pm.expect(b.viewer.isSelf).to.eql(true); pm.expect(b.identity.coverUrl.startsWith(\"https://\")).to.eql(true); pm.collectionVariables.set(\"uploadedWallpaperUrl\",b.identity.coverUrl); });"
                 ]
               }
             }

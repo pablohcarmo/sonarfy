@@ -8,7 +8,7 @@ js/profile-state.js e js/profile-views.js. Seu adapter retorna isFollowing e
 followers simulados. Esta entrega não altera esses arquivos nem integra o botão.
 Na integração futura, use identity.id como targetId e escolha PUT/DELETE pela
 intenção. Um 204 confirma a intenção naquele instante; não contém contadores.
-A leitura de viewer.isFollowing e contadores reais será feita em entrega posterior.
+A leitura real de viewer.isFollowing e contadores já está disponível no ProfileDto; consultar [perfil](profile-page.md).
 
 ## Roteiro manual no Postman
 

@@ -46,11 +46,11 @@ public class ProfileService {
 
     // Ownership comes from the authenticated ID, independently of mutable account identifiers.
     public ProfileDto current(Long actorId) {
-        return map(profiles.findVisibleById(actorId).orElseThrow(ProfileService::notFound), actorId);
+        return map(profiles.findVisibleById(actorId, actorId).orElseThrow(ProfileService::notFound), actorId);
     }
 
     public ProfileDto byHandle(String handle, Long actorId) {
-        return map(profiles.findVisibleByHandle(handle).orElseThrow(ProfileService::notFound), actorId);
+        return map(profiles.findVisibleByHandle(handle, actorId).orElseThrow(ProfileService::notFound), actorId);
     }
 
     private ProfileDto map(ProfileRepository.View profile, Long actorId) {
@@ -58,7 +58,8 @@ public class ProfileService {
         return new ProfileDto(new ProfileDto.Identity(profile.getId(), profile.getHandle(), profile.getDisplayName(),
                 profile.getAvatar(), profile.getWallpaper(), profile.getBiography(),
                 new ProfileDto.Location(profile.getCity(), profile.getCountry()), profile.getJoinedAt()),
-                new ProfileDto.Viewer(self, self));
+                new ProfileDto.Viewer(self, self, profile.getFollowed()),
+                new ProfileDto.Statistics(profile.getFollowers(), profile.getFollowing()));
     }
 
     private static ResponseStatusException notFound() {

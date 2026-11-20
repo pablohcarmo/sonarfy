@@ -19,7 +19,8 @@ retorna o handle canônico e não aceita `@` como prefixo especial. O segmento
     "location": { "city": "Campinas", "country": "Brasil" },
     "joinedAt": "2026-11-01T14:30:00Z"
   },
-  "viewer": { "isSelf": true, "canEdit": true }
+  "viewer": { "isSelf": true, "canEdit": true, "isFollowing": false },
+  "statistics": { "followers": 0, "following": 0 }
 }
 ```
 
@@ -29,9 +30,16 @@ data de entrada ISO 8601 com offset. Mídia e bio podem ser nulas. A leitura nã
 valida novamente URLs legadas nem realiza upload ou chamadas a provedores.
 
 `viewer` é calculado pelo ID autenticado: consultar o próprio handle equivale a
-`/me`; para terceiros ambos os indicadores são false. `canEdit` expressa propriedade,
-sem ampliar os campos editáveis pelo PUT atual. Estatísticas, relacionamento,
-listas e capacidades sociais não integram a resposta.
+`/me`. `isSelf` e `canEdit` indicam propriedade. `isFollowing` indica somente a
+direção visitante → perfil; é false no próprio perfil. Relação inversa não implica
+seguir. Parâmetros como actorId não substituem a identidade autenticada.
+
+`statistics.followers` e `statistics.following` são inteiros não negativos (long)
+e contam relações persistidas com a outra conta ativa e verificada. Falta de acesso
+recente não exclui contas. Não retornam listas nem estatísticas de álbuns.
+Desativação preserva as relações, mas retira a conta das contagens; reativação
+restaura somente as relações ainda existentes. O mesmo filtro de visibilidade
+aplica-se às contas não verificadas. Não existe endpoint de desativação nesta entrega.
 
 Nome/sobrenome cadastral, e-mail, nascimento, permissões, credenciais e estado
 Spotify não são retornados. Cidade/país e data de entrada são visíveis aos usuários
@@ -48,11 +56,17 @@ autenticados nesta fase. Não há configuração de perfil privado nem acesso an
 
 ## Compatibilidade e consultas
 
+A entrega de relacionamentos acrescenta `viewer.isFollowing` e `statistics` ao
+ProfileDto existente, mantendo os campos de identidade e propriedade. Clientes
+com validação estrita das chaves devem atualizar seu schema. A evolução anterior
+do formato cadastral para ProfileDto está registrada a seguir.
+
 Esta entrega altera intencionalmente GET `/api/profile/me`: antes retornava
 `UserDto`; agora retorna `ProfileDto` composto. Dados cadastrais continuam em
 GET `/api/users/me`. PUT `/api/profile/me` agora também retorna `ProfileDto` e edita
 somente texto, conforme o contrato abaixo. Essa é uma mudança intencional da resposta
-anterior `UserDto` e do comportamento de substituição de mídia. Não há migration.
+anterior `UserDto` e do comportamento de substituição de mídia. O índice desta
+entrega está descrito abaixo; não há alteração dos dados persistidos.
 
 ## Editar texto — PUT /api/profile/me
 
@@ -87,10 +101,20 @@ no banco relacional: [contrato de avatar](profile-avatar.md). Ele não altera a 
 do PUT textual. Wallpaper usa [upload separado](profile-wallpaper.md), preservando
 proporção. Migração de imagens legadas continua pendente.
 
-Uma projeção seleciona apenas os campos de identidade em uma consulta ao usuário
-alvo, além da consulta de autenticação existente. Não carrega coleções ou associações
-por item. Reutiliza o schema existente; sem migration. O aproveitamento do índice
-`uk_users_handle_ci` deverá ser medido no PostgreSQL antes de otimizações adicionais.
+A projeção seleciona identidade, estado do visitante e contagens em uma única
+instrução SQL, além da autenticação existente. Subconsultas correlacionadas evitam
+multiplicação de linhas, carregamento de coleções e consultas por seguidor. Todos
+os componentes usam o mesmo snapshot da instrução em READ COMMITTED, sem bloquear
+mutações de relacionamentos. Uma leitura concorrente pode representar o estado
+anterior ou posterior a um commit; não garante atualização após a resposta.
+PUT textual e uploads que retornam ProfileDto também incluem os novos campos.
+
+A migração `008_add_following_lookup_index.sql` cria o índice
+`(following_id, follower_id)` para seguidores; a PK `(follower_id, following_id)`
+já atende seguindo e a consulta do par. Atualizar bancos existentes com essa
+migração antes da implantação. `db/tables.sql` contém o índice para bancos novos.
+A migração foi aplicada ao banco local da aplicação com autorização em 20/11/2026,
+conforme o registro abaixo.
 
 Coleção importável: [sonarfy-profiles.postman_collection.json](sonarfy-profiles.postman_collection.json).
 Integração: [profile-page.md](../integrations/profile-page.md).
@@ -154,3 +178,58 @@ Integração: [profile-page.md](../integrations/profile-page.md).
   não foram consideradas evidência da versão atual.
 - Contêiner descartável removido após os testes. Banco da aplicação, frontend,
   configurações locais e Azure preservados; sem migration. CI remoto não executado.
+
+## Relacionamentos e contagens — 20/11/2026
+
+- Branch baseada na main `7bf8aac`. Suíte inicial padrão: 722 testes, zero falhas/erros,
+  70 ignorados (incluindo os testes PostgreSQL opt-in).
+- Suíte completa final: `.\mvnw.cmd -Dsonarfy.test.following-postgres=true -Dsonarfy.test.profile-postgres=true -Dsonarfy.test.profile-port=55451 test`
+  Resultado: 727 testes, zero falhas/erros e 65 ignorados.
+- ProfileIntegrationTest: 33 cenários passaram em H2 (`.\mvnw.cmd -Dtest=ProfileIntegrationTest test`)
+  e no PostgreSQL 17.11 descartável,
+  banco sonarfy_profile_test separado, com MockMvc, segurança real, serviços e JPA.
+  Incluem relações nas duas direções, terceiros, ator forjado por query string,
+  próprio perfil, contagens vazias, desativação/reativação, verificação,
+  relações removidas e leitura durante transação de elegibilidade não confirmada.
+- O workflow Java CI executa os mesmos testes no PostgreSQL descartável, aplica
+  a migração 008 duas vezes sobre schema sem o índice e publica relatórios.
+  A configuração local do workflow não comprova execução remota.
+- Migração 008 executada duas vezes em outro banco descartável, sem erro e com
+  índice preservado. Somente esse banco de teste foi alterado. CREATE INDEX
+  convencional pode bloquear escritas durante a criação; planejar sua aplicação
+  no ambiente de destino. Nenhuma implantação realizada; a aplicação local da migração está registrada abaixo.
+- EXPLAIN (ANALYZE, BUFFERS) de SQL representativo da projeção, com 10.000 contas
+  sintéticas ativas/verificadas e 10.000 relações em ciclo após ANALYZE: o PostgreSQL
+  usou uk_users_handle_ci no alvo, o índice reverso nos seguidores e a PK nos
+  seguindo. A execução observada foi 0,084 ms com cache quente; não representa
+  benchmark de produção ou de perfis com muitos seguidores. Contagens exatas
+  continuam proporcionais ao número de relações elegíveis, sem cache persistido.
+- Coleção Postman atualizada: JSON e sintaxe dos 20 scripts validados localmente.
+  Validação manual no Postman realizada pelo usuário: próprio perfil com isFollowing=false;
+  perfil seguido com isFollowing=true; PUT repetido preservando followers; DELETE
+  refletido em isFollowing=false e followers=0 no alvo e following=0 no próprio perfil.
+  Respostas fornecidas pelo usuário; não representa execução automatizada da coleção.
+  Frontend, provedores externos e CI remoto não executados nesta entrega.
+
+Para reproduzir o PostgreSQL, use apenas o contêiner descartável da entrega de
+relacionamentos na porta 55451; crie o usuário profile_test com senha de teste
+isolated-profile-test e o banco sonarfy_profile_test pertencente a esse usuário,
+importe db/tables.sql com ON_ERROR_STOP=1 e execute:
+
+```powershell
+.\mvnw.cmd '-Dtest=ProfileIntegrationTest' '-Dsonarfy.test.profile-postgres=true' '-Dsonarfy.test.profile-port=55451' test
+```
+
+A configuração fixa de teste não lê application.properties. A preparação apaga
+contas e relações apenas desse banco descartável. Os mesmos cenários de leitura
+rodam em H2 na suíte padrão, sem depender de habilitação manual do PostgreSQL.
+
+## Aplicação local da migração 008 — 20/11/2026
+
+Aplicada com autorização ao PostgreSQL configurado localmente: localhost:5433,
+banco sonarfy, schema public. Pré-verificação confirmou a tabela e somente a PK
+existente. Executado psql com ON_ERROR_STOP=1, --single-transaction e o arquivo
+008_add_following_lookup_index.sql. Resultado CREATE INDEX; catálogo confirmou
+(following_id, follower_id), indisvalid=true e indisready=true. Nenhum registro
+de usuário ou relacionamento foi alterado. Não representa implantação em outro
+ambiente nem validação manual dos endpoints atualizados.

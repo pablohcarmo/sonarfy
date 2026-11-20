@@ -33,7 +33,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "app.frontend-url=http://localhost:3000", "spring.mail.username=noreply@example.com"})
 class FollowingPostgresTest {
     @Configuration @EnableWebMvc
-    @Import({SecurityConfig.class, FollowingController.class, FollowingService.class})
+    @Import({SecurityConfig.class, FollowingController.class, FollowingService.class,
+            br.com.pablohcarmo.sonarfy.controllers.ProfileController.class, ProfileService.class})
     static class Config extends EmailReservationIntegrationTest.Config {
         @Bean @Override DataSource dataSource(org.springframework.core.env.Environment env) {
             return new DriverManagerDataSource("jdbc:postgresql://127.0.0.1:55451/sonarfy_following_test",
@@ -151,6 +152,29 @@ class FollowingPostgresTest {
                 assertEquals(1, relation(actor, target));
                 db.update("update users set active = true where user_id = ?", user.getId());
             } finally { pool.shutdownNow(); }
+        }
+    }
+
+    // A leitura HTTP reflete as mutações confirmadas sem confundir o visitante com o alvo.
+    @Test void readsCommittedMutationsOverHttp() throws Exception {
+        for (int repeat = 0; repeat < 2; repeat++) {
+            call(true, actor, target, 204);
+            mvc.perform(get("/api/profile/by-handle/target").header("Authorization", bearer(actor)))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.viewer.isFollowing").value(true))
+                    .andExpect(jsonPath("$.statistics.followers").value(1)).andExpect(jsonPath("$.statistics.following").value(0));
+            mvc.perform(get("/api/profile/me").header("Authorization", bearer(actor)))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.viewer.isFollowing").value(false))
+                    .andExpect(jsonPath("$.statistics.followers").value(0)).andExpect(jsonPath("$.statistics.following").value(1));
+            mvc.perform(get("/api/profile/by-handle/actor").header("Authorization", bearer(target)))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.viewer.isFollowing").value(false));
+        }
+        for (int repeat = 0; repeat < 2; repeat++) {
+            call(false, actor, target, 204);
+            mvc.perform(get("/api/profile/by-handle/target").header("Authorization", bearer(actor)))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.viewer.isFollowing").value(false))
+                    .andExpect(jsonPath("$.statistics.followers").value(0));
+            mvc.perform(get("/api/profile/me").header("Authorization", bearer(actor)))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.statistics.following").value(0));
         }
     }
 

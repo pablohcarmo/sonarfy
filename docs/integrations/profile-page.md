@@ -14,8 +14,10 @@ Mapeamento de [ProfileDto](../api/profiles.md) para o adapter atual:
 | identity.location.city / country | profile.city / country |
 | identity.joinedAt | profile.joinedAt |
 | viewer.isSelf / canEdit | Propriedade e permissão da interface |
+| viewer.isFollowing | profile.isFollowing |
+| statistics.followers / following | profile.followers / following |
 
-Não preencher contadores, listas ou `isFollowing` com valores demonstrativos ao
+Contadores e `isFollowing` já possuem valores reais no contrato. Não preencher listas indisponíveis com valores demonstrativos ao
 usar dados reais. A página atual exige todas as listas em `load`; a integração
 futura precisará desacoplar o cabeçalho e os estados das seções indisponíveis.
 ID é estável, handle é mutável; comparar IDs com tipos normalizados no adapter.
@@ -48,3 +50,21 @@ Para capa, enviar o arquivo a POST `/api/profile/me/wallpaper` e mapear
 o frontend precisa definir o enquadramento responsivo e eventual ajuste visual de
 posição. Essa posição ainda não é persistida pela API. Não usar coordenadas de
 recorte de avatar para wallpaper. Ambos retornam o mesmo ProfileDto.
+
+## Relacionamentos no cabeçalho
+
+Esta entrega altera somente o backend. O adapter demonstrativo continua separado.
+Após PUT/DELETE de relacionamento com 204, recarregar o perfil pelas rotas GET
+para reconciliar isFollowing e contadores. Não usar a direção inversa para decidir
+o botão. Não derivar dados reais das fixtures nem do estado do visitante anterior.
+As contagens excluem contas inativas/não verificadas; PUT/DELETE permanecem sujeitos
+à elegibilidade das duas contas. Não implementar desativação pelo frontend.
+
+Roteiro manual com contas de teste: consultar o próprio perfil (isFollowing=false),
+consultar B com token de A, seguir B, consultar B novamente (isFollowing=true,
+followers incrementado) e consultar A (/me, following incrementado). Repetir o PUT
+não altera contagens. DELETE seguido dos GETs restaura o estado anterior. Criar a
+direção B→A separadamente e confirmar que ela não implica A→B. Verificar 401 sem
+Bearer e com registrationToken; perfil inativo/não verificado continua 404.
+Mudanças de active/verified devem ser testadas somente no PostgreSQL descartável,
+conforme os testes automatizados. Não alterar o banco da aplicação para esse roteiro.
