@@ -1,0 +1,54 @@
+{
+  "info": {
+    "name": "Sonarfy - Account reactivation (TEST accounts only)",
+    "description": "Run individually against TEST accounts only. Reactivation changes state. Set credentials locally; never export them. See docs/api/account-reactivation.md and docs/integrations/account-reactivation.md.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": { "type": "noauth" },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "login", "value": "" },
+    { "key": "password", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Reactivate TEST account - 204 (also when already active)",
+      "request": {
+        "method": "POST", "url": "{{baseUrl}}/api/auth/reactivation",
+        "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "X-Sonarfy-CSRF", "value": "1" }],
+        "body": { "mode": "raw", "raw": "{\"login\":\"{{login}}\",\"password\":\"{{password}}\"}", "options": { "raw": { "language": "json" } } }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+        "pm.test('204 without response data or new session', () => { pm.response.to.have.status(204); pm.expect(pm.response.text()).to.eql(''); pm.expect(pm.response.headers.has('Set-Cookie')).to.eql(false); });",
+        "pm.test('No caching', () => pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'));"
+      ] } }]
+    },
+    {
+      "name": "Invalid credentials - 401",
+      "request": {
+        "method": "POST", "url": "{{baseUrl}}/api/auth/reactivation",
+        "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "X-Sonarfy-CSRF", "value": "1" }],
+        "body": { "mode": "raw", "raw": "{\"login\":\"nonexistent-test-account\",\"password\":\"invalid-test-password\"}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Generic authentication failure', () => pm.response.to.have.status(401));"] } }]
+    },
+    {
+      "name": "Missing credentials - 400",
+      "request": {
+        "method": "POST", "url": "{{baseUrl}}/api/auth/reactivation",
+        "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "X-Sonarfy-CSRF", "value": "1" }],
+        "body": { "mode": "raw", "raw": "{}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Missing credentials', () => pm.response.to.have.status(400));"] } }]
+    },
+    {
+      "name": "Missing CSRF header - 403",
+      "request": {
+        "method": "POST", "url": "{{baseUrl}}/api/auth/reactivation",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{}" }
+      },
+      "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('CSRF protection', () => pm.response.to.have.status(403));"] } }]
+    }
+  ]
+}

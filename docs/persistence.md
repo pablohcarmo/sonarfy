@@ -1,5 +1,31 @@
 # Persistência das classes existentes
 
+A reativação acrescenta `users.access_token_version` e a outbox dedicada
+`reactivation_mail_outbox`, por meio da migration 009 após 008. O schema
+consolidado já contém ambos para bancos novos. Preparar a migration não autoriza
+sua aplicação no banco da aplicação. Contrato e operação estão descritos em
+[reativação](api/account-reactivation.md).
+
+## Aplicação local da migration 009 em 21/11/2026
+
+Após autorização explícita, `009_add_account_reactivation.sql` foi aplicada em
+uma única transação no banco local `sonarfy`, acessado em `localhost:5433`
+(PostgreSQL 17.9). A inspeção anterior confirmou a ausência da coluna e da outbox
+novas e a presença do índice da migration 008.
+
+Backup completo em formato custom, com catálogo verificado:
+`target/db-backups/sonarfy-before-reactivation-009-20261121-180022.dump`
+(ignorado pelo Git). Não foi executado um teste de restauração desse backup.
+
+Após o commit, foram conferidos tipo, nulabilidade e default da coluna,
+índice parcial, chave primária, FK e constraint de reserva da outbox. As quatro
+contas receberam versão zero e a outbox permaneceu vazia. O fingerprint dos
+dados anteriores das contas e as contagens de relações (2), refresh tokens (57)
+e conexões Spotify (1) foram preservados. Nenhuma conta foi desativada ou
+reativada pelo agente; nenhum teste com criação/remoção de tabelas foi executado
+nesse banco. A validação manual posteriormente confirmada pelo usuário via
+Postman está registrada em [integração de reativação](integrations/account-reactivation.md#validação-manual-confirmada-pelo-usuário-em-21112026).
+
 `User` mantém uma associação com `Permission`, acessada por `getPermission()` e
 `setPermission()`. Uma permissão pode ser compartilhada por vários usuários; não
 há coleção inversa em `Permission`. Os campos técnicos de auditoria, senha e

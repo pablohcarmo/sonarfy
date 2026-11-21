@@ -51,8 +51,15 @@ public class RefreshTokenService {
     // A preferência pertence à sessão e não altera o prazo de inatividade.
     @Transactional
     public String issue(User user, boolean rememberMe) {
+        return issue(user, rememberMe, null);
+    }
+
+    // Uma autenticação iniciada antes da reativação não pode criar uma sessão depois dela.
+    @Transactional
+    public String issue(User user, boolean rememberMe, Long expectedVersion) {
         User owner = lockUser(user.getId());
-        if (owner == null || !owner.isEnabled()) throw invalidToken();
+        if (owner == null || !owner.isEnabled()
+                || (expectedVersion != null && expectedVersion != owner.getAccessTokenVersion())) throw invalidToken();
         String raw = newRawToken();
         tokens.save(new RefreshToken(owner, hash(raw), OffsetDateTime.now().plus(INACTIVITY_TTL),
                 UUID.randomUUID(), rememberMe));
@@ -84,7 +91,7 @@ public class RefreshTokenService {
         String raw = newRawToken();
         tokens.save(new RefreshToken(owner, hash(raw), now.plus(INACTIVITY_TTL),
                 stored.getSessionId(), stored.isRememberMe()));
-        return new RotationDto(ownerId, raw, stored.isRememberMe());
+        return new RotationDto(ownerId, raw, stored.isRememberMe(), owner.getAccessTokenVersion());
     }
 
     // Um token consumido também encerra seus sucessores, mesmo após uma rotação concorrente.

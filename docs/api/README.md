@@ -6,6 +6,9 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 
 ## Índice de Contratos por Domínio
 
+- **[Reativação explícita de conta](account-reactivation.md)** — `POST /api/auth/reactivation`,
+  credenciais atuais, novo login obrigatório e aviso transacional.
+
 1. **[Cadastro, Retificação e Ativação de Conta](registration.md)**
    - `POST /api/auth/register` — Criação de conta (`verified = false`), geração do `registrationToken` e disparo pós-commit do e-mail de ativação.
    - `PATCH /api/auth/update-pending-email` — Correção do endereço de e-mail pendente mediante `Authorization: Bearer <registrationToken>`.

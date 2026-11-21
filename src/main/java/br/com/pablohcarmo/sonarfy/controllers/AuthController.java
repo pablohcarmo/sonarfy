@@ -70,7 +70,7 @@ public class AuthController {
 
     // O refresh fica apenas no cookie; o JSON mantém o contrato de access token.
     private ResponseEntity<LoginResponseDto> tokenResponse(RotationDto session) {
-        var response = new LoginResponseDto(jwtService.generateAccessToken(session.userId().toString()),
+        var response = new LoginResponseDto(jwtService.generateAccessToken(session.userId().toString(), session.accessTokenVersion()),
                 "Bearer", JwtService.ACCESS_TOKEN_TTL_SECONDS);
         return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .header(HttpHeaders.SET_COOKIE, refreshCookie(session.refreshToken(), session.rememberMe(), false))

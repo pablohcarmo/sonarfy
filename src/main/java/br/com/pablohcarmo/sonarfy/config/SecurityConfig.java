@@ -60,6 +60,7 @@ public class SecurityConfig {
                             HttpMethod.POST,
                             "/api/auth/register",
                             "/api/auth/login",
+                            "/api/auth/reactivation",
                             "/api/auth/refresh",
                             "/api/auth/logout",
                             "/api/auth/resend-activation-email",

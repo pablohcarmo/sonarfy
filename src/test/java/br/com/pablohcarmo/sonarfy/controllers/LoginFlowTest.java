@@ -39,7 +39,7 @@ class LoginFlowTest {
         JwtService jwt = new JwtService();
         ReflectionTestUtils.setField(jwt, "secretKey", SECRET);
         RefreshTokenService refreshTokens = mock(RefreshTokenService.class);
-        when(refreshTokens.issue(any(User.class), anyBoolean())).thenReturn("test-refresh");
+        when(refreshTokens.issue(any(User.class), anyBoolean(), anyLong())).thenReturn("test-refresh");
         AuthService auth = new AuthService(repository, encoder, refreshTokens);
         AuthController controller = new AuthController(mock(UserService.class), jwt,
                 mock(AuthEmailService.class), auth, refreshTokens);
