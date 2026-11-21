@@ -55,6 +55,8 @@ public class AuthService {
             );
         }
 
-        return new RotationDto(user.getId(), refreshTokens.issue(user, dto.isRememberMe()), dto.isRememberMe());
+        // Captura antes da emissão: uma reativação concorrente nunca promove credenciais antigas à versão nova.
+        long version = user.getAccessTokenVersion();
+        return new RotationDto(user.getId(), refreshTokens.issue(user, dto.isRememberMe(), version), dto.isRememberMe(), version);
     }
 }

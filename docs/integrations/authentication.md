@@ -1,5 +1,9 @@
 # Integração de sessões de autenticação
 
+A [reativação explícita](account-reactivation.md) não cria sessão. Após 204,
+limpar o access token local e solicitar novo login; não usar o wrapper de refresh
+para tentar reativar uma conta. Sessões anteriores não voltam a funcionar.
+
 Contrato HTTP: [autenticação](../api/authentication.md). Frontend local:
 `http://localhost:63342/sonarfy-frontend/pages`; API: `http://localhost:8080`.
 

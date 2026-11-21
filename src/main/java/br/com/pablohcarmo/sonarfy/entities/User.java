@@ -80,6 +80,13 @@ public class User implements UserDetails {
     @Column (name = "spotify_authorization_version", nullable = false)
     private long spotifyAuthorizationVersion = 0L;
 
+    @Column(name = "access_token_version", nullable = false)
+    private long accessTokenVersion;
+
+    public long getAccessTokenVersion() { return accessTokenVersion; }
+
+    public void invalidateAccessTokens() { accessTokenVersion++; }
+
     public User(Long id,
                 Permission permission,
                 String name,

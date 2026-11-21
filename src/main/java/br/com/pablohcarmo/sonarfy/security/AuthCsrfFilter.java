@@ -16,6 +16,7 @@ import java.util.List;
 public class AuthCsrfFilter extends OncePerRequestFilter {
     private static final RequestMatcher SESSION_REQUESTS = new OrRequestMatcher(
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/api/auth/login"),
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/api/auth/reactivation"),
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/api/auth/refresh"),
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/api/auth/logout"));
     private final List<String> allowedOrigins;

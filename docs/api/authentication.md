@@ -1,5 +1,11 @@
 # Login, access token e renovação de sessão
 
+Reativação é uma ação explícita separada do login: consulte
+[reativação de conta](account-reactivation.md). Access tokens novos incluem
+`access_version`, comparada com `users.access_token_version` em cada requisição.
+JWT legado sem essa claim só é aceito na versão zero. A reativação incrementa a
+versão e revoga todos os refresh tokens, impedindo o retorno de sessões antigas.
+
 Contrato de login e acesso Bearer da [issue #22](https://github.com/pablohcarmo/sonarfy/issues/22).
 Base local dos exemplos: `http://localhost:8080`; ajuste para seu ambiente.
 Use uma conta de teste cadastrada, ativa e com o e-mail confirmado.

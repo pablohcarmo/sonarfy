@@ -116,6 +116,11 @@ public class JwtService {
     }
 
     public String generateAccessToken(String userId) {
+        return generateAccessToken(userId, 0);
+    }
+
+    // A versão acompanha a sessão validada; não é consultada novamente após liberar seu bloqueio.
+    public String generateAccessToken(String userId, long version) {
         requireNotBlank(userId, "user ID");
 
         Instant now = Instant.now();
@@ -124,6 +129,7 @@ public class JwtService {
                 .withIssuer(ISSUER)
                 .withSubject(userId)
                 .withClaim("purpose", PURPOSE_ACCESS)
+                .withClaim("access_version", version)
                 .withIssuedAt(now)
                 .withExpiresAt(now.plusSeconds(ACCESS_TOKEN_TTL_SECONDS))
                 .sign(algorithm());
@@ -142,6 +148,20 @@ public class JwtService {
         try {
             return Long.parseLong(jwt.getSubject()) > 0 ? jwt.getSubject() : null;
         } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    // Tokens legados só pertencem à versão inicial; claims malformadas nunca autorizam acesso.
+    public Long getAccessTokenVersion(String token) {
+        DecodedJWT jwt = verify(token, PURPOSE_ACCESS);
+        if (jwt == null) return null;
+        try {
+            var claim = jwt.getClaim("access_version");
+            if (claim.isMissing()) return 0L;
+            Object value = claim.as(Object.class);
+            return value instanceof Long || value instanceof Integer ? ((Number) value).longValue() : null;
+        } catch (com.auth0.jwt.exceptions.JWTDecodeException exception) {
             return null;
         }
     }

@@ -9,6 +9,23 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class JwtServiceTest {
 
+    // A versão é assinada; compatibilidade legada não aceita valores nulos, textuais ou fracionários.
+    @Test void accessVersionValidation() {
+        assertEquals(7L, jwtService.getAccessTokenVersion(jwtService.generateAccessToken("42", 7)));
+        assertNull(jwtService.getAccessTokenVersion(jwtService.generateRegistrationToken("42")));
+        for (Object value : new Object[]{"7", 7.5, java.util.List.of(7), true}) {
+            String token = com.auth0.jwt.JWT.create().withIssuer("sonarfy-api").withSubject("42")
+                    .withPayload(java.util.Map.of("purpose", "access", "access_version", value))
+                    .withExpiresAt(java.time.Instant.now().plusSeconds(60))
+                    .sign(com.auth0.jwt.algorithms.Algorithm.HMAC256("unit-test-secret-key-super-secure-12345"));
+            assertNull(jwtService.getAccessTokenVersion(token));
+        }
+        String legacy = com.auth0.jwt.JWT.create().withIssuer("sonarfy-api").withSubject("42").withClaim("purpose", "access")
+                .withExpiresAt(java.time.Instant.now().plusSeconds(60))
+                .sign(com.auth0.jwt.algorithms.Algorithm.HMAC256("unit-test-secret-key-super-secure-12345"));
+        assertEquals(0L, jwtService.getAccessTokenVersion(legacy));
+    }
+
     @Test
     void shouldIssueSignedAccessTokenWithUserIdAndFifteenMinuteLifetime() {
         String token = jwtService.generateAccessToken("42");

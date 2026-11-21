@@ -65,7 +65,8 @@ public class BearerAuthenticationFilter extends OncePerRequestFilter {
         }
 
         User user = userRepository.findWithPermissionById(id).orElse(null);
-        if (user == null || !user.isEnabled()) {
+        Long version = jwtService.getAccessTokenVersion(header.substring(7).trim());
+        if (user == null || !user.isEnabled() || version == null || version != user.getAccessTokenVersion()) {
             unauthorized(response);
             return;
         }
