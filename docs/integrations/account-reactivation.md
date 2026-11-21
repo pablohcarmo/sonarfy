@@ -18,6 +18,12 @@ não gera outro aviso quando a conta já estiver ativa. Recuperação de senha
 existente continua disponível para conta inativa verificada, sem reativá-la.
 Não prometer recebimento imediato do aviso por e-mail.
 
+Para disponibilizar a integração, seguir a [orientação de deploy e rollback](../api/account-reactivation.md#deploy-e-rollback):
+a reativação só deve ficar acessível depois de retirar e drenar todas as
+instâncias antigas, incluindo as que atendem outras rotas autenticadas. Rollback
+para código sem validação de versão perde a garantia de revogação; não restaurar
+o tráfego autenticado sem uma estratégia que mantenha essa proteção.
+
 ## Roteiro manual, somente com contas de teste
 
 Roteiro completo de referência; a execução parcial confirmada pelo usuário está

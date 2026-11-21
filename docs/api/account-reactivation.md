@@ -76,6 +76,26 @@ de iniciar a nova versão. Não executar sobre banco novo criado com o schema
 consolidado atualizado. A aplicação não executa migrations automaticamente.
 Sua execução no banco da aplicação exige autorização específica.
 
+### Deploy e rollback
+
+A migration é aditiva, mas a invalidação por `access_version` depende do filtro
+novo em todas as instâncias que atendem rotas autenticadas. Uma instância antiga
+ignora a versão e pode aceitar tokens que a versão nova já revogou.
+
+Aplicar 009 antes de iniciar a versão nova. Durante a atualização, manter a
+reativação indisponível no ponto de entrada ou usar uma janela de manutenção.
+Retirar as instâncias antigas do tráfego e drenar suas requisições em andamento
+antes de disponibilizar a reativação. Atualizar apenas o endpoint, deixando rotas
+autenticadas atendidas pela versão antiga, não preserva a garantia de revogação.
+Esta entrega não adiciona um mecanismo de bloqueio de rota para o deploy.
+
+Após reativações, um rollback para código anterior perde essa garantia mesmo
+mantendo a migration. Preferir correção com versão compatível. Se o rollback for
+inevitável, manter a reativação e o tráfego autenticado indisponíveis até que a
+validação de versão seja restabelecida ou exista um procedimento alternativo de
+invalidação aprovado. Não zerar versões nem remover a coluna/outbox para tentar
+restaurar sessões antigas.
+
 Esta entrega não expõe desativação, exclusão definitiva ou notificações internas.
 Não implementa limitação geral de tentativas de autenticação; respostas genéricas
 e BCrypt fictício para conta inexistente não substituem esse controle. Proteção

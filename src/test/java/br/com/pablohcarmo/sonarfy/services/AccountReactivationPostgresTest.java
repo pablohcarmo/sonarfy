@@ -127,6 +127,37 @@ class AccountReactivationPostgresTest {
         assertEquals(0, users.findById(other.getId()).orElseThrow().getAccessTokenVersion());
     }
 
+    // Repetir a chamada preserva os tokens válidos e a versão de uma sessão criada após reativação.
+    @Test void alreadyActiveAccountPreservesCurrentHttpSession() throws Exception {
+        inactive(); reactivate("owner", "Correct123!").andExpect(status().isNoContent());
+        var login = mvc.perform(post("/api/auth/login").header("X-Sonarfy-CSRF", "1").contentType("application/json")
+                .content("{\"login\":\"owner\",\"password\":\"Correct123!\"}")).andExpect(status().isOk()).andReturn();
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        String access = json.readTree(login.getResponse().getContentAsString()).get("accessToken").asText();
+        var cookie = org.springframework.mock.web.MockCookie.parse(login.getResponse().getHeader("Set-Cookie"));
+        for (int i = 0; i < 2; i++) reactivate("owner", "Correct123!").andExpect(status().isNoContent());
+        assertEquals(1, users.findById(owner.getId()).orElseThrow().getAccessTokenVersion()); assertEquals(1, notices());
+        mvc.perform(get("/api/profile/me").header("Authorization", "Bearer " + access)).andExpect(status().isOk());
+        var renewed = mvc.perform(post("/api/auth/refresh").header("X-Sonarfy-CSRF", "1").cookie(cookie))
+                .andExpect(status().isOk()).andReturn();
+        String renewedAccess = json.readTree(renewed.getResponse().getContentAsString()).get("accessToken").asText();
+        mvc.perform(get("/api/profile/me").header("Authorization", "Bearer " + renewedAccess)).andExpect(status().isOk());
+        verifyNoInteractions(email);
+    }
+
+    // O mesmo JWT legado é aceito na versão zero e recusado por HTTP após a transição para a versão um.
+    @Test void legacyAccessTokenWorksOnlyUntilFirstReactivation() throws Exception {
+        String legacy = JWT.create().withIssuer("sonarfy-api").withSubject(owner.getId().toString()).withClaim("purpose", "access")
+                .withIssuedAt(Instant.now()).withExpiresAt(Instant.now().plusSeconds(900))
+                .sign(Algorithm.HMAC256("reactivation-test-secret"));
+        assertTrue(JWT.decode(legacy).getClaim("access_version").isMissing());
+        assertEquals(0, users.findById(owner.getId()).orElseThrow().getAccessTokenVersion());
+        mvc.perform(get("/api/profile/me").header("Authorization", "Bearer " + legacy)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.identity.id").value(owner.getId())).andExpect(jsonPath("$.identity.email").doesNotExist());
+        inactive(); reactivate("owner", "Correct123!").andExpect(status().isNoContent());
+        mvc.perform(get("/api/profile/me").header("Authorization", "Bearer " + legacy)).andExpect(status().isUnauthorized());
+    }
+
     // Falhas indistinguíveis não alteram estado, não enviam mensagens e não aceitam tokens como credenciais.
     @Test void invalidCredentialsAndSecurityBoundary() throws Exception {
         inactive();
