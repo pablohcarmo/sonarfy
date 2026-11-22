@@ -131,15 +131,18 @@ importado somente em um banco vazio. O Compose e os demais arquivos de
 infraestrutura local continuam ignorados pelo Git.
 
 Em bancos existentes que já contêm `users`, aplique as migrações
-`001_create_spotify_connection.sql` e `002_add_spotify_authorization_version.sql`,
-nesta ordem, antes de disponibilizar a versão que persiste a conexão Spotify.
-A primeira cria a tabela da conexão; a segunda adiciona a versão de autorização
-ao usuário. Execute cada script uma vez e registre ambos no controle de deploy;
+`001_create_spotify_connection.sql`, `002_add_spotify_authorization_version.sql`,
+`007_add_spotify_connection_status.sql` e `011_add_spotify_authorization_generation.sql`,
+nesta ordem, antes de disponibilizar a versão que persiste a conexão Spotify com
+controle de geração para Ecos (`011` depende apenas de `007`, sem depender de `010`).
+Execute cada script uma vez e registre-os no controle de deploy;
 não há executor automático de migrações configurado.
 
 ```powershell
 psql -h <host> -p <porta> -U <usuario> -d <banco> -v ON_ERROR_STOP=1 -f db/migrations/001_create_spotify_connection.sql
 psql -h <host> -p <porta> -U <usuario> -d <banco> -v ON_ERROR_STOP=1 -f db/migrations/002_add_spotify_authorization_version.sql
+psql -h <host> -p <porta> -U <usuario> -d <banco> -v ON_ERROR_STOP=1 -f db/migrations/007_add_spotify_connection_status.sql
+psql -h <host> -p <porta> -U <usuario> -d <banco> -v ON_ERROR_STOP=1 -f db/migrations/011_add_spotify_authorization_generation.sql
 ```
 
 Forneça as credenciais pelo mecanismo seguro usado no ambiente. Não execute

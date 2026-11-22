@@ -350,8 +350,9 @@ class SpotifyControllerTest {
     @org.junit.jupiter.params.provider.EnumSource(value = SpotifyConnectionStatus.class, names = {"CONNECTED", "REAUTHORIZATION_REQUIRED"})
     void connectionReturnsOnlyPublicFieldsForAuthenticatedUserIgnoringSuppliedId(SpotifyConnectionStatus connectionStatus) throws Exception {
         var connectedAt = OffsetDateTime.parse("2026-11-01T12:00:00Z");
+        boolean recentListensAuthorized = connectionStatus == SpotifyConnectionStatus.CONNECTED;
         when(connections.getConnection(42L)).thenReturn(
-                new SpotifyConnectionResponseDto(connectionStatus, connectedAt));
+                new SpotifyConnectionResponseDto(connectionStatus, connectedAt, recentListensAuthorized));
 
         var result = mvc.perform(get("/api/spotify/connection")
                         .header("Authorization", "Bearer " + jwt.generateAccessToken("42"))
@@ -361,9 +362,10 @@ class SpotifyControllerTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.status").value(connectionStatus.name()))
                 .andExpect(jsonPath("$.connectedAt").isString())
+                .andExpect(jsonPath("$.recentListensAuthorized").value(recentListensAuthorized))
                 .andReturn();
         var json = new ObjectMapper().readTree(result.getResponse().getContentAsString());
-        assertEquals(2, json.size());
+        assertEquals(3, json.size());
         assertEquals(connectedAt, OffsetDateTime.parse(json.get("connectedAt").asText()));
         verify(connections).getConnection(42L);
         verifyNoMoreInteractions(connections);
@@ -374,16 +376,17 @@ class SpotifyControllerTest {
     @Test
     void connectionReturnsDisconnectedWithExplicitNullDate() throws Exception {
         when(connections.getConnection(42L)).thenReturn(
-                new SpotifyConnectionResponseDto(SpotifyConnectionStatus.DISCONNECTED, null));
+                new SpotifyConnectionResponseDto(SpotifyConnectionStatus.DISCONNECTED, null, false));
 
         var result = mvc.perform(get("/api/spotify/connection")
                         .header("Authorization", "Bearer " + jwt.generateAccessToken("42")))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.status").value("DISCONNECTED"))
+                .andExpect(jsonPath("$.recentListensAuthorized").value(false))
                 .andReturn();
         var json = new ObjectMapper().readTree(result.getResponse().getContentAsString());
-        assertEquals(2, json.size());
+        assertEquals(3, json.size());
         assertTrue(json.has("connectedAt"));
         assertTrue(json.get("connectedAt").isNull());
     }

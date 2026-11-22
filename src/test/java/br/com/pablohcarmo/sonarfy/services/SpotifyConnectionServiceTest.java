@@ -36,6 +36,7 @@ class SpotifyConnectionServiceTest {
 
         assertEquals(SpotifyConnectionStatus.DISCONNECTED, response.status());
         assertNull(response.connectedAt());
+        assertFalse(response.recentListensAuthorized());
         verify(connections).findByUserId(42L);
         verifyNoMoreInteractions(connections);
         verifyNoInteractions(users, encryption);
@@ -77,16 +78,50 @@ class SpotifyConnectionServiceTest {
         var now = OffsetDateTime.now();
         var connection = new SpotifyConnection(new User(), connectedAt);
         connection.updateTokens("encrypted-access", "encrypted-refresh", "Bearer",
-                "user-library-read", now.plusSeconds(secondsFromNow), now);
+                "user-read-recently-played", now.plusSeconds(secondsFromNow), now);
         when(connections.findByUserId(42L)).thenReturn(Optional.of(connection));
 
         var response = service.getConnection(42L);
 
         assertEquals(SpotifyConnectionStatus.CONNECTED, response.status());
         assertEquals(connectedAt, response.connectedAt());
+        assertTrue(response.recentListensAuthorized());
         verify(connections).findByUserId(42L);
         verifyNoMoreInteractions(connections);
         verifyNoInteractions(users, encryption);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "user-library-read", "user-read-recently-played-extra"})
+    void missingOrDifferentScopeMarksRecentListensUnauthorized(String scopes) {
+        var now = OffsetDateTime.now();
+        var connection = new SpotifyConnection(new User(), now);
+        connection.establishAuthorization("encrypted-access", "encrypted-refresh", "Bearer",
+                scopes, now.plusSeconds(3600), now);
+        when(connections.findByUserId(42L)).thenReturn(Optional.of(connection));
+
+        var response = service.getConnection(42L);
+
+        assertEquals(SpotifyConnectionStatus.CONNECTED, response.status());
+        assertFalse(response.recentListensAuthorized());
+    }
+
+    @Test
+    void reauthorizationRequiredNeverReportsRecentListensAuthorizedEvenWithPreviousScope() {
+        var now = OffsetDateTime.now();
+        var connection = new SpotifyConnection(new User(), now);
+        connection.establishAuthorization("encrypted-access", "encrypted-refresh", "Bearer",
+                "user-read-recently-played", now.plusSeconds(3600), now);
+        long generationAfterConnect = connection.getAuthorizationGeneration();
+        connection.requireReauthorization();
+        when(connections.findByUserId(42L)).thenReturn(Optional.of(connection));
+
+        var response = service.getConnection(42L);
+
+        assertEquals(SpotifyConnectionStatus.REAUTHORIZATION_REQUIRED, response.status());
+        assertFalse(response.recentListensAuthorized());
+        assertEquals(generationAfterConnect + 1, connection.getAuthorizationGeneration());
     }
 
     @ParameterizedTest
@@ -129,6 +164,7 @@ class SpotifyConnectionServiceTest {
         assertEquals("encrypted-access", connection.getAccessTokenEncrypted());
         assertEquals("encrypted-refresh", connection.getRefreshTokenEncrypted());
         assertNull(connection.getScopes());
+        assertEquals(1L, connection.getAuthorizationGeneration());
         assertEquals(expiresIn.longValue(), Duration.between(
                 connection.getUpdatedAt(), connection.getAccessTokenExpiresAt()).getSeconds());
     }

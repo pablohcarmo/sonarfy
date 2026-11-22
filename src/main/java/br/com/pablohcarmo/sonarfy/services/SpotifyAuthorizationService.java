@@ -14,6 +14,8 @@ import java.util.Map;
 @Service
 public class SpotifyAuthorizationService {
 
+    public static final String RECENT_LISTENS_SCOPE = "user-read-recently-played";
+
     // Delega a geração e o armazenamento do state ao service dedicado.
     private final SpotifyAuthorizationStateService stateService;
     private final UserRepository users;
@@ -49,13 +51,13 @@ public class SpotifyAuthorizationService {
                 .queryParam("response_type", "code") // Solicita um código de autorização.
                 .queryParam("client_id", "{clientId}")
                 .queryParam("redirect_uri", "{redirectUri}")
-                .queryParam("scope", "{scope}") // Solicita leitura da biblioteca.
+                .queryParam("scope", "{scope}") // Solicita leitura das reproduções recentes.
                 .queryParam("state", "{state}")
                 .encode() // Protege caracteres especiais nos valores dos parâmetros.
                 .buildAndExpand(Map.of(
                         "clientId", clientId,
                         "redirectUri", redirectUri,
-                        "scope", "user-library-read",
+                        "scope", RECENT_LISTENS_SCOPE,
                         "state", state
                 ))
                 .toUri(); // Retorna a URL que o navegador deverá abrir.

@@ -37,11 +37,22 @@ public class SpotifyConnection {
     @Column(nullable = false, length = 32)
     private SpotifyConnectionStatus status = SpotifyConnectionStatus.CONNECTED;
 
+    @Column(name = "authorization_generation", nullable = false)
+    private long authorizationGeneration = 0L;
+
     protected SpotifyConnection() {}
 
     public SpotifyConnection(User user, OffsetDateTime connectedAt) {
         this.user = user;
         this.connectedAt = connectedAt;
+    }
+
+    // Registra nova autorização do usuário e avança a geração para invalidar importações antigas em trânsito.
+    public void establishAuthorization(String accessTokenEncrypted, String refreshTokenEncrypted,
+                                       String tokenType, String scopes, OffsetDateTime expiresAt,
+                                       OffsetDateTime updatedAt) {
+        updateTokens(accessTokenEncrypted, refreshTokenEncrypted, tokenType, scopes, expiresAt, updatedAt);
+        this.authorizationGeneration++;
     }
 
     public void updateTokens(String accessTokenEncrypted, String refreshTokenEncrypted,
@@ -67,10 +78,26 @@ public class SpotifyConnection {
         status = SpotifyConnectionStatus.REAUTHORIZATION_REQUIRED;
         accessTokenEncrypted = null;
         refreshTokenEncrypted = null;
+        authorizationGeneration++;
         updatedAt = OffsetDateTime.now(java.time.ZoneOffset.UTC);
     }
 
+    // Confere se a conexão está ativa e possui o escopo exato separado por espaço.
+    public boolean hasScope(String requiredScope) {
+        if (status != SpotifyConnectionStatus.CONNECTED || scopes == null || scopes.isBlank()
+                || requiredScope == null || requiredScope.isBlank()) {
+            return false;
+        }
+        for (String token : scopes.trim().split("\\s+")) {
+            if (requiredScope.equals(token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public SpotifyConnectionStatus getStatus() { return status; }
+    public long getAuthorizationGeneration() { return authorizationGeneration; }
     public Long getId() { return id; }
     public User getUser() { return user; }
     public String getAccessTokenEncrypted() { return accessTokenEncrypted; }
