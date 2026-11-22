@@ -1,5 +1,6 @@
 package br.com.pablohcarmo.sonarfy.services;
 
+import br.com.pablohcarmo.sonarfy.dto.SpotifyAccessCredential;
 import br.com.pablohcarmo.sonarfy.enums.SpotifyConnectionStatus;
 import br.com.pablohcarmo.sonarfy.dto.SpotifyTokenResponseDto;
 import org.springframework.transaction.annotation.Propagation;
@@ -35,6 +36,12 @@ public class SpotifyAccessTokenService {
     // Serializa entre instâncias e com callback/desconexão; vazio exige consultar o estado local.
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Optional<String> getValidAccessToken(Long userId) {
+        return getValidCredential(userId, false).map(SpotifyAccessCredential::accessToken);
+    }
+
+    // Obtém credencial válida com carimbo da conexão; forceRefresh permite tentar após 401 do provedor.
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Optional<SpotifyAccessCredential> getValidCredential(Long userId, boolean forceRefresh) {
         var user = users.findByIdForSpotifyConnection(userId).orElseThrow(
                 () -> new IllegalStateException("Spotify user unavailable."));
         em.refresh(user, LockModeType.PESSIMISTIC_WRITE);
@@ -44,8 +51,13 @@ public class SpotifyAccessTokenService {
         em.refresh(connection, LockModeType.PESSIMISTIC_WRITE);
         if (connection.getStatus() != SpotifyConnectionStatus.CONNECTED) return Optional.empty();
         var now = OffsetDateTime.now(ZoneOffset.UTC);
-        if (connection.getAccessTokenExpiresAt().isAfter(now.plusSeconds(60))) {
-            return Optional.of(encryption.decrypt(connection.getAccessTokenEncrypted(), userId, "access"));
+        if (!forceRefresh && connection.getAccessTokenExpiresAt().isAfter(now.plusSeconds(60))) {
+            return Optional.of(new SpotifyAccessCredential(
+                    encryption.decrypt(connection.getAccessTokenEncrypted(), userId, "access"),
+                    connection.getId(),
+                    connection.getAuthorizationGeneration(),
+                    connection.getScopes()
+            ));
         }
         SpotifyTokenResponseDto tokens;
         try {
@@ -57,12 +69,18 @@ public class SpotifyAccessTokenService {
         }
         SpotifyTokenResponseValidator.validateRefresh(tokens);
         // A validade parte do início da chamada; não superestima o tempo disponível.
+        String effectiveScopes = tokens.scope() == null ? connection.getScopes() : tokens.scope();
         connection.updateTokens(encryption.encrypt(tokens.accessToken(), userId, "access"),
                 tokens.refreshToken() == null ? connection.getRefreshTokenEncrypted()
                         : encryption.encrypt(tokens.refreshToken(), userId, "refresh"),
-                tokens.tokenType(), tokens.scope() == null ? connection.getScopes() : tokens.scope(),
+                tokens.tokenType(), effectiveScopes,
                 now.plusSeconds(tokens.expiresIn()), now);
         connections.flush();
-        return Optional.of(tokens.accessToken());
+        return Optional.of(new SpotifyAccessCredential(
+                tokens.accessToken(),
+                connection.getId(),
+                connection.getAuthorizationGeneration(),
+                effectiveScopes
+        ));
     }
 }

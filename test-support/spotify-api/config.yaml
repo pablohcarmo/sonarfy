@@ -1,0 +1,12 @@
+version: 1
+id: 7a9f2b18-9d21-4f3b-8e4c-11a2b3c4d5e6
+name: SpotifyWebApi
+slug: spotify-api
+protocol: http
+port: 4501
+scenarios:
+  - name: default
+    path: ./default.js
+    default: true
+interceptRequests: true
+origin: api.spotify.com

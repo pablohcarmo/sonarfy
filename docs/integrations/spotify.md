@@ -423,6 +423,14 @@ O callback traduz essas categorias para os status HTTP descritos acima.
 representam um prazo total da operação. O Spring Cloud OpenFeign não faz novas
 tentativas automaticamente por padrão, inclusive após timeout na troca do código.
 
+### Cliente de reproduções recentes (`GET /v1/me/player/recently-played`)
+
+- `SpotifyAccessTokenService.getValidCredential(userId, forceRefresh)` retorna `SpotifyAccessCredential` (`accessToken`, `connectionId`, `authorizationGeneration` e `scopes`), permitindo refresh forçado sob bloqueio sem alterar a geração.
+- `SpotifyApiClient` (`url=${spotify.api-url:https://api.spotify.com}`) consulta `/v1/me/player/recently-played` aceitando apenas `limit` e cursor `before` opcional (nunca enviando `after` e `before` simultaneamente), com mapeamento em `SpotifyRecentlyPlayedResponseDto`.
+- `SpotifyApiClientConfig` define `NEVER_RETRY`, `5s` de conexão, `10s` de leitura e `ErrorDecoder` via `FeignException::errorStatus` para preservar `status` e cabeçalhos (como `Retry-After` em `429`) sem conversão para `RetryableException`.
+- `SpotifyRecentlyPlayedService` valida `limit` (`1..50`) e `before` positivo, e traduz falhas para `SpotifyApiException` (`UNAUTHORIZED`, `FORBIDDEN`, `RATE_LIMITED` preservando valores positivos de `Retry-After`, `UNAVAILABLE` e `TIMEOUT`), sem expor tokens, cursores ou corpo externo.
+- `SpotifyRecentlyPlayedSimulationTest` (opt-in via `-Dsonarfy.test.spotify-api-sim=true`, executado continuamente na CI) valida o cliente Feign real contra a simulação Postman `test-support/spotify-recently-played.sim.yaml`.
+
 ## Testes e limites da validação
 
 Execute a suíte completa na raiz do repositório:

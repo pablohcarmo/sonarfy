@@ -1,0 +1,39 @@
+simulation: spotify-recently-played
+generated: '2026-11-21'
+purpose:
+  stands_in_for: Spotify Web API GET /v1/me/player/recently-played with synthetic play history and error scenarios
+  unblocks: HTTP client serialization, timeout, pagination and sanitized error handling without real credentials
+assumptions:
+  - id: spotify-retry-after-preservation
+    status: supported
+    claim: Spotify rate-limit responses provide Retry-After in seconds; the client preserves positive values without shortening them
+    reason: Shortening the provider delay could cause callers to retry before the indicated time
+    verification: On 2026-11-22, unit and real Feign HTTP simulation tests passed with Retry-After values of 45 and 900 seconds preserved
+    source: https://developer.spotify.com/documentation/web-api/concepts/rate-limits
+    updated_at: '2026-11-22'
+  - id: spotify-recently-played-contract
+    status: supported
+    claim: GET /v1/me/player/recently-played accepts limit (1..50), mutually exclusive before/after cursors, and returns PlayHistoryObject items
+    reason: Supported by Spotify Web API reference; mock enforces limit bounds and rejects simultaneous after and before
+    verification: SpotifyRecentlyPlayedSimulationTest performs real HTTP requests through Feign against the Postman simulation
+    source: https://developer.spotify.com/documentation/web-api/reference/get-recently-played
+    updated_at: '2026-11-21'
+  - id: spotify-dev-mode-2026
+    status: supported
+    claim: Development mode apps return 403 for non-allowlisted users and omit popularity, available_markets, linked_from, label and album_group
+    reason: Documented in Spotify Web API February/March 2026 updates; fixtures omit removed fields and test 403 handling
+    verification: SpotifyRecentlyPlayedSimulationTest exercises 200 without removed fields and 403 forbidden translation
+    source: https://developer.spotify.com/documentation/web-api/reference/get-recently-played
+    updated_at: '2026-11-21'
+  - id: live-spotify-recently-played
+    status: unknown
+    claim: Live Spotify account returns expected recent listens within the ~50-item window and respects app allowlist
+    reason: No real Spotify Web API calls were executed during this client delivery
+    verification: Requires manual validation with a test account after sync endpoint delivery
+    source: docs/integrations/spotify.md
+    updated_at: '2026-11-21'
+fingerprints:
+  - id: initial-spotify-recently-played-client
+    date: '2026-11-21'
+    commit: 0742f06
+    cli: '1.85.0'
