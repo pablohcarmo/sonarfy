@@ -1,0 +1,9 @@
+simulation: spotify-recently-played
+routing: path
+mocks:
+  - name: SpotifyWebApi
+    routeKey: spotify-api
+    origin:
+      - api.spotify.com
+    interceptRequests: true
+    path: test-support/spotify-api

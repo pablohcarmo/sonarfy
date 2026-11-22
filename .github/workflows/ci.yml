@@ -141,6 +141,31 @@ jobs:
           fi
           ./mvnw test -Dtest=LocationIntegrationTest -Dsonarfy.test.location=true
 
+      - name: Execute Spotify Web API tests with Postman simulation
+        run: |
+          simulation_log="$RUNNER_TEMP/spotify-simulation.log"
+          setsid postman simulation run test-support/spotify-recently-played.sim.yaml --port 55442 --no-history --output ndjson > "$simulation_log" 2>&1 &
+          simulation_pid=$!
+          trap 'kill -- -"$simulation_pid" 2>/dev/null || true; wait "$simulation_pid" 2>/dev/null || true' EXIT
+          ready=false
+          for attempt in {1..60}; do
+            if ! kill -0 "$simulation_pid" 2>/dev/null; then
+              cat "$simulation_log"
+              exit 1
+            fi
+            status_code=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 1 -H 'Authorization: Bearer token-ok' 'http://127.0.0.1:55442/spotify-api/v1/me/player/recently-played?limit=1' || true)
+            if [ "$status_code" = "200" ]; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != true ]; then
+            cat "$simulation_log"
+            exit 1
+          fi
+          ./mvnw test -Dtest=SpotifyRecentlyPlayedSimulationTest -Dsonarfy.test.spotify-api-sim=true
+
       - name: Validate versioned schema and Spotify migration in disposable PostgreSQL
         env:
           POSTGRES_CONTAINER: ${{ job.services.postgres.id }}

@@ -228,11 +228,19 @@ class SpotifyAccessTokenServiceTest {
         assertEquals(SpotifyConnectionStatus.REAUTHORIZATION_REQUIRED, service.getConnection(id).status());
     }
 
-    @Test void validTokenAvoidsHttpButSafetyMarginRefreshes() {
-        service.connect(id, 0, new SpotifyTokenResponseDto("valid", "Bearer", 3600L, "old-refresh", null));
-        assertEquals("valid", access.getValidAccessToken(id).orElseThrow()); assertEquals(0, calls.get());
+    @Test void validTokenAvoidsHttpButSafetyMarginAndForceRefreshCallProvider() {
+        service.connect(id, 0, new SpotifyTokenResponseDto("valid", "Bearer", 3600L, "old-refresh", "user-read-recently-played"));
+        var cached = access.getValidCredential(id, false).orElseThrow();
+        assertEquals("valid", cached.accessToken());
+        assertEquals("user-read-recently-played", cached.scopes());
+        assertEquals(0, calls.get());
+        var forced = access.getValidCredential(id, true).orElseThrow();
+        assertEquals("new-access", forced.accessToken());
+        assertEquals(cached.connectionId(), forced.connectionId());
+        assertEquals(cached.authorizationGeneration(), forced.authorizationGeneration());
+        assertEquals(1, calls.get());
         service.connect(id, 0, new SpotifyTokenResponseDto("near-expiry", "Bearer", 60L, "old-refresh", null));
-        access.getValidAccessToken(id); assertEquals(1, calls.get());
+        access.getValidAccessToken(id); assertEquals(2, calls.get());
     }
 
     @Test void serializesTwoRefreshesWithoutDisconnect() throws Exception {
