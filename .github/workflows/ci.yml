@@ -225,3 +225,34 @@ jobs:
           docker exec "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_echoes_validation -v ON_ERROR_STOP=1 -c 'DROP TABLE echo_sync_state, track_artists; ALTER TABLE listens DROP COLUMN track_id; DROP INDEX IF EXISTS idx_listens_user_played_desc; DROP TABLE tracks; ALTER TABLE albums ALTER COLUMN name TYPE VARCHAR(100); ALTER TABLE artists ALTER COLUMN name TYPE VARCHAR(255);'
           docker exec -i "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_echoes_validation -v ON_ERROR_STOP=1 < db/migrations/012_create_echoes.sql
           ./mvnw test -Dtest=EchoesPersistencePostgresTest -Dsonarfy.test.echoes-postgres=true
+
+      - name: Execute Echoes sync end-to-end tests against PostgreSQL and Postman simulation
+        env:
+          SONARFY_TEST_DB_USER: sonarfy_ci
+          SONARFY_TEST_DB_PASSWORD: isolated-ci-password
+          SONARFY_ECHOES_TEST_JDBC_URL: jdbc:postgresql://localhost:5432/sonarfy_echoes_validation
+        run: |
+          simulation_log="$RUNNER_TEMP/echoes-sync-simulation.log"
+          setsid postman simulation run test-support/spotify-recently-played.sim.yaml --port 55442 --no-history --output ndjson > "$simulation_log" 2>&1 &
+          simulation_pid=$!
+          trap 'kill -- -"$simulation_pid" 2>/dev/null || true; wait "$simulation_pid" 2>/dev/null || true' EXIT
+          ready=false
+          for attempt in {1..60}; do
+            if ! kill -0 "$simulation_pid" 2>/dev/null; then
+              cat "$simulation_log"
+              exit 1
+            fi
+            status_code=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 1 -H 'Authorization: Bearer token-ok' 'http://127.0.0.1:55442/spotify-api/v1/me/player/recently-played?limit=1' || true)
+            if [ "$status_code" = "200" ]; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != true ]; then
+            cat "$simulation_log"
+            exit 1
+          fi
+          docker exec -i "${{ job.services.postgres.id }}" psql -U sonarfy_ci -d sonarfy_echoes_validation -v ON_ERROR_STOP=1 -c "ALTER TABLE echo_sync_state DROP COLUMN IF EXISTS lease_id"
+          docker exec -i "${{ job.services.postgres.id }}" psql -U sonarfy_ci -d sonarfy_echoes_validation -v ON_ERROR_STOP=1 < db/migrations/013_add_echo_sync_lease_id.sql
+          ./mvnw test -Dtest=EchoSyncPostgresSimulationTest -Dsonarfy.test.echoes-sync-e2e=true

@@ -181,6 +181,7 @@ CREATE TABLE echo_sync_state (
         REFERENCES Users(user_id) ON DELETE CASCADE,
     next_allowed_at TIMESTAMP WITH TIME ZONE,
     lease_until TIMESTAMP WITH TIME ZONE,
+    lease_id UUID,
     last_succeeded_at TIMESTAMP WITH TIME ZONE,
     history_starts_at TIMESTAMP WITH TIME ZONE
 );
