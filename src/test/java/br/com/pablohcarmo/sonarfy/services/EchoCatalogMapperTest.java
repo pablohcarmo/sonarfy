@@ -72,7 +72,8 @@ class EchoCatalogMapperTest {
     @CsvSource({
             "2024, year, 2024, ano",
             "2024-05, month, 2024-05, mes",
-            "2024-05-19, day, 2024-05-19, dia"
+            "2024-05-19, day, 2024-05-19, dia",
+            "2024-02-29, day, 2024-02-29, dia"
     })
     void mapsValidReleaseDates(String raw, String precision, String expectedDate, String expectedPrecision) {
         var mapped = EchoCatalogMapper.mapReleaseDate(raw, precision);
@@ -83,6 +84,11 @@ class EchoCatalogMapperTest {
     @ParameterizedTest
     @CsvSource({
             "0000, year",
+            "' 0000', year",
+            "' 0000-02', month",
+            "' 0000-02-29', day",
+            "2023-02-29, day",
+            "2024-04-31, day",
             "2024-13, month",
             "2024-05-32, day",
             "2024, unknown"

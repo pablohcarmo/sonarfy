@@ -202,6 +202,62 @@ class EchoesPersistencePostgresTest {
         }
     }
 
+    // Uma falha ao atualizar o estado desfaz o catálogo e as escutas já gravados.
+    @Test
+    void rollsBackCatalogAndListensWhenSyncStateUpdateFails() {
+        var cred = connect(userOneId, SpotifyAuthorizationService.RECENT_LISTENS_SCOPE);
+        var previous = OffsetDateTime.parse("2026-11-21T23:00:00Z");
+        writer.writeBatch(userOneId, cred, List.of(), previous);
+        jdbc.execute("ALTER TABLE echo_sync_state ADD CONSTRAINT fail_fixture_sync CHECK (last_succeeded_at <> TIMESTAMPTZ '2026-11-22 00:00:00+00')");
+        try {
+            assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                    () -> writer.writeBatch(userOneId, cred, sampleItems(), previous.plusHours(1)));
+            for (String table : List.of("Artists", "Albums", "Tracks", "Track_Artists", "Listens")) {
+                assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM " + table, Integer.class), table);
+            }
+            assertEquals(previous.toInstant(), jdbc.queryForObject(
+                    "SELECT last_succeeded_at FROM echo_sync_state WHERE user_id = ?",
+                    OffsetDateTime.class, userOneId).toInstant());
+            assertNull(jdbc.queryForObject("SELECT history_starts_at FROM echo_sync_state WHERE user_id = ?",
+                    OffsetDateTime.class, userOneId));
+        } finally {
+            jdbc.execute("ALTER TABLE echo_sync_state DROP CONSTRAINT fail_fixture_sync");
+        }
+    }
+
+    // Lotes vazios e inválidos registram sucesso sem fabricar histórico ou catálogo.
+    @Test
+    void recordsEmptyAndInvalidBatchesWithoutCreatingListens() {
+        var cred = connect(userOneId, SpotifyAuthorizationService.RECENT_LISTENS_SCOPE);
+        var now = OffsetDateTime.parse("2026-11-22T00:00:00Z");
+        assertEquals(0, writer.writeBatch(userOneId, cred, List.of(), now).imported());
+        var invalid = writer.writeBatch(userOneId, cred, List.of(sampleItems().get(2)), now.plusMinutes(1));
+        assertEquals(1, invalid.skipped());
+        assertNull(invalid.newestPlayedAt());
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM Tracks", Integer.class));
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM Listens", Integer.class));
+        assertEquals(now.plusMinutes(1).toInstant(), jdbc.queryForObject(
+                "SELECT last_succeeded_at FROM echo_sync_state WHERE user_id = ?",
+                OffsetDateTime.class, userOneId).toInstant());
+        assertNull(jdbc.queryForObject("SELECT history_starts_at FROM echo_sync_state WHERE user_id = ?",
+                OffsetDateTime.class, userOneId));
+    }
+
+    // Conjuntos sobrepostos em ordem inversa preservam catálogo e deduplicam a interseção.
+    @Test
+    void importsPartiallyOverlappingBatchesInReverseOrder() {
+        var cred = connect(userOneId, SpotifyAuthorizationService.RECENT_LISTENS_SCOPE);
+        var items = sampleItems();
+        var repeatedTrack = new PlayHistoryItem(items.getFirst().track(), items.getFirst().playedAt().plusMinutes(1));
+        writer.writeBatch(userOneId, cred, List.of(items.getFirst(), items.get(1)), OffsetDateTime.now());
+        var result = writer.writeBatch(userOneId, cred, List.of(items.get(1), repeatedTrack), OffsetDateTime.now());
+        assertEquals(1, result.imported());
+        assertEquals(1, result.alreadyKnown());
+        assertEquals(3, jdbc.queryForObject("SELECT count(*) FROM Listens", Integer.class));
+        assertEquals(2, jdbc.queryForObject("SELECT count(*) FROM Tracks", Integer.class));
+        assertEquals(3, jdbc.queryForObject("SELECT count(*) FROM Track_Artists", Integer.class));
+    }
+
     // A reativação invalida lotes antigos mesmo mantendo a mesma conexão e geração.
     @Test
     void rejectsBatchCapturedBeforeAccountReactivationWithoutWritingAnyState() {

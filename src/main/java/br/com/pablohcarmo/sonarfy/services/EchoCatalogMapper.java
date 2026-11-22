@@ -2,6 +2,8 @@ package br.com.pablohcarmo.sonarfy.services;
 
 import br.com.pablohcarmo.sonarfy.dto.SpotifyRecentlyPlayedResponseDto.*;
 import java.time.OffsetDateTime;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.regex.Pattern;
 
@@ -70,10 +72,18 @@ final class EchoCatalogMapper {
     }
 
     static ReleaseDate mapReleaseDate(String rawDate, String rawPrecision) {
-        if (rawDate == null || rawPrecision == null || rawDate.startsWith("0000")) {
+        if (rawDate == null || rawPrecision == null) {
             return new ReleaseDate(null, null);
         }
         String date = rawDate.trim();
+        if (date.startsWith("0000")) return new ReleaseDate(null, null);
+        if ("day".equalsIgnoreCase(rawPrecision.trim())) {
+            try {
+                LocalDate.parse(date);
+            } catch (DateTimeParseException invalidDate) {
+                return new ReleaseDate(null, null);
+            }
+        }
         return switch (rawPrecision.trim().toLowerCase(Locale.ROOT)) {
             case "year" -> YEAR.matcher(date).matches() ? new ReleaseDate(date, "ano") : new ReleaseDate(null, null);
             case "month" -> MONTH.matcher(date).matches() ? new ReleaseDate(date, "mes") : new ReleaseDate(null, null);

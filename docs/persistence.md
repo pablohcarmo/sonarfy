@@ -162,6 +162,14 @@ Na validação local de 22/11/2026, os cinco testes PostgreSQL passaram; a suít
 completa com essa propriedade reportou 768 testes, 685 executados, 83 ignorados
 e nenhuma falha ou erro. Isso não constitui validação da CI remota ou do Spotify real.
 
+Na revisão seguinte de 22/11/2026, a suíte PostgreSQL foi ampliada para oito
+testes, acrescentando rollback após gravar catálogo e escutas, lotes parcialmente
+sobrepostos em ordem inversa e lotes vazios ou totalmente inválidos. Os oito
+passaram em uma instância PostgreSQL 17 temporária local, isolada em `target/`
+e porta própria, sem Docker e sem acessar o banco da aplicação.
+A suíte completa com os testes PostgreSQL de Ecos habilitados reportou 777
+testes, 694 executados, 83 ignorados e nenhuma falha ou erro.
+
 Forneça as credenciais pelo mecanismo seguro usado no ambiente. Não execute
 o schema completo sobre um banco já inicializado. Se `spotify_connection` já
 existir, confira sua estrutura antes do deploy; o script incremental falha

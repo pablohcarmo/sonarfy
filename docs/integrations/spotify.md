@@ -445,6 +445,11 @@ ao repetir o lote. Itens locais ou inválidos são ignorados. O retorno interno
 informa quantidades importadas, já conhecidas e ignoradas, além do instante mais
 recente válido; `echo_sync_state` registra o sucesso e a escuta mais antiga do lote.
 
+Datas de lançamento são normalizadas antes da validação; ano zero e datas
+completas inexistentes resultam em data e precisão nulas, preservando a escuta
+quando seus demais campos forem válidos. Datas completas respeitam o calendário,
+incluindo anos bissextos; as precisões de ano e mês continuam disponíveis.
+
 Na fase atual, Ecos acumula escutas das contas Spotify conectadas pelo mesmo
 usuário Sonarfy, sem identificar a conta Spotify de origem. Isso não permite
 misturar dados de usuários Sonarfy distintos. Não há sincronização automática
