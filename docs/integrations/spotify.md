@@ -140,8 +140,8 @@ corpo, inclusive se já desconectado. As duas rotas usam `Cache-Control: no-stor
 e resolvem a identidade autenticada, ignorando um `userId` fornecido pelo cliente.
 A desconexão remove as credenciais locais; a revogação da permissão na conta do
 Spotify é uma ação separada do usuário. As escutas já importadas são preservadas
-após desconectar. A persistência interna de Ecos está implementada; os endpoints
-de sincronização e consulta e os eventos de integração permanecem pendentes.
+após desconectar. A persistência e o endpoint de sincronização estão descritos em
+[Ecos](echoes.md). A consulta e os eventos de integração permanecem pendentes.
 
 Cada state guarda a versão de autorização do usuário. Desconectar bloqueia sua
 linha, incrementa `spotify_authorization_version` e exclui a conexão na mesma
@@ -452,8 +452,8 @@ incluindo anos bissextos; as precisões de ano e mês continuam disponíveis.
 
 Na fase atual, Ecos acumula escutas das contas Spotify conectadas pelo mesmo
 usuário Sonarfy, sem identificar a conta Spotify de origem. Isso não permite
-misturar dados de usuários Sonarfy distintos. Não há sincronização automática
-nem endpoint público de sincronização ou consulta nesta entrega.
+misturar dados de usuários Sonarfy distintos. Não há sincronização automática ou
+consulta nesta entrega. O endpoint autenticado está descrito em [Ecos](echoes.md).
 
 ## Testes e limites da validação
 

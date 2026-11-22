@@ -85,4 +85,23 @@ public class SpotifyAccessTokenService {
                 effectiveScopes
         ));
     }
+
+    // Só invalida a conexão se ID, geração e versão Spotify do usuário continuarem atuais.
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markReauthorizationRequired(Long userId, SpotifyAccessCredential credential) {
+        if (userId == null || credential == null || credential.connectionId() == null) return;
+        var user = users.findByIdForSpotifyConnection(userId).orElse(null);
+        if (user == null) return;
+        em.refresh(user, LockModeType.PESSIMISTIC_WRITE);
+        if (!user.isEnabled() || user.getSpotifyAuthorizationVersion() != credential.spotifyAuthorizationVersion()) return;
+        var connection = connections.findByUserId(userId).orElse(null);
+        if (connection == null) return;
+        em.refresh(connection, LockModeType.PESSIMISTIC_WRITE);
+        if (credential.connectionId().equals(connection.getId())
+                && connection.getAuthorizationGeneration() == credential.authorizationGeneration()
+                && connection.getStatus() == SpotifyConnectionStatus.CONNECTED) {
+            connection.requireReauthorization();
+            connections.flush();
+        }
+    }
 }

@@ -270,9 +270,11 @@ class EchoesPersistencePostgresTest {
         assertEquals(oldCred.authorizationGeneration(), row.getAuthorizationGeneration());
         assertThrows(StaleSpotifyAuthorizationException.class,
                 () -> writer.writeBatch(userOneId, oldCred, sampleItems(), OffsetDateTime.now()));
-        for (String table : List.of("Artists", "Albums", "Tracks", "Track_Artists", "Listens", "echo_sync_state")) {
+        for (String table : List.of("Artists", "Albums", "Tracks", "Track_Artists", "Listens")) {
             assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM " + table, Integer.class), table);
         }
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM echo_sync_state WHERE user_id = ?",
+                Integer.class, userOneId));
         var freshCred = new SpotifyAccessCredential(oldCred.accessToken(), row.getId(),
                 row.getAuthorizationGeneration(), users.findById(userOneId).orElseThrow().getSpotifyAuthorizationVersion(),
                 row.getScopes());

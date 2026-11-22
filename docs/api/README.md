@@ -40,6 +40,8 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
    - `GET /api/spotify/callback` — Processamento público do retorno OAuth, persistência cifrada (`AES-256-GCM`) e redirecionamento `302 Found` ao frontend (`SPOTIFY_FRONTEND_REDIRECT_URI?spotify=connected|denied|invalid_state|error`).
    - `GET /api/spotify/connection` — Consulta autenticada do estado da conexão (`CONNECTED` / `DISCONNECTED` / `REAUTHORIZATION_REQUIRED`, `connectedAt` e `recentListensAuthorized`).
    - `DELETE /api/spotify/connection` — Desconexão idempotente com remoção das credenciais locais e invalidação de autorizações em trânsito.
+6. **[Ecos — escutas recentes](echoes.md)**
+   - `POST /api/echoes/sync` — Sincronização manual autenticada das reproduções recentes do Spotify para `Listens`, com cooldown de 60 s e guarda contra autorização antiga ([integração](../integrations/echoes.md), coleção [sonarfy-echoes.postman_collection.json](sonarfy-echoes.postman_collection.json)).
 
 ---
 
@@ -70,6 +72,7 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 | `GET` | `/api/spotify/callback` | `SpotifyController` | Público + `state` OAuth | [spotify.md](../integrations/spotify.md) |
 | `GET` | `/api/spotify/connection` | `SpotifyController` | Bearer `access` | [spotify.md](../integrations/spotify.md) |
 | `DELETE` | `/api/spotify/connection` | `SpotifyController` | Bearer `access` | [spotify.md](../integrations/spotify.md) |
+| `POST` | `/api/echoes/sync` | `EchoesController` | Bearer `access` | [echoes.md](echoes.md) |
 
 ---
 
@@ -79,7 +82,7 @@ Todos os tokens JWT emitidos pelo Sonarfy utilizam o emissor `iss: "sonarfy-api"
 
 | Claim `purpose` | Emitido em | Onde é aceito | Aceito como login nas rotas protegidas? |
 | --- | --- | --- | --- |
-| `access` | `POST /api/auth/login` | Cabeçalho `Authorization: Bearer` em `/api/users/**`, `/api/profile/**` e `/api/spotify/**` | **Sim** (desde que o usuário continue ativo e verificado) |
+| `access` | `POST /api/auth/login` | Cabeçalho `Authorization: Bearer` em `/api/users/**`, `/api/profile/**`, `/api/spotify/**` e `/api/echoes/**` | **Sim** (desde que o usuário continue ativo e verificado) |
 | `pending_registration` | `POST /api/auth/register` | Cabeçalho `Authorization: Bearer` apenas em `PATCH /api/auth/update-pending-email` | **Não** |
 | `email_confirmation` | E-mail de cadastro / reenvio | Query string `?token=` apenas em `GET /api/auth/verify` | **Não** |
 | `password_reset` | E-mail de `POST /api/auth/forgot-password` | Campo JSON `"token"` apenas em `POST /api/auth/reset-password` | **Não** |

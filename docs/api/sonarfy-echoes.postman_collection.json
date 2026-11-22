@@ -1,0 +1,72 @@
+{
+  "info": {
+    "name": "Sonarfy - Echoes",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Contract: docs/api/echoes.md. Execute requests individually with a test account that already authorized user-read-recently-played. Set accessToken locally and never export filled secrets. Provider Retry-After is preserved without shortening, including partial HTTP 200 responses with complete=false after a later page is rate limited. Wait for Retry-After on those responses; early retries return 429 without contacting Spotify. Expired or replaced sync leases return 409; ineligible accounts rejected by authentication return 401. Each sync rescans up to three pages to recover earlier partial failures."
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Sync echoes (manual)",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/api/echoes/sync",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{accessToken}}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Status is 200, 409, or 429\", () => pm.expect([200, 409, 429]).to.include(pm.response.code));",
+              "pm.test(\"No store\", () => pm.expect(pm.response.headers.get(\"Cache-Control\")).to.include(\"no-store\"));",
+              "if (pm.response.code === 200) { const b = pm.response.json(); pm.test(\"Sync summary fields\", () => pm.expect(Object.keys(b).sort()).to.eql([\"alreadyKnown\", \"complete\", \"fetched\", \"imported\", \"newestPlayedAt\", \"possibleGap\", \"skipped\", \"syncedAt\"])); }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sync echoes without Bearer",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/api/echoes/sync",
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 401\", () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

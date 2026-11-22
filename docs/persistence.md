@@ -150,7 +150,7 @@ A migração `012_create_echoes.sql` amplia `Artists.name` e `Albums.name` para 
 
 A aplicação desta entrega também exige `011`, pois o writer utiliza a geração
 da conexão. A migration `012` foi validada em PostgreSQL 17 descartável em
-22/11/2026; não foi aplicada ao banco da aplicação nesta entrega.
+22/11/2026. A aplicação posterior no banco local está registrada ao final deste documento.
 
 `EchoesPersistencePostgresTest` valida deduplicação, gravações concorrentes,
 rejeição de conexão e geração antigas, conta inativa, escopo insuficiente e lote
@@ -293,3 +293,25 @@ Não foi executada suíte com criação/remoção de tabelas nesse banco.
   renovação automática nem integração do frontend.
 
 Os relatórios locais ficam em `target/surefire-reports` e não são versionados.
+
+## Reserva da sincronização de Ecos
+
+A migration `013_add_echo_sync_lease_id.sql` adiciona `echo_sync_state.lease_id`
+(UUID) após a `012`. É necessária antes de disponibilizar o endpoint de sync.
+A aplicação no banco local está registrada abaixo. A posse do lease é
+validada na mesma transação da gravação; liberação exige o UUID da execução.
+
+### Aplicação local em 22/11/2026
+
+Após autorização do usuário, o catálogo do banco `localhost:5433/sonarfy`
+confirmou a estrutura das migrações anteriores, inclusive `011` e a estrutura
+local de desativação reservada à `010`. Somente `012` e `013` estavam pendentes
+e foram aplicadas juntas em uma transação. `Listens` estava vazia.
+
+Foi criado backup completo em formato customizado em `target/db-backups/`
+antes da alteração; o inventário do arquivo foi conferido, sem ensaio de restauração.
+Contagens e fingerprints das linhas das 15 tabelas existentes foram comparados
+antes/depois, usando suas colunas originais, e permaneceram iguais. Foram
+conferidos as novas tabelas e FKs, o índice de paginação, os nomes com limite de
+500 caracteres, `Listens.track_id` obrigatório e `echo_sync_state.lease_id` UUID.
+Nenhum teste com criação/remoção de tabelas foi executado nesse banco.
