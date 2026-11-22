@@ -14,6 +14,10 @@ Dispara manualmente a sincronização das reproduções recentes do Spotify para
 
 - **Autenticação:** `Authorization: Bearer <accessToken>` (`purpose: "access"`). Qualquer `userId` enviado fora do token é ignorado.
 - **Cabeçalhos de resposta:** `Cache-Control: no-store`.
+- **Rate limit após a primeira página:** mantém `200` com `complete: false`,
+  preserva as escutas obtidas e inclui `Retry-After`. O cooldown persistido
+  respeita o maior prazo entre 60 segundos e o informado pelo Spotify;
+  novas tentativas antes desse prazo retornam `429`, sem consultar o provedor.
 - **Corpo da requisição:** vazio.
 
 ### Resposta `200 OK`

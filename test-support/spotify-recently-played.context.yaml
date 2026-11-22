@@ -11,6 +11,13 @@ assumptions:
     verification: On 2026-11-22, unit and real Feign HTTP simulation tests passed with Retry-After values of 45 and 900 seconds preserved
     source: https://developer.spotify.com/documentation/web-api/concepts/rate-limits
     updated_at: '2026-11-22'
+  - id: spotify-partial-page-rate-limit
+    status: supported
+    claim: Rate limits may occur on later page requests and their Retry-After must not be shortened by the caller
+    reason: Each page is an independent Web API request subject to rate limiting
+    verification: On 2026-11-22, the real Feign client and secured sync HTTP chain against PostgreSQL and a synthetic second-page 429 preserved 50 listens, returned HTTP 200 with complete=false and Retry-After 900, persisted the delay and rejected an early retry with 429
+    source: https://developer.spotify.com/documentation/web-api/concepts/rate-limits
+    updated_at: '2026-11-22'
   - id: spotify-recently-played-contract
     status: supported
     claim: GET /v1/me/player/recently-played accepts limit (1..50), mutually exclusive before/after cursors, and returns PlayHistoryObject items

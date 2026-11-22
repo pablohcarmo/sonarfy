@@ -95,6 +95,12 @@ http.createServer((req, res) => {
   if (token === 'token-timeout') {
     return setTimeout(() => reply(200, page1), 11500);
   }
+  if (token === 'token-partial-429') {
+    if (url.searchParams.has('before')) return reply(429, { error: { status: 429 } }, { 'Retry-After': '900' });
+    return reply(200, { ...page1, items: Array.from({ length: 50 }, (_, index) => ({
+      ...page1.items[0], played_at: new Date(Date.parse(page1.items[0].played_at) - index * 1000).toISOString()
+    })) });
+  }
   if (token !== 'token-ok') {
     return reply(401, { error: { status: 401, message: 'Invalid access token' } });
   }

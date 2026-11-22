@@ -26,9 +26,11 @@ public class EchoesController {
     public ResponseEntity<EchoSyncResponseDto> sync(@AuthenticationPrincipal User authenticatedUser) {
         try {
             var result = syncService.sync(authenticatedUser.getId());
-            return ResponseEntity.ok()
-                    .cacheControl(CacheControl.noStore())
-                    .body(result.body());
+            var response = ResponseEntity.ok().cacheControl(CacheControl.noStore());
+            if (result.retryAfterSeconds() != null) {
+                response.header("Retry-After", Long.toString(result.retryAfterSeconds()));
+            }
+            return response.body(result.body());
         } catch (RetryAfterException exception) {
             return ResponseEntity.status(exception.getStatusCode())
                     .cacheControl(CacheControl.noStore())

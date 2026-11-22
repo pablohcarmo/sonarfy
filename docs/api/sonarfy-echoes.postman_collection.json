@@ -2,7 +2,7 @@
   "info": {
     "name": "Sonarfy - Echoes",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Contract: docs/api/echoes.md. Execute requests individually with a test account that already authorized user-read-recently-played. Set accessToken locally and never export filled secrets. Provider Retry-After is preserved without shortening. Expired or replaced sync leases return 409; ineligible accounts rejected by authentication return 401. Each sync rescans up to three pages to recover earlier partial failures."
+    "description": "Contract: docs/api/echoes.md. Execute requests individually with a test account that already authorized user-read-recently-played. Set accessToken locally and never export filled secrets. Provider Retry-After is preserved without shortening, including partial HTTP 200 responses with complete=false after a later page is rate limited. Wait for Retry-After on those responses; early retries return 429 without contacting Spotify. Expired or replaced sync leases return 409; ineligible accounts rejected by authentication return 401. Each sync rescans up to three pages to recover earlier partial failures."
   },
   "variable": [
     {

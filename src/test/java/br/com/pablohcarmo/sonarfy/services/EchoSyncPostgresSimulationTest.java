@@ -172,6 +172,28 @@ class EchoSyncPostgresSimulationTest {
     @Autowired EchoImportWriter writer;
     @Autowired PlatformTransactionManager manager;
 
+    // O rate limit da segunda página preserva o lote e bloqueia novas consultas pelo prazo completo.
+    @Test
+    void partialRateLimitPreservesListensAndWaitThroughRealHttpChain() throws Exception {
+        connections.connect(userOneId, 0L, new SpotifyTokenResponseDto(
+                "token-partial-429", "Bearer", 3600L, "refresh-fixture", "user-read-recently-played"));
+        String bearer = "Bearer " + jwt.generateAccessToken(Long.toString(userOneId));
+        mvc.perform(post("/api/echoes/sync").header("Authorization", bearer))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Retry-After", "900"))
+                .andExpect(jsonPath("$.complete").value(false))
+                .andExpect(jsonPath("$.imported").value(50));
+        assertEquals(50, jdbc.queryForObject("SELECT count(*) FROM Listens WHERE user_id = ?", Integer.class, userOneId));
+        assertTrue(jdbc.queryForObject("SELECT next_allowed_at >= last_succeeded_at + INTERVAL '900 seconds' FROM echo_sync_state WHERE user_id = ?",
+                Boolean.class, userOneId));
+        // Simula o avanço de 61 segundos sem aguardar ou alterar o relógio da máquina.
+        jdbc.update("UPDATE echo_sync_state SET next_allowed_at = next_allowed_at - INTERVAL '61 seconds' WHERE user_id = ?", userOneId);
+        var blocked = mvc.perform(post("/api/echoes/sync").header("Authorization", bearer))
+                .andExpect(status().isTooManyRequests()).andReturn().getResponse();
+        assertTrue(Long.parseLong(blocked.getHeader("Retry-After")) > 60L);
+        assertEquals(50, jdbc.queryForObject("SELECT count(*) FROM Listens WHERE user_id = ?", Integer.class, userOneId));
+    }
+
     private EchoSyncService orchestrator(SpotifyRecentlyPlayedService api) {
         connections.connect(userOneId, 0L, new SpotifyTokenResponseDto(
                 "token-ok", "Bearer", 3600L, "refresh-fixture", "user-read-recently-played"));

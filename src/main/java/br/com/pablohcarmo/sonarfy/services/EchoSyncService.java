@@ -92,7 +92,7 @@ public class EchoSyncService {
                             """, UUID.class, userId, leaseId);
                     if (owned.isEmpty()) throw conflict("Sync lease expired or was replaced.");
                     var result = importWriter.writeBatch(userId, fetched.credential(), fetched.items(), syncedAt);
-                    updateCooldownOnSuccess(userId, leaseId, syncedAt);
+                    updateCooldownOnSuccess(userId, leaseId, syncedAt, fetched.retryAfterSeconds());
                     return result;
                 });
             } catch (StaleSpotifyAuthorizationException stale) {
@@ -109,7 +109,7 @@ public class EchoSyncService {
                     fetched.possibleGap(),
                     written.newestPlayedAt(),
                     syncedAt
-            ));
+            ), fetched.retryAfterSeconds());
         } finally {
             if (!succeeded) {
                 releaseLease(userId, leaseId);
@@ -193,6 +193,7 @@ public class EchoSyncService {
         List<PlayHistoryItem> collected = new ArrayList<>();
         boolean reachedWatermark = collectPage(firstPage, watermark, collected);
         boolean complete = true;
+        Long retryAfterSeconds = null;
         SpotifyRecentlyPlayedResponseDto currentPage = firstPage;
         Long previousBefore = null;
         int pagesFetched = 1;
@@ -209,6 +210,10 @@ public class EchoSyncService {
                 currentPage = spotifyApi.fetchPage(credential.accessToken(), PAGE_LIMIT, nextBefore);
             } catch (SpotifyApiException pageFailure) {
                 complete = false;
+                if (pageFailure.getCategory() == SpotifyApiException.Category.RATE_LIMITED) {
+                    retryAfterSeconds = pageFailure.getRetryAfterSeconds() == null
+                            ? COOLDOWN_SECONDS : Math.max(COOLDOWN_SECONDS, pageFailure.getRetryAfterSeconds());
+                }
                 break;
             }
             pagesFetched++;
@@ -219,7 +224,7 @@ public class EchoSyncService {
         }
 
         boolean possibleGap = watermark.isPresent() && !reachedWatermark;
-        return new FetchOutcome(credential, collected, complete, possibleGap);
+        return new FetchOutcome(credential, collected, complete, possibleGap, retryAfterSeconds);
     }
 
     private SpotifyAccessCredential forceRefreshOrConflict(Long userId) {
@@ -274,13 +279,15 @@ public class EchoSyncService {
         return (fallback > 0L && (previousBefore == null || fallback < previousBefore)) ? fallback : null;
     }
 
-    private void updateCooldownOnSuccess(Long userId, UUID leaseId, OffsetDateTime syncedAt) {
+    private void updateCooldownOnSuccess(Long userId, UUID leaseId, OffsetDateTime syncedAt, Long retryAfterSeconds) {
+        // Um lote parcial preserva o prazo do provedor mesmo quando supera o cooldown normal.
+        long delay = retryAfterSeconds == null ? COOLDOWN_SECONDS : Math.max(COOLDOWN_SECONDS, retryAfterSeconds);
         jdbc.update("""
                 UPDATE echo_sync_state
                 SET lease_until = NULL, lease_id = NULL,
                     next_allowed_at = ?
                 WHERE user_id = ? AND lease_id = ?
-                """, syncedAt.plusSeconds(COOLDOWN_SECONDS), userId, leaseId);
+                """, syncedAt.plusSeconds(delay), userId, leaseId);
     }
 
     private void releaseLease(Long userId, UUID leaseId) {
@@ -331,10 +338,13 @@ public class EchoSyncService {
             SpotifyAccessCredential credential,
             List<PlayHistoryItem> items,
             boolean complete,
-            boolean possibleGap
+            boolean possibleGap,
+            Long retryAfterSeconds
     ) {}
 
-    public record EchoSyncResult(EchoSyncResponseDto body) {}
+    public record EchoSyncResult(EchoSyncResponseDto body, Long retryAfterSeconds) {
+        public EchoSyncResult(EchoSyncResponseDto body) { this(body, null); }
+    }
 
     public static final class RetryAfterException extends ResponseStatusException {
         private final long retryAfterSeconds;
