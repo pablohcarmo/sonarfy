@@ -139,8 +139,9 @@ e exigem novo consentimento explícito para habilitar Ecos; a renovação de tok
 corpo, inclusive se já desconectado. As duas rotas usam `Cache-Control: no-store`
 e resolvem a identidade autenticada, ignorando um `userId` fornecido pelo cliente.
 A desconexão remove as credenciais locais; a revogação da permissão na conta do
-Spotify é uma ação separada do usuário. Ecos e eventos de integração ainda não
-estão implementados neste fluxo.
+Spotify é uma ação separada do usuário. As escutas já importadas são preservadas
+após desconectar. A persistência interna de Ecos está implementada; os endpoints
+de sincronização e consulta e os eventos de integração permanecem pendentes.
 
 Cada state guarda a versão de autorização do usuário. Desconectar bloqueia sua
 linha, incrementa `spotify_authorization_version` e exclui a conexão na mesma
@@ -425,11 +426,29 @@ tentativas automaticamente por padrão, inclusive após timeout na troca do cód
 
 ### Cliente de reproduções recentes (`GET /v1/me/player/recently-played`)
 
-- `SpotifyAccessTokenService.getValidCredential(userId, forceRefresh)` retorna `SpotifyAccessCredential` (`accessToken`, `connectionId`, `authorizationGeneration` e `scopes`), permitindo refresh forçado sob bloqueio sem alterar a geração.
+- `SpotifyAccessTokenService.getValidCredential(userId, forceRefresh)` retorna `SpotifyAccessCredential` (`accessToken`, `connectionId`, `authorizationGeneration`, `spotifyAuthorizationVersion` e `scopes`), permitindo refresh forçado sob bloqueio sem alterar a geração. A versão Spotify do usuário é capturada no mesmo bloqueio e revalidada pelo writer de Ecos, impedindo que um lote anterior à reativação seja gravado depois dela.
 - `SpotifyApiClient` (`url=${spotify.api-url:https://api.spotify.com}`) consulta `/v1/me/player/recently-played` aceitando apenas `limit` e cursor `before` opcional (nunca enviando `after` e `before` simultaneamente), com mapeamento em `SpotifyRecentlyPlayedResponseDto`.
 - `SpotifyApiClientConfig` define `NEVER_RETRY`, `5s` de conexão, `10s` de leitura e `ErrorDecoder` via `FeignException::errorStatus` para preservar `status` e cabeçalhos (como `Retry-After` em `429`) sem conversão para `RetryableException`.
 - `SpotifyRecentlyPlayedService` valida `limit` (`1..50`) e `before` positivo, e traduz falhas para `SpotifyApiException` (`UNAUTHORIZED`, `FORBIDDEN`, `RATE_LIMITED` preservando valores positivos de `Retry-After`, `UNAVAILABLE` e `TIMEOUT`), sem expor tokens, cursores ou corpo externo.
 - `SpotifyRecentlyPlayedSimulationTest` (opt-in via `-Dsonarfy.test.spotify-api-sim=true`, executado continuamente na CI) valida o cliente Feign real contra a simulação Postman `test-support/spotify-recently-played.sim.yaml`.
+
+### Persistência interna de Ecos
+
+`EchoImportWriter` grava catálogo e escutas na mesma transação, sem chamadas
+remotas. Antes de gravar, bloqueia e recarrega usuário e conexão, nessa ordem,
+e verifica elegibilidade, escopo, ID da conexão, geração e versão Spotify do
+usuário. Uma credencial anterior à reconexão ou reativação é rejeitada sem
+alterar catálogo, escutas ou estado de sincronização.
+
+A unicidade por usuário, faixa Spotify e instante da reprodução evita duplicação
+ao repetir o lote. Itens locais ou inválidos são ignorados. O retorno interno
+informa quantidades importadas, já conhecidas e ignoradas, além do instante mais
+recente válido; `echo_sync_state` registra o sucesso e a escuta mais antiga do lote.
+
+Na fase atual, Ecos acumula escutas das contas Spotify conectadas pelo mesmo
+usuário Sonarfy, sem identificar a conta Spotify de origem. Isso não permite
+misturar dados de usuários Sonarfy distintos. Não há sincronização automática
+nem endpoint público de sincronização ou consulta nesta entrega.
 
 ## Testes e limites da validação
 

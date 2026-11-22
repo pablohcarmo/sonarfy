@@ -5,6 +5,7 @@ public record SpotifyAccessCredential(
         String accessToken,
         Long connectionId,
         long authorizationGeneration,
+        long spotifyAuthorizationVersion,
         String scopes
 ) {
     @Override
