@@ -128,9 +128,12 @@ frontend faz parte desta entrega.
 ### Consulta, conexão e desconexão
 
 `GET /api/spotify/connection` exige Bearer Sonarfy e retorna HTTP 200 com
-`status` (`CONNECTED`, `DISCONNECTED` ou `REAUTHORIZATION_REQUIRED`) e `connectedAt` (nulo sem conexão).
+`status` (`CONNECTED`, `DISCONNECTED` ou `REAUTHORIZATION_REQUIRED`), `connectedAt` (nulo sem conexão)
+e `recentListensAuthorized` (`true` somente quando `status = CONNECTED` e os escopos concedidos contêm `user-read-recently-played`).
 Conectado significa credenciais armazenadas: o vencimento do access token não
 produz `REAUTHORIZATION_REQUIRED`; esse estado exige rejeição confirmada na renovação. Nenhum token é exposto.
+Conexões antigas autorizadas apenas com `user-library-read` permanecem `CONNECTED` com `recentListensAuthorized: false`
+e exigem novo consentimento explícito para habilitar Ecos; a renovação de token não amplia escopos.
 
 `DELETE /api/spotify/connection` exige o mesmo Bearer e retorna HTTP 204 sem
 corpo, inclusive se já desconectado. As duas rotas usam `Cache-Control: no-store`
@@ -180,19 +183,21 @@ externo (`accounts.spotify.com`), o frontend integra-se aos quatro endpoints aba
   ```json
   {
     "status": "CONNECTED",
-    "connectedAt": "2026-11-10T03:00:00Z"
+    "connectedAt": "2026-11-10T03:00:00Z",
+    "recentListensAuthorized": true
   }
   ```
-  Quando não há conexão ativa, retorna `{"status":"DISCONNECTED","connectedAt":null}`.
+  Quando não há conexão ativa, retorna `{"status":"DISCONNECTED","connectedAt":null,"recentListensAuthorized":false}`.
   `CONNECTED` indica credenciais armazenadas, sem garantir autorização válida no provedor.
-  `REAUTHORIZATION_REQUIRED` conserva `connectedAt` e exige iniciar novamente a autorização.
+  `REAUTHORIZATION_REQUIRED` conserva `connectedAt` e retorna `recentListensAuthorized: false`, exigindo iniciar novamente a autorização.
+  Se `status` for `CONNECTED` e `recentListensAuthorized` for `false`, o frontend deve orientar o usuário a reconectar o Spotify para conceder o escopo `user-read-recently-played`.
 
 ### 2. Iniciar autorização (`POST /api/spotify/authorization`)
 - **Requisição:** `POST /api/spotify/authorization` com cabeçalho `Authorization: Bearer <accessToken>`, sem corpo.
 - **Resposta (`200 OK`, `Cache-Control: no-store`):**
   ```json
   {
-    "authorizationUrl": "https://accounts.spotify.com/authorize?response_type=code&client_id=...&redirect_uri=...&scope=user-library-read&state=..."
+    "authorizationUrl": "https://accounts.spotify.com/authorize?response_type=code&client_id=...&redirect_uri=...&scope=user-read-recently-played&state=..."
   }
   ```
 - **Ação no frontend:** navegar para a URL recebida (ex.: `window.location.assign(data.authorizationUrl)`). Não abrir via `fetch`/`XHR`, pois o usuário precisa interagir com a página de consentimento do Spotify.
@@ -219,7 +224,7 @@ Após ler o parâmetro `spotify` na inicialização da página, recomenda-se rem
 
 `SpotifyAuthorizationService.startAuthorization(userId)` registra uma tentativa
 e retorna uma URI para `https://accounts.spotify.com/authorize`, com `response_type=code`,
-`client_id`, `redirect_uri`, `scope=user-library-read` e `state`, codificados como
+`client_id`, `redirect_uri`, `scope=user-read-recently-played` e `state`, codificados como
 parâmetros. Não envia requisição HTTP nem inclui o Client Secret na URL.
 
 `SpotifyAuthorizationStateService` gera states com 32 bytes de `SecureRandom`
@@ -298,9 +303,10 @@ logs específicos desse caminho.
 ## Configuração
 
 Antes de disponibilizar esta versão em um banco existente, aplique as migrações
-`db/migrations/001_create_spotify_connection.sql` e
-`db/migrations/002_add_spotify_authorization_version.sql` e
-`db/migrations/007_add_spotify_connection_status.sql`, nesta ordem, conforme o
+`db/migrations/001_create_spotify_connection.sql`,
+`db/migrations/002_add_spotify_authorization_version.sql`,
+`db/migrations/007_add_spotify_connection_status.sql` e
+`db/migrations/011_add_spotify_authorization_generation.sql`, nesta ordem, conforme o
 [guia de persistência](../persistence.md#inicialização-e-atualização-do-banco).
 Com `ddl-auto=none`, a aplicação não cria `spotify_connection` automaticamente.
 Para um banco vazio, use o schema completo em `db/tables.sql`.

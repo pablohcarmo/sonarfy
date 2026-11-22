@@ -62,7 +62,7 @@ public class SpotifyConnectionService {
 
         // Criptografa os dois tokens antes de atribuí-los à entidade persistida.
         // Tipo e escopos são mantidos conforme a resposta do Spotify; updated_at recebe a referência.
-        connection.updateTokens(encryption.encrypt(tokens.accessToken(), userId, "access"),
+        connection.establishAuthorization(encryption.encrypt(tokens.accessToken(), userId, "access"),
                 encryption.encrypt(tokens.refreshToken(), userId, "refresh"),
                 tokens.tokenType(), tokens.scope(), now.plusSeconds(tokens.expiresIn()), now);
         connections.saveAndFlush(connection);
@@ -84,15 +84,17 @@ public class SpotifyConnectionService {
         // Consulta a conexão com o Spotify do usuário e monta a resposta para o frontend
         return connections.findByUserId(userId)
 
-                // Se encontrar a conexão, cria um record e a data da conexão.
+                // Se encontrar a conexão, cria um record, a data da conexão e indica se Ecos foi autorizado.
                 .map(connection -> new SpotifyConnectionResponseDto(
                         connection.getStatus(),
-                        connection.getConnectedAt()
+                        connection.getConnectedAt(),
+                        connection.hasScope(SpotifyAuthorizationService.RECENT_LISTENS_SCOPE)
                 ))
                 // Se não encontrar, cria um record com DISCONNECTED e sem data.
                 .orElseGet(() -> new SpotifyConnectionResponseDto(
                         SpotifyConnectionStatus.DISCONNECTED,
-                        null
+                        null,
+                        false
                 ));
     }
 }

@@ -102,17 +102,18 @@ class ExistingSchemaIntegrationTest {
         users.saveAndFlush(user);
 
         spotifyConnectionService.connect(user.getId(), 0L, new SpotifyTokenResponseDto(
-                "access-one", "Bearer", 3600L, "refresh-one", "user-library-read"));
+                "access-one", "Bearer", 3600L, "refresh-one", "user-read-recently-played"));
         entityManager.flush();
         entityManager.clear();
         var saved = spotifyConnections.findByUserId(user.getId()).orElseThrow();
         Long connectionId = saved.getId();
         var connectedAt = saved.getConnectedAt();
+        assertEquals(1L, saved.getAuthorizationGeneration());
         assertNotEquals("access-one", saved.getAccessTokenEncrypted());
         assertNotEquals("refresh-one", saved.getRefreshTokenEncrypted());
         assertEquals("access-one", tokenEncryption.decrypt(saved.getAccessTokenEncrypted(), user.getId(), "access"));
         assertEquals("refresh-one", tokenEncryption.decrypt(saved.getRefreshTokenEncrypted(), user.getId(), "refresh"));
-        assertEquals("user-library-read", saved.getScopes());
+        assertEquals("user-read-recently-played", saved.getScopes());
 
         spotifyConnectionService.connect(user.getId(), 0L, new SpotifyTokenResponseDto(
                 "access-two", "Bearer", 3600L, "refresh-two", null));
@@ -121,6 +122,7 @@ class ExistingSchemaIntegrationTest {
         var reconnected = spotifyConnections.findByUserId(user.getId()).orElseThrow();
         assertEquals(connectionId, reconnected.getId());
         assertEquals(connectedAt, reconnected.getConnectedAt());
+        assertEquals(2L, reconnected.getAuthorizationGeneration());
         assertNull(reconnected.getScopes());
         assertEquals(3600L, java.time.Duration.between(
                 reconnected.getUpdatedAt(), reconnected.getAccessTokenExpiresAt()).getSeconds());

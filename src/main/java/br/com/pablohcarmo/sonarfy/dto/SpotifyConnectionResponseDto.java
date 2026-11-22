@@ -7,6 +7,7 @@ import java.time.OffsetDateTime;
 
 public record SpotifyConnectionResponseDto(
         SpotifyConnectionStatus status,
-        OffsetDateTime connectedAt
+        OffsetDateTime connectedAt,
+        boolean recentListensAuthorized
 ) {
 }

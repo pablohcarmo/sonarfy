@@ -44,7 +44,7 @@ class SpotifyAuthorizationServiceTest {
                         pair -> URLDecoder.decode(pair[1], StandardCharsets.UTF_8)));
         assertEquals(Map.of(
                 "response_type", "code", "client_id", "test-client",
-                "redirect_uri", redirectUri, "scope", "user-library-read", "state", "test-state"
+                "redirect_uri", redirectUri, "scope", "user-read-recently-played", "state", "test-state"
         ), params);
         assertNull(uri.getUserInfo());
         assertNull(uri.getFragment());

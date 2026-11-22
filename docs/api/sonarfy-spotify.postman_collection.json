@@ -48,7 +48,7 @@
             "exec": [
               "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
               "pm.test(\"No store\", () => pm.expect(pm.response.headers.get(\"Cache-Control\")).to.include(\"no-store\"));",
-              "pm.test(\"Public connection contract\", () => { const b = pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"connectedAt\", \"status\"]); pm.expect(b.status).to.be.oneOf([\"CONNECTED\", \"DISCONNECTED\", \"REAUTHORIZATION_REQUIRED\"]); if (b.status === \"DISCONNECTED\") pm.expect(b.connectedAt).to.eql(null); else pm.expect(b.connectedAt).to.be.a(\"string\"); });"
+              "pm.test(\"Public connection contract\", () => { const b = pm.response.json(); pm.expect(Object.keys(b).sort()).to.eql([\"connectedAt\", \"recentListensAuthorized\", \"status\"]); pm.expect(b.status).to.be.oneOf([\"CONNECTED\", \"DISCONNECTED\", \"REAUTHORIZATION_REQUIRED\"]); pm.expect(b.recentListensAuthorized).to.be.a(\"boolean\"); if (b.status === \"DISCONNECTED\") { pm.expect(b.connectedAt).to.eql(null); pm.expect(b.recentListensAuthorized).to.eql(false); } else pm.expect(b.connectedAt).to.be.a(\"string\"); });"
             ]
           }
         }

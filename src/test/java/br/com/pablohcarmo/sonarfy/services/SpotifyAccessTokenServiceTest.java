@@ -129,12 +129,14 @@ class SpotifyAccessTokenServiceTest {
 
     // Preserva refresh token e escopos omitidos, e reutiliza o acesso recém-renovado.
     @Test void refreshesOnceAndPreservesOptionalFields() {
+        long generationBeforeRefresh = connections.findByUserId(id).orElseThrow().getAuthorizationGeneration();
         assertEquals("new-access", access.getValidAccessToken(id).orElseThrow());
         assertEquals("new-access", access.getValidAccessToken(id).orElseThrow());
         assertEquals(1, calls.get());
         var row = connections.findByUserId(id).orElseThrow();
         assertEquals("old-refresh", encryption.decrypt(row.getRefreshTokenEncrypted(), id, "refresh"));
         assertEquals("scope", row.getScopes());
+        assertEquals(generationBeforeRefresh, row.getAuthorizationGeneration());
     }
 
     @Test void rotatesRefreshAndRetainsConnectionDate() {
@@ -150,16 +152,20 @@ class SpotifyAccessTokenServiceTest {
         status = 400; body = "{\"error\":\"invalid_grant\"}";
         assertTrue(access.getValidAccessToken(id).isEmpty());
         assertEquals(SpotifyConnectionStatus.REAUTHORIZATION_REQUIRED, service.getConnection(id).status());
-        assertNull(connections.findByUserId(id).orElseThrow().getRefreshTokenEncrypted());
+        var revokedRow = connections.findByUserId(id).orElseThrow();
+        assertNull(revokedRow.getRefreshTokenEncrypted());
+        assertEquals(2L, revokedRow.getAuthorizationGeneration());
         mvc.perform(get("/api/spotify/connection")
                 .header("Authorization", "Bearer " + jwt.generateAccessToken(id.toString())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status")
                         .value("REAUTHORIZATION_REQUIRED"))
+                .andExpect(jsonPath("$.recentListensAuthorized").value(false))
                 .andExpect(jsonPath("$.accessToken").doesNotExist());
         assertTrue(access.getValidAccessToken(id).isEmpty()); assertEquals(1, calls.get());
         assertEquals(0, rotation.reencryptNextBatch(10));
         service.connect(id, 0, new SpotifyTokenResponseDto("restored", "Bearer", 3600L, "refresh", null));
+        assertEquals(3L, connections.findByUserId(id).orElseThrow().getAuthorizationGeneration());
         assertEquals("restored", access.getValidAccessToken(id).orElseThrow());
         service.disconnect(id); assertTrue(access.getValidAccessToken(id).isEmpty());
     }

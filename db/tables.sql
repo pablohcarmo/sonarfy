@@ -56,6 +56,7 @@ CREATE TABLE Spotify_Connection (
     access_token_encrypted TEXT,
     refresh_token_encrypted TEXT,
     status VARCHAR(32) NOT NULL DEFAULT 'CONNECTED',
+    authorization_generation BIGINT NOT NULL DEFAULT 0,
     CONSTRAINT spotify_connection_status_tokens CHECK (
         (status = 'CONNECTED' AND access_token_encrypted IS NOT NULL AND refresh_token_encrypted IS NOT NULL)
         OR (status = 'REAUTHORIZATION_REQUIRED' AND access_token_encrypted IS NULL AND refresh_token_encrypted IS NULL)),
