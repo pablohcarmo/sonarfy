@@ -56,6 +56,7 @@ public class SpotifyAccessTokenService {
                     encryption.decrypt(connection.getAccessTokenEncrypted(), userId, "access"),
                     connection.getId(),
                     connection.getAuthorizationGeneration(),
+                    user.getSpotifyAuthorizationVersion(),
                     connection.getScopes()
             ));
         }
@@ -80,6 +81,7 @@ public class SpotifyAccessTokenService {
                 tokens.accessToken(),
                 connection.getId(),
                 connection.getAuthorizationGeneration(),
+                user.getSpotifyAuthorizationVersion(),
                 effectiveScopes
         ));
     }

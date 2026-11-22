@@ -143,7 +143,32 @@ psql -h <host> -p <porta> -U <usuario> -d <banco> -v ON_ERROR_STOP=1 -f db/migra
 psql -h <host> -p <porta> -U <usuario> -d <banco> -v ON_ERROR_STOP=1 -f db/migrations/002_add_spotify_authorization_version.sql
 psql -h <host> -p <porta> -U <usuario> -d <banco> -v ON_ERROR_STOP=1 -f db/migrations/007_add_spotify_connection_status.sql
 psql -h <host> -p <porta> -U <usuario> -d <banco> -v ON_ERROR_STOP=1 -f db/migrations/011_add_spotify_authorization_generation.sql
+psql -h <host> -p <porta> -U <usuario> -d <banco> -v ON_ERROR_STOP=1 -f db/migrations/012_create_echoes.sql
 ```
+
+A migração `012_create_echoes.sql` amplia `Artists.name` e `Albums.name` para `VARCHAR(500)`, cria `Tracks`, `Track_Artists` e `echo_sync_state`, adiciona `track_id` e o índice de paginação em `Listens`, e falha propositalmente caso `Listens` já contenha registros (garantia de integridade para bancos existentes ainda sem importação). Ela depende apenas do schema até `009`, sem depender de `010`.
+
+A aplicação desta entrega também exige `011`, pois o writer utiliza a geração
+da conexão. A migration `012` foi validada em PostgreSQL 17 descartável em
+22/11/2026; não foi aplicada ao banco da aplicação nesta entrega.
+
+`EchoesPersistencePostgresTest` valida deduplicação, gravações concorrentes,
+rejeição de conexão e geração antigas, conta inativa, escopo insuficiente e lote
+anterior à reativação. O Hibernate apenas valida o schema preparado; a suíte
+aceita exclusivamente o banco local dedicado `sonarfy_echoes_validation`.
+A CI contém etapa que reconstrói o estado anterior à `012`, aplica a migration
+e habilita explicitamente `-Dsonarfy.test.echoes-postgres=true`.
+Na validação local de 22/11/2026, os cinco testes PostgreSQL passaram; a suíte
+completa com essa propriedade reportou 768 testes, 685 executados, 83 ignorados
+e nenhuma falha ou erro. Isso não constitui validação da CI remota ou do Spotify real.
+
+Na revisão seguinte de 22/11/2026, a suíte PostgreSQL foi ampliada para oito
+testes, acrescentando rollback após gravar catálogo e escutas, lotes parcialmente
+sobrepostos em ordem inversa e lotes vazios ou totalmente inválidos. Os oito
+passaram em uma instância PostgreSQL 17 temporária local, isolada em `target/`
+e porta própria, sem Docker e sem acessar o banco da aplicação.
+A suíte completa com os testes PostgreSQL de Ecos habilitados reportou 777
+testes, 694 executados, 83 ignorados e nenhuma falha ou erro.
 
 Forneça as credenciais pelo mecanismo seguro usado no ambiente. Não execute
 o schema completo sobre um banco já inicializado. Se `spotify_connection` já

@@ -238,6 +238,8 @@ class SpotifyAccessTokenServiceTest {
         assertEquals("new-access", forced.accessToken());
         assertEquals(cached.connectionId(), forced.connectionId());
         assertEquals(cached.authorizationGeneration(), forced.authorizationGeneration());
+        assertEquals(users.findById(id).orElseThrow().getSpotifyAuthorizationVersion(), cached.spotifyAuthorizationVersion());
+        assertEquals(cached.spotifyAuthorizationVersion(), forced.spotifyAuthorizationVersion());
         assertEquals(1, calls.get());
         service.connect(id, 0, new SpotifyTokenResponseDto("near-expiry", "Bearer", 60L, "old-refresh", null));
         access.getValidAccessToken(id); assertEquals(2, calls.get());
