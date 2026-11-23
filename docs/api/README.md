@@ -41,6 +41,7 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
    - `GET /api/spotify/connection` — Consulta autenticada do estado da conexão (`CONNECTED` / `DISCONNECTED` / `REAUTHORIZATION_REQUIRED`, `connectedAt` e `recentListensAuthorized`).
    - `DELETE /api/spotify/connection` — Desconexão idempotente com remoção das credenciais locais e invalidação de autorizações em trânsito.
 6. **[Ecos — escutas recentes](echoes.md)**
+   - `GET /api/echoes` — Consulta paginada por keyset das escutas importadas do usuário autenticado, sem acionar o Spotify.
    - `POST /api/echoes/sync` — Sincronização manual autenticada das reproduções recentes do Spotify para `Listens`, com cooldown de 60 s e guarda contra autorização antiga ([integração](../integrations/echoes.md), coleção [sonarfy-echoes.postman_collection.json](sonarfy-echoes.postman_collection.json)).
 
 ---
@@ -72,6 +73,7 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 | `GET` | `/api/spotify/callback` | `SpotifyController` | Público + `state` OAuth | [spotify.md](../integrations/spotify.md) |
 | `GET` | `/api/spotify/connection` | `SpotifyController` | Bearer `access` | [spotify.md](../integrations/spotify.md) |
 | `DELETE` | `/api/spotify/connection` | `SpotifyController` | Bearer `access` | [spotify.md](../integrations/spotify.md) |
+| `GET` | `/api/echoes` | `EchoesController` | Bearer `access` | [echoes.md](echoes.md) |
 | `POST` | `/api/echoes/sync` | `EchoesController` | Bearer `access` | [echoes.md](echoes.md) |
 
 ---

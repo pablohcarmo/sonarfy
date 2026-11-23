@@ -3,9 +3,12 @@ package br.com.pablohcarmo.sonarfy.controllers;
 import br.com.pablohcarmo.sonarfy.config.CorsConfig;
 import br.com.pablohcarmo.sonarfy.config.SecurityConfig;
 import br.com.pablohcarmo.sonarfy.dto.EchoSyncResponseDto;
+import br.com.pablohcarmo.sonarfy.dto.EchoesPageResponseDto;
+import br.com.pablohcarmo.sonarfy.dto.EchoesPageResponseDto.*;
 import br.com.pablohcarmo.sonarfy.entities.Permission;
 import br.com.pablohcarmo.sonarfy.entities.User;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
+import br.com.pablohcarmo.sonarfy.services.EchoQueryService;
 import br.com.pablohcarmo.sonarfy.services.EchoSyncService;
 import br.com.pablohcarmo.sonarfy.services.EchoSyncService.EchoSyncResult;
 import br.com.pablohcarmo.sonarfy.services.EchoSyncService.RetryAfterException;
@@ -29,14 +32,18 @@ import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringJUnitWebConfig(EchoesControllerTest.Config.class)
 @TestPropertySource(properties = {
         "app.frontend-url=http://localhost:3000",
+        "app.cors.allowed-origins=http://localhost:63342",
         "api.security.token.secret=echoes-controller-test-secret"
 })
 class EchoesControllerTest {
@@ -47,17 +54,19 @@ class EchoesControllerTest {
     static class Config {
         @Bean UserRepository userRepository() { return mock(UserRepository.class); }
         @Bean EchoSyncService echoSyncService() { return mock(EchoSyncService.class); }
+        @Bean EchoQueryService echoQueryService() { return mock(EchoQueryService.class); }
     }
 
     @Autowired WebApplicationContext context;
     @Autowired UserRepository users;
     @Autowired EchoSyncService syncService;
+    @Autowired EchoQueryService queryService;
     @Autowired JwtService jwt;
     MockMvc mvc;
 
     @BeforeEach
     void prepare() {
-        reset(users, syncService);
+        reset(users, syncService, queryService);
         var role = new Permission();
         role.setName("ROLE_USER");
         var user = new User();
@@ -143,5 +152,67 @@ class EchoesControllerTest {
         mvc.perform(post("/api/echoes/sync").header("Authorization", "Bearer " + jwt.generateAccessToken("42")))
                 .andExpect(status().isUnauthorized());
         verifyNoInteractions(syncService);
+    }
+
+    @Test
+    void listRequiresValidActiveVerifiedAccessBearer() throws Exception {
+        mvc.perform(get("/api/echoes")).andExpect(status().isUnauthorized());
+        for (String token : new String[]{"invalid", jwt.generateRegistrationToken("42")}) {
+            mvc.perform(get("/api/echoes").header("Authorization", "Bearer " + token))
+                    .andExpect(status().isUnauthorized());
+        }
+        var user = users.findWithPermissionById(42L).orElseThrow();
+        user.setActive(false);
+        mvc.perform(get("/api/echoes").header("Authorization", "Bearer " + jwt.generateAccessToken("42")))
+                .andExpect(status().isUnauthorized());
+        user.setActive(true);
+        user.setVerified(false);
+        mvc.perform(get("/api/echoes").header("Authorization", "Bearer " + jwt.generateAccessToken("42")))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(queryService);
+    }
+
+    @Test
+    void listUsesAuthenticatedUserDefaultLimitAndCorsExposesRetryAfter() throws Exception {
+        var page = new EchoesPageResponseDto(
+                java.util.List.of(new EchoListenItemDto(
+                        101L,
+                        OffsetDateTime.parse("2026-11-22T19:00:00Z"),
+                        new EchoTrackDto("trk1", "Track", 200000, false),
+                        java.util.List.of(new EchoArtistDto("art1", "Artist")),
+                        new EchoAlbumDto("alb1", "Album", null)
+                )),
+                "opaque-next",
+                new EchoSyncMetadataDto(OffsetDateTime.parse("2026-11-22T19:05:00Z"), null, null)
+        );
+        when(queryService.list(42L, 20, null)).thenReturn(page);
+
+        mvc.perform(get("/api/echoes")
+                        .header("Authorization", "Bearer " + jwt.generateAccessToken("42"))
+                        .header("Origin", "http://localhost:63342")
+                        .param("userId", "99")
+                        .param("handle", "other"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:63342"))
+                .andExpect(header().string("Access-Control-Expose-Headers", containsString("Retry-After")))
+                .andExpect(jsonPath("$.items[0].id").value(101))
+                .andExpect(jsonPath("$.items[0].album.coverUrl").isEmpty())
+                .andExpect(jsonPath("$.nextCursor").value("opaque-next"))
+                .andExpect(jsonPath("$.userId").doesNotExist());
+
+        mvc.perform(options("/api/echoes/sync")
+                        .header("Origin", "http://localhost:63342")
+                        .header("Access-Control-Request-Method", "POST"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:63342"));
+
+        mvc.perform(get("/api/echoes")
+                        .header("Authorization", "Bearer " + jwt.generateAccessToken("42"))
+                        .param("limit", "abc"))
+                .andExpect(status().isBadRequest());
+
+        verify(queryService).list(42L, 20, null);
+        verifyNoMoreInteractions(queryService);
     }
 }

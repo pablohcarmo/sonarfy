@@ -61,3 +61,75 @@ Dispara manualmente a sincronização das reproduções recentes do Spotify para
 A janela de até três páginas é relida mesmo ao encontrar escutas já conhecidas.
 Isso permite recuperar páginas que falharam em uma tentativa anterior enquanto
 ainda estiverem disponíveis no Spotify; a deduplicação ocorre no banco.
+
+---
+
+## `GET /api/echoes?limit=20&cursor=<opaco>`
+
+Lista as escutas já importadas do usuário autenticado em ordem decrescente (`played_at DESC, listen_id DESC`), usando paginação keyset com cursor opaco, assinado (HMAC-SHA256), versionado e vinculado ao usuário autenticado.
+
+- **Autenticação:** `Authorization: Bearer <accessToken>` (`purpose: "access"`). Qualquer `userId`, `handle` ou parâmetro semelhante enviado pelo cliente é ignorado. Contas inativas ou não verificadas são rejeitadas com `401`.
+- **Cabeçalhos de resposta:** `Cache-Control: no-store`.
+- **Sem efeitos colaterais:** não aciona o Spotify, não sincroniza dados e não cria registro em `echo_sync_state` quando ausente.
+- **Após sincronizar:** não há snapshot imutável entre requisições; após `POST /api/echoes/sync`, o frontend deve reiniciar a listagem sem `cursor`.
+- **CORS:** `Retry-After` é exposto em `Access-Control-Expose-Headers` para leitura cross-origin (incluindo `200` parcial, `429` e `503`).
+
+### Parâmetros de query
+
+| Parâmetro | Obrigatório | Padrão | Regras |
+| --- | --- | --- | --- |
+| `limit` | Não | `20` | Inteiro entre `1` e `50` |
+| `cursor` | Não | `null` | Cursor opaco retornado em `nextCursor` da página anterior |
+
+### Resposta `200 OK`
+
+```json
+{
+  "items": [
+    {
+      "id": 101,
+      "playedAt": "2026-11-22T19:00:00.123456Z",
+      "track": {
+        "spotifyId": "4uLU6hMCjMI75M1A2tKUQC",
+        "name": "Never Gonna Give You Up",
+        "durationMs": 213573,
+        "explicit": false
+      },
+      "artists": [
+        {
+          "spotifyId": "0gxyHStUsqpMadRV0Di1Qt",
+          "name": "Rick Astley"
+        }
+      ],
+      "album": {
+        "spotifyId": "5Z9iiGl2FcIfa3BMiv6OIw",
+        "name": "Whenever You Need Somebody",
+        "coverUrl": "https://i.scdn.co/image/ab67616d00001e02..."
+      }
+    }
+  ],
+  "nextCursor": "djEuNDIuMTc5NTM3NDAwMC4xMjM0NTYwMDAuMTAxLnNpZw",
+  "sync": {
+    "lastSucceededAt": "2026-11-22T19:05:00Z",
+    "historyStartsAt": "2026-11-20T14:10:00Z",
+    "nextAllowedAt": "2026-11-22T19:06:00Z"
+  }
+}
+```
+
+- Histórico vazio retorna `200` com `"items": []` e `"nextCursor": null`.
+- Para continuar, envie o `nextCursor` recebido como parâmetro `cursor`, sem
+  alterá-lo e mantendo o mesmo usuário autenticado. O cursor do exemplo é
+  ilustrativo e não deve ser usado em requisições.
+- Pare quando `nextCursor` for `null`. Enviar `cursor=` vazio ou o texto
+  `cursor=null` retorna `400`; para reiniciar, remova o parâmetro `cursor`.
+- `coverUrl`, `durationMs`, `lastSucceededAt`, `historyStartsAt` e `nextAllowedAt` podem ser `null`.
+- `historyStartsAt` representa apenas o instante mais antigo já capturado pelo Sonarfy (nunca o início completo do histórico no Spotify).
+- Escutas importadas permanecem disponíveis mesmo após desconectar o Spotify ou em `REAUTHORIZATION_REQUIRED`.
+
+### Códigos de erro
+
+| Status | Condição |
+| --- | --- |
+| `400` | `limit` fora de `1..50` ou não inteiro; `cursor` malformado, em branco, adulterado, incompatível ou pertencente a outro usuário |
+| `401` | Bearer ausente, inválido, expirado ou conta inativa/não verificada |
