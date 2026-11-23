@@ -185,3 +185,24 @@ Por isso, iniciar ou pular faixas nao deve ser usado isoladamente como prova de
 falha na sincronizacao ou no agrupamento. Se houver divergencia, comparar a
 resposta de sincronizacao (fetched, imported, alreadyKnown, skipped, complete e
 newestPlayedAt) com a consulta de albuns executada em seguida, sem expor tokens.
+
+
+## CI simulation cleanup - PR #84
+
+The CI log from 23/11/2026 showed EADDRINUSE on 127.0.0.1:55442 when
+starting the Echoes sync simulation after the Spotify API simulation.
+The preceding PostgreSQL Echoes step passed all 14 tests. The sync end-to-end
+step failed before Maven started; this was not an assertion failure.
+
+All three simulation steps now use test-support/ci-simulation.sh. The helper
+records the actual session leader, sends TERM to its process group, then KILL
+to remaining workers before waiting for the launcher. The original exit status
+is preserved. No process is selected by a shared port or a global name match.
+
+The CI first runs test-support/test-ci-simulation.sh against pinned Postman CLI
+1.85.0: start, probe, stop and reuse port 55442 after exit statuses 0, 7 and 0.
+This passed locally in a Linux container with Node 22, including a fixture
+whose parent exits on TERM while its HTTP child deliberately ignores it. The original cleanup
+also released the port in that local run, so the exact runner-specific trigger
+was not reproduced. The new test verifies port reuse and exit-status retention;
+remote Java CI approval still requires a successful run after publication.
