@@ -24,6 +24,7 @@ public class EchoCursorCodec {
 
     private final byte[] signingKey;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public EchoCursorCodec(@Value("${api.security.token.secret}") String tokenSecret) {
         if (tokenSecret == null || tokenSecret.isBlank()) {
             throw new IllegalArgumentException("Cursor signing secret is required.");
@@ -35,6 +36,15 @@ public class EchoCursorCodec {
         } catch (GeneralSecurityException exception) {
             throw new IllegalStateException("Unable to initialize cursor signing key.", exception);
         }
+    }
+
+    private EchoCursorCodec(byte[] signingKey) {
+        this.signingKey = signingKey;
+    }
+
+    // Isola os cursores por consulta e pelo album consultado.
+    public EchoCursorCodec scoped(String scope) {
+        return new EchoCursorCodec(sign(scope).getBytes(StandardCharsets.UTF_8));
     }
 
     public record DecodedCursor(OffsetDateTime playedAt, long listenId) {}

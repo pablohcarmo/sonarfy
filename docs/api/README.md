@@ -41,6 +41,8 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
    - `GET /api/spotify/connection` — Consulta autenticada do estado da conexão (`CONNECTED` / `DISCONNECTED` / `REAUTHORIZATION_REQUIRED`, `connectedAt` e `recentListensAuthorized`).
    - `DELETE /api/spotify/connection` — Desconexão idempotente com remoção das credenciais locais e invalidação de autorizações em trânsito.
 6. **[Ecos — escutas recentes](echoes.md)**
+   - `GET /api/echoes/albums` - Albuns distintos por ultima reproducao, com contagem total.
+   - `GET /api/echoes/albums/{spotifyId}/listens` - Historico paginado do album para o usuario autenticado.
    - `GET /api/echoes` — Consulta paginada por keyset das escutas importadas do usuário autenticado, sem acionar o Spotify.
    - `POST /api/echoes/sync` — Sincronização manual autenticada das reproduções recentes do Spotify para `Listens`, com cooldown de 60 s e guarda contra autorização antiga ([integração](../integrations/echoes.md), coleção [sonarfy-echoes.postman_collection.json](sonarfy-echoes.postman_collection.json)).
 

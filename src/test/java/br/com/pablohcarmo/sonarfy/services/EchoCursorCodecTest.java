@@ -49,6 +49,22 @@ class EchoCursorCodecTest {
                 assertThrows(ResponseStatusException.class, () -> codec.decode(42L, tamperedSig)).getStatusCode());
     }
 
+    // Rejeita cursores de outra consulta ou de outro álbum, preservando o cursor legado.
+    @Test
+    void isolatesQueryAndAlbumScopes() {
+        var time = OffsetDateTime.parse("2026-11-23T12:00:00Z");
+        var albums = codec.scoped("albums");
+        String cursor = albums.encode(42L, time, 10L);
+        assertEquals(10L, codec.scoped("albums").decode(42L, cursor).listenId());
+        assertThrows(ResponseStatusException.class, () -> codec.decode(42L, cursor));
+        assertThrows(ResponseStatusException.class, () -> albums.decode(99L, cursor));
+        assertThrows(ResponseStatusException.class,
+                () -> albums.decode(42L, codec.encode(42L, time, 10L)));
+        String history = codec.scoped("album:first").encode(42L, time, 10L);
+        assertThrows(ResponseStatusException.class, () -> codec.scoped("album:second").decode(42L, history));
+        assertThrows(ResponseStatusException.class, () -> albums.decode(42L, history));
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"", "   ", "not-base64!", "bm90LWEtY3Vyc29y"})
     void rejectsMalformedCursors(String invalid) {

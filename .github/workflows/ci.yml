@@ -114,15 +114,18 @@ jobs:
       - name: Install pinned Postman CLI
         run: npm install --global postman-cli@1.85.0
 
+      - name: Verify simulation cleanup and port reuse
+        timeout-minutes: 5
+        run: bash test-support/test-ci-simulation.sh
+
       - name: Execute location HTTP tests with GeoNames simulation
         timeout-minutes: 5
         shell: bash
         run: |
           set -euo pipefail
           simulation_log="$RUNNER_TEMP/geonames-simulation.log"
-          setsid postman simulation run test-support/location.sim.yaml --port 55441 --no-history --output ndjson > "$simulation_log" 2>&1 &
-          simulation_pid=$!
-          trap 'kill -- -"$simulation_pid" 2>/dev/null || true; wait "$simulation_pid" 2>/dev/null || true' EXIT
+          source test-support/ci-simulation.sh
+          start_simulation test-support/location.sim.yaml 55441 "$simulation_log"
           ready=false
           for attempt in {1..60}; do
             if ! kill -0 "$simulation_pid" 2>/dev/null; then
@@ -144,9 +147,8 @@ jobs:
       - name: Execute Spotify Web API tests with Postman simulation
         run: |
           simulation_log="$RUNNER_TEMP/spotify-simulation.log"
-          setsid postman simulation run test-support/spotify-recently-played.sim.yaml --port 55442 --no-history --output ndjson > "$simulation_log" 2>&1 &
-          simulation_pid=$!
-          trap 'kill -- -"$simulation_pid" 2>/dev/null || true; wait "$simulation_pid" 2>/dev/null || true' EXIT
+          source test-support/ci-simulation.sh
+          start_simulation test-support/spotify-recently-played.sim.yaml 55442 "$simulation_log"
           ready=false
           for attempt in {1..60}; do
             if ! kill -0 "$simulation_pid" 2>/dev/null; then
@@ -233,9 +235,8 @@ jobs:
           SONARFY_ECHOES_TEST_JDBC_URL: jdbc:postgresql://localhost:5432/sonarfy_echoes_validation
         run: |
           simulation_log="$RUNNER_TEMP/echoes-sync-simulation.log"
-          setsid postman simulation run test-support/spotify-recently-played.sim.yaml --port 55442 --no-history --output ndjson > "$simulation_log" 2>&1 &
-          simulation_pid=$!
-          trap 'kill -- -"$simulation_pid" 2>/dev/null || true; wait "$simulation_pid" 2>/dev/null || true' EXIT
+          source test-support/ci-simulation.sh
+          start_simulation test-support/spotify-recently-played.sim.yaml 55442 "$simulation_log"
           ready=false
           for attempt in {1..60}; do
             if ! kill -0 "$simulation_pid" 2>/dev/null; then
