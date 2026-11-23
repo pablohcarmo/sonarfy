@@ -6,6 +6,10 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 
 ## Índice de Contratos por Domínio
 
+- **[Avaliações e resenhas próprias](reviews.md)** — criação por `album.spotifyId`,
+  consulta própria, substituição, exclusão e coleção paginada.
+  [Integração com Avaliar](../integrations/reviews.md).
+
 - **[Reativação explícita de conta](account-reactivation.md)** — `POST /api/auth/reactivation`,
   credenciais atuais, novo login obrigatório e aviso transacional.
 

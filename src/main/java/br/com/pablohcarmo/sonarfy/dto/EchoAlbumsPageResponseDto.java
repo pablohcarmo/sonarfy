@@ -7,5 +7,6 @@ import br.com.pablohcarmo.sonarfy.dto.EchoesPageResponseDto.*;
 // Página de álbuns distintos do histórico importado do usuário.
 public record EchoAlbumsPageResponseDto(
         List<AlbumItem> items, String nextCursor, EchoSyncMetadataDto sync) {
-    public record AlbumItem(EchoAlbumDto album, OffsetDateTime lastPlayedAt, long listenCount) {}
+    public record AlbumItem(EchoAlbumDto album, OffsetDateTime lastPlayedAt, long listenCount,
+                            boolean rated, Long reviewId) {}
 }

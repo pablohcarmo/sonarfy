@@ -178,7 +178,7 @@
             "type": "text/javascript",
             "exec": [
               "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
-              "pm.test(\"Page contract\", () => { const b = pm.response.json(); pm.expect(b.items).to.be.an(\"array\"); pm.expect(b).to.have.property(\"nextCursor\"); for (const i of b.items) { pm.expect(i.listenCount).to.be.above(0); pm.expect(i.lastPlayedAt).to.be.a(\"string\"); pm.expect(i.album.spotifyId).to.be.a(\"string\"); } });"
+              "pm.test(\"Page contract\", () => { const b = pm.response.json(); pm.expect(b.items).to.be.an(\"array\"); pm.expect(b).to.have.property(\"nextCursor\"); for (const i of b.items) { pm.expect(i.listenCount).to.be.above(0); pm.expect(i.lastPlayedAt).to.be.a(\"string\"); pm.expect(i.album.spotifyId).to.be.a(\"string\"); pm.expect(i.rated).to.be.a(\"boolean\"); pm.expect(i).to.have.property(\"reviewId\"); pm.expect(i.rated).to.eql(i.reviewId !== null); if (i.rated) pm.expect(i.reviewId).to.be.a(\"number\").and.above(0); } });"
             ]
           }
         }

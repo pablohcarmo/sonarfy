@@ -50,6 +50,18 @@ jobs:
       - name: Execute automated tests
         run: ./mvnw test
 
+      - name: Validate reviews HTTP, persistence and concurrency
+        timeout-minutes: 5
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+          SONARFY_TEST_DB_USER: sonarfy_ci
+          SONARFY_TEST_DB_PASSWORD: isolated-ci-password
+          SONARFY_REVIEWS_TEST_JDBC_URL: jdbc:postgresql://localhost:5432/sonarfy_reviews_validation
+        run: |
+          docker exec "$POSTGRES_CONTAINER" createdb -U sonarfy_ci sonarfy_reviews_validation
+          docker exec -i "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_reviews_validation -v ON_ERROR_STOP=1 < db/tables.sql
+          ./mvnw test -Dtest=ReviewPostgresTest -Dsonarfy.test.reviews-postgres=true
+
       - name: Execute following HTTP, persistence and concurrency tests
         timeout-minutes: 5
         env:

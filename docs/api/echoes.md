@@ -149,7 +149,9 @@ Não consulta o Spotify nem altera estado. `limit` conta álbuns, padrão 20, en
   "items": [{
     "album": {"spotifyId": "album-id", "name": "Bad (Remastered)", "coverUrl": null},
     "lastPlayedAt": "2026-11-23T14:43:00Z",
-    "listenCount": 3
+    "listenCount": 3,
+    "rated": false,
+    "reviewId": null
   }],
   "nextCursor": null,
   "sync": {"lastSucceededAt": null, "historyStartsAt": null, "nextAllowedAt": null}
@@ -161,6 +163,24 @@ fora da página de detalhes. Edições com IDs distintos do Spotify permanecem s
 A ordem usa `(played_at DESC, listen_id DESC)` da mesma escuta mais recente de cada
 álbum. O agrupamento ocorre antes do filtro de cursor. Não se combinam máximos
 independentes. Com histórico inalterado, percorrer as páginas não repete nem omite álbuns.
+
+### Estado da avaliação própria
+
+Cada item inclui `rated` (booleano) e `reviewId` (ID da avaliação própria ou null).
+Sem avaliação: `"rated": false, "reviewId": null`; com avaliação:
+`"rated": true, "reviewId": 42`. O ID segue o contrato de [avaliações](reviews.md).
+Uma nota zero também significa avaliado; não derive o estado do valor da nota ou
+da existência de texto. Avaliações de terceiros não alteram nem expõem esse estado.
+
+A próxima consulta após criar ou excluir uma avaliação reflete o estado confirmado
+no banco. Editar mantém `rated: true` e o mesmo `reviewId`. Consultas simultâneas
+a uma mutação podem observar o estado anterior ao commit; recarregue após receber
+sucesso. Não é necessário sincronizar Spotify. Desconexão não apaga avaliações.
+
+O estado é obtido com LEFT JOIN após o agrupamento, usando a constraint única
+`(user_id, album_id)` já existente. Não há N+1, migration, mudança na contagem,
+ordenação ou no formato/escopo dos cursores. Os novos campos são aditivos;
+`GET /api/echoes` e o histórico de escutas por álbum mantêm seus formatos.
 
 ### `GET /api/echoes/albums/{spotifyId}/listens?limit=20&cursor=<opaco>`
 
