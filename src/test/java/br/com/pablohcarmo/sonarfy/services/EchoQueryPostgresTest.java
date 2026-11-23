@@ -273,6 +273,49 @@ class EchoQueryPostgresTest {
         verifyNoInteractions(syncService);
     }
 
+    // Agrupa antes do cursor, conta escutas antigas e isola histórico e usuários.
+    @Test
+    void groupsAlbumsBeforePagingAndPaginatesAlbumHistory() throws Exception {
+        importHistory(userOneId, 5);
+        importHistory(userTwoId, 2);
+        jdbc.update("INSERT INTO Albums (artist_id, spotify_id, name) SELECT artist_id, 'edition', 'Other Edition' FROM Albums WHERE spotify_id = 'fixtureAlbum'");
+        jdbc.update("UPDATE Tracks SET album_id = (SELECT album_id FROM Albums WHERE spotify_id = 'edition') WHERE spotify_id = 'fixtureTrack1'");
+        String bearer = "Bearer " + jwt.generateAccessToken(Long.toString(userOneId));
+        var first = mvc.perform(get("/api/echoes/albums").header("Authorization", bearer).param("limit", "1"))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.items[0].album.spotifyId").value("edition"))
+                .andExpect(jsonPath("$.items[0].listenCount").value(2))
+                .andReturn().getResponse().getContentAsString();
+        String cursor = json.readTree(first).get("nextCursor").asText();
+        mvc.perform(get("/api/echoes/albums").header("Authorization", bearer).param("limit", "1").param("cursor", cursor))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].album.spotifyId").value("fixtureAlbum"))
+                .andExpect(jsonPath("$.items[0].listenCount").value(3))
+                .andExpect(jsonPath("$.nextCursor").isEmpty());
+        var history = mvc.perform(get("/api/echoes/albums/fixtureAlbum/listens")
+                        .header("Authorization", bearer).param("limit", "1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].track.spotifyId").value("fixtureTrack0"))
+                .andReturn().getResponse().getContentAsString();
+        String historyCursor = json.readTree(history).get("nextCursor").asText();
+        mvc.perform(get("/api/echoes/albums/fixtureAlbum/listens").header("Authorization", bearer)
+                        .param("cursor", historyCursor))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(2));
+        for (String path : List.of("/api/echoes", "/api/echoes/albums", "/api/echoes/albums/edition/listens")) {
+            mvc.perform(get(path).header("Authorization", bearer).param("cursor", historyCursor))
+                    .andExpect(status().isBadRequest());
+        }
+        mvc.perform(get("/api/echoes/albums").header("Authorization", "Bearer " + jwt.generateAccessToken(Long.toString(userTwoId)))
+                        .param("cursor", cursor)).andExpect(status().isBadRequest());
+        for (String path : List.of("/api/echoes/albums", "/api/echoes/albums/missing/listens")) {
+            mvc.perform(get(path)).andExpect(status().isUnauthorized());
+            mvc.perform(get(path).header("Authorization", bearer).param("limit", "0"))
+                    .andExpect(status().isBadRequest());
+        }
+        mvc.perform(get("/api/echoes/albums/missing/listens").header("Authorization", bearer))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(0));
+        verifyNoInteractions(syncService);
+    }
+
     private com.fasterxml.jackson.databind.JsonNode readPage(long userId, String cursor) throws Exception {
         var request = get("/api/echoes").param("limit", "2")
                 .header("Authorization", "Bearer " + jwt.generateAccessToken(Long.toString(userId)));

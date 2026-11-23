@@ -1,6 +1,7 @@
 package br.com.pablohcarmo.sonarfy.services;
 
 import br.com.pablohcarmo.sonarfy.dto.EchoesPageResponseDto;
+import br.com.pablohcarmo.sonarfy.dto.EchoAlbumsPageResponseDto;
 import br.com.pablohcarmo.sonarfy.dto.EchoesPageResponseDto.*;
 import br.com.pablohcarmo.sonarfy.services.EchoCursorCodec.DecodedCursor;
 import org.springframework.http.HttpStatus;
@@ -44,13 +45,24 @@ public class EchoQueryService {
     // Consulta escutas importadas do usuário autenticado sem acionar o Spotify nem gravar estado.
     @Transactional(readOnly = true)
     public EchoesPageResponseDto list(Long userId, int limit, String cursor) {
+        return listHistory(userId, limit, cursor, null);
+    }
+
+    // Consulta somente as escutas do álbum, com cursor vinculado ao seu identificador.
+    @Transactional(readOnly = true)
+    public EchoesPageResponseDto albumHistory(Long userId, String albumSpotifyId, int limit, String cursor) {
+        return listHistory(userId, limit, cursor, albumSpotifyId);
+    }
+
+    private EchoesPageResponseDto listHistory(Long userId, int limit, String cursor, String albumSpotifyId) {
+        EchoCursorCodec codec = albumSpotifyId == null ? cursorCodec : cursorCodec.scoped("album:" + albumSpotifyId);
         if (limit < 1 || limit > MAX_LIMIT) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Limit must be between 1 and " + MAX_LIMIT + ".");
         }
-        DecodedCursor decoded = cursor == null ? null : cursorCodec.decode(userId, cursor);
+        DecodedCursor decoded = cursor == null ? null : codec.decode(userId, cursor);
 
-        List<ListenRow> fetched = fetchListenRows(userId, limit + 1, decoded);
+        List<ListenRow> fetched = fetchListenRows(userId, limit + 1, decoded, albumSpotifyId);
         boolean hasMore = fetched.size() > limit;
         List<ListenRow> pageRows = hasMore ? fetched.subList(0, limit) : fetched;
 
@@ -66,29 +78,68 @@ public class EchoQueryService {
                 .toList();
 
         String nextCursor = hasMore
-                ? cursorCodec.encode(userId, pageRows.getLast().playedAt(), pageRows.getLast().listenId())
+                ? codec.encode(userId, pageRows.getLast().playedAt(), pageRows.getLast().listenId())
                 : null;
         EchoSyncMetadataDto syncMetadata = fetchSyncMetadata(userId);
         return new EchoesPageResponseDto(items, nextCursor, syncMetadata);
     }
 
-    private List<ListenRow> fetchListenRows(long userId, int fetchLimit, DecodedCursor cursor) {
-        if (cursor == null) {
-            return jdbc.query("""
-                    SELECT l.listen_id, l.played_at,
-                           t.track_id, t.spotify_id, t.name, t.duration_ms, t.explicit,
-                           a.spotify_id, a.name, a.cover
+    // Agrupa todo o histórico antes de aplicar o cursor sobre a última escuta de cada álbum.
+    @Transactional(readOnly = true)
+    public EchoAlbumsPageResponseDto albums(Long userId, int limit, String cursor) {
+        if (limit < 1 || limit > MAX_LIMIT) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Limit must be between 1 and 50.");
+        }
+        var codec = cursorCodec.scoped("albums");
+        var decoded = cursor == null ? null : codec.decode(userId, cursor);
+        record AlbumRow(EchoAlbumsPageResponseDto.AlbumItem item, long listenId) {}
+        List<Object> args = new ArrayList<>();
+        args.add(userId);
+        String boundary = "";
+        if (decoded != null) {
+            boundary = "WHERE (played_at, listen_id) < (?, ?)";
+            args.add(decoded.playedAt());
+            args.add(decoded.listenId());
+        }
+        args.add(limit + 1);
+        var rows = jdbc.query("""
+                WITH ranked AS (
+                    SELECT a.spotify_id, a.name, a.cover, l.played_at, l.listen_id,
+                           COUNT(*) OVER (PARTITION BY a.album_id) AS listen_count,
+                           ROW_NUMBER() OVER (PARTITION BY a.album_id
+                               ORDER BY l.played_at DESC, l.listen_id DESC) AS position
                     FROM Listens l
                     JOIN Tracks t ON t.track_id = l.track_id
                     JOIN Albums a ON a.album_id = t.album_id
                     WHERE l.user_id = ?
-                    ORDER BY l.played_at DESC, l.listen_id DESC
-                    LIMIT ?
-                    """,
-                    (rs, rowNum) -> mapListenRow(rs),
-                    userId, fetchLimit);
+                ), latest AS (SELECT * FROM ranked WHERE position = 1)
+                SELECT * FROM latest %s
+                ORDER BY played_at DESC, listen_id DESC LIMIT ?
+                """.formatted(boundary), (rs, n) -> new AlbumRow(
+                new EchoAlbumsPageResponseDto.AlbumItem(
+                        new EchoAlbumDto(rs.getString("spotify_id"), rs.getString("name"), rs.getString("cover")),
+                        toUtc(rs.getObject("played_at", OffsetDateTime.class)), rs.getLong("listen_count")),
+                rs.getLong("listen_id")), args.toArray());
+        boolean more = rows.size() > limit;
+        var page = more ? rows.subList(0, limit) : rows;
+        String next = more ? codec.encode(userId, page.getLast().item().lastPlayedAt(), page.getLast().listenId()) : null;
+        return new EchoAlbumsPageResponseDto(page.stream().map(AlbumRow::item).toList(), next, fetchSyncMetadata(userId));
+    }
+
+    private List<ListenRow> fetchListenRows(long userId, int fetchLimit, DecodedCursor cursor, String albumSpotifyId) {
+        List<Object> args = new ArrayList<>();
+        args.add(userId);
+        String filters = "";
+        if (albumSpotifyId != null) {
+            filters += " AND a.spotify_id = ?";
+            args.add(albumSpotifyId);
         }
-        // Comparação estrita da tupla (played_at DESC, listen_id DESC) evita saltos ou repetições em empates.
+        if (cursor != null) {
+            filters += " AND (l.played_at, l.listen_id) < (?, ?)";
+            args.add(cursor.playedAt());
+            args.add(cursor.listenId());
+        }
+        args.add(fetchLimit);
         return jdbc.query("""
                 SELECT l.listen_id, l.played_at,
                        t.track_id, t.spotify_id, t.name, t.duration_ms, t.explicit,
@@ -96,13 +147,9 @@ public class EchoQueryService {
                 FROM Listens l
                 JOIN Tracks t ON t.track_id = l.track_id
                 JOIN Albums a ON a.album_id = t.album_id
-                WHERE l.user_id = ?
-                  AND (l.played_at < ? OR (l.played_at = ? AND l.listen_id < ?))
-                ORDER BY l.played_at DESC, l.listen_id DESC
-                LIMIT ?
-                """,
-                (rs, rowNum) -> mapListenRow(rs),
-                userId, cursor.playedAt(), cursor.playedAt(), cursor.listenId(), fetchLimit);
+                WHERE l.user_id = ? %s
+                ORDER BY l.played_at DESC, l.listen_id DESC LIMIT ?
+                """.formatted(filters), (rs, rowNum) -> mapListenRow(rs), args.toArray());
     }
 
     private static ListenRow mapListenRow(java.sql.ResultSet rs) throws java.sql.SQLException {

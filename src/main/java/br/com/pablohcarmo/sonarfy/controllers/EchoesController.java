@@ -1,6 +1,8 @@
 package br.com.pablohcarmo.sonarfy.controllers;
 
 import br.com.pablohcarmo.sonarfy.dto.EchoSyncResponseDto;
+import br.com.pablohcarmo.sonarfy.dto.EchoAlbumsPageResponseDto;
+import org.springframework.web.bind.annotation.PathVariable;
 import br.com.pablohcarmo.sonarfy.dto.EchoesPageResponseDto;
 import br.com.pablohcarmo.sonarfy.entities.User;
 import br.com.pablohcarmo.sonarfy.services.EchoQueryService;
@@ -38,6 +40,26 @@ public class EchoesController {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .body(page);
+    }
+
+    // Lista álbuns distintos pela reprodução mais recente do usuário.
+    @GetMapping("/albums")
+    public ResponseEntity<EchoAlbumsPageResponseDto> albums(
+            @AuthenticationPrincipal User user,
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestParam(required = false) String cursor) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(queryService.albums(user.getId(), limit, cursor));
+    }
+
+    // Expande um álbum sem limitar seu histórico ? página de álbuns carregada.
+    @GetMapping("/albums/{spotifyId}/listens")
+    public ResponseEntity<EchoesPageResponseDto> albumHistory(
+            @AuthenticationPrincipal User user, @PathVariable String spotifyId,
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestParam(required = false) String cursor) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(queryService.albumHistory(user.getId(), spotifyId, limit, cursor));
     }
 
     // Sincroniza escutas recentes do Spotify exclusivamente para o usuário autenticado.

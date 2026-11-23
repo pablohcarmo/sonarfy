@@ -3,7 +3,8 @@
 Contrato HTTP do recurso **Ecos**, que importa reproduções recentes efetivas do Spotify para a conta autenticada no Sonarfy.
 
 - Ecos **não** representa músicas curtidas/salvas, biblioteca salva ou playlists.
-- O Spotify disponibiliza apenas uma janela recente (cerca de 50 reproduções mais recentes, após mais de 30 segundos de reprodução). O Sonarfy acumula apenas o que cada sincronização captura, podendo haver lacunas se o usuário ouvir mais de ~50 faixas entre sincronizações.
+- O Spotify disponibiliza apenas uma janela recente (limitada ao histórico retornado pelo provedor). O Sonarfy acumula apenas o que cada sincronização captura, podendo haver lacunas se o usuário ouvir mais de ~50 faixas entre sincronizações.
+- Iniciar ou pular uma faixa não garante sua presença na próxima sincronização: o Sonarfy importa os eventos disponibilizados pelo Spotify. Não há regra local de duração mínima nem exigência local de concluir a faixa. Veja a [validação manual](../integrations/echoes.md#escutas-puladas-e-concluidas--teste-manual-em-23112026).
 - Nesta fase, Ecos é **privado ao usuário autenticado** (sem rotas públicas ou por `{targetId}`).
 
 ---
@@ -133,3 +134,53 @@ Lista as escutas já importadas do usuário autenticado em ordem decrescente (`p
 | --- | --- |
 | `400` | `limit` fora de `1..50` ou não inteiro; `cursor` malformado, em branco, adulterado, incompatível ou pertencente a outro usuário |
 | `401` | Bearer ausente, inválido, expirado ou conta inativa/não verificada |
+
+
+## Agrupamento global por álbum — issue #83
+
+### `GET /api/echoes/albums?limit=20&cursor=<opaco>`
+
+Retorna álbuns distintos de todo o histórico importado do usuário autenticado.
+Exige Bearer access e conta ativa/verificada; responde com `Cache-Control: no-store`.
+Não consulta o Spotify nem altera estado. `limit` conta álbuns, padrão 20, entre 1 e 50.
+
+```json
+{
+  "items": [{
+    "album": {"spotifyId": "album-id", "name": "Bad (Remastered)", "coverUrl": null},
+    "lastPlayedAt": "2026-11-23T14:43:00Z",
+    "listenCount": 3
+  }],
+  "nextCursor": null,
+  "sync": {"lastSucceededAt": null, "historyStartsAt": null, "nextAllowedAt": null}
+}
+```
+
+A contagem inclui todas as escutas importadas desse álbum para o usuário, inclusive
+fora da página de detalhes. Edições com IDs distintos do Spotify permanecem separadas.
+A ordem usa `(played_at DESC, listen_id DESC)` da mesma escuta mais recente de cada
+álbum. O agrupamento ocorre antes do filtro de cursor. Não se combinam máximos
+independentes. Com histórico inalterado, percorrer as páginas não repete nem omite álbuns.
+
+### `GET /api/echoes/albums/{spotifyId}/listens?limit=20&cursor=<opaco>`
+
+Retorna escutas individuais do álbum indicado por seu ID do Spotify, no mesmo formato
+`EchoesPageResponseDto` de `GET /api/echoes`, com artistas ordenados por faixa.
+Mantém reproduções distintas da mesma faixa e ordena por `(played_at DESC, listen_id DESC)`.
+`limit` conta escutas, padrão 20, entre 1 e 50. álbum inexistente ou sem escutas do usuário
+retorna `200` com `items: []` e `nextCursor: null`, sem revelar histórico de outras contas.
+Autenticação, ausência de efeitos colaterais e cabeçalhos seguem a consulta de álbuns.
+
+### Cursores e erros das novas consultas
+
+Cursores são opacos, assinados, versionados e vinculados ao usuário e à consulta.
+O cursor do histórico também é vinculado ao álbum. Não intercambiar cursores entre
+álbuns, listagem agrupada e `GET /api/echoes`. Cursor vazio, inválido, adulterado ou
+incompatível e limites inválidos retornam `400`; autenticação inválida ou conta
+inativa/não verificada retorna `401`.
+
+Histórico vazio retorna `items: []` e `nextCursor: null`. Não há snapshot entre
+requisições: novas importações podem mover álbuns para antes de um cursor já emitido
+e alterar contagens. Após sincronizar, descartar as páginas e os cursores, inclusive
+os históricos expandidos, e reiniciar. Encerrar a paginação quando `nextCursor` for nulo.
+O contrato original de `GET /api/echoes` permanece preservado.

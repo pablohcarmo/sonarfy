@@ -131,3 +131,57 @@ As respostas bem-sucedidas relatadas apresentaram `complete: true`,
 esse teste não demonstra paginação real além dessa janela, falhas do provedor
 ou concorrência manual. Tais cenários possuem validação automatizada conforme
 descrito acima; o resultado da CI remota permanece uma evidência separada.
+
+
+## Integração do agrupamento global — #83
+
+A listagem deve consumir `GET /api/echoes/albums`, renderizando diretamente um card
+por `album.spotifyId`, `lastPlayedAt` e `listenCount`. Não executar agrupamento global
+sobre as páginas de escutas do endpoint legado.
+
+Ao expandir, consultar `GET /api/echoes/albums/{spotifyId}/listens` e manter seu cursor
+separado por álbum. A contagem do card vem do backend e não do número de detalhes
+carregados. Preservar o horário de cada reprodução e permitir carregar mais detalhes.
+A consulta agrupada fornece nome, capa e ID do álbum; não fornece artistas no resumo.
+Artistas continuam disponíveis por escuta no histórico expandido.
+
+Após sincronizar, limpar páginas e cursores de ambas as consultas e carregar novamente.
+Não há snapshot imutável durante importações concorrentes. A ausência de repetição/omissão
+entre páginas é garantida com histórico inalterado. O frontend permanece somente leitura
+nesta entrega e sua adaptação exige escopo autorizado próprio.
+
+A consulta utiliza as relações existentes Listens → Tracks → Albums, sem migração.
+Testes PostgreSQL incluem escutas intercaladas, empates, edições distintas, contagens,
+paginação de detalhes e rejeição de cursores de outro contexto.
+
+
+### Validacao local da issue #83
+
+- PostgreSQL 17 descartavel, em porta dedicada, preparado com `db/tables.sql`.
+- Direcionados: `EchoCursorCodecTest,EchoesControllerTest,EchoQueryPostgresTest`,
+  com `-Dsonarfy.test.echoes-postgres=true -DforkCount=0`: 21 executados, zero falhas/erros.
+- Suite completa: `.\mvnw.cmd test -Dsonarfy.test.echoes-postgres=true -DforkCount=0 -Dspring.test.context.cache.maxSize=4`:
+  808 reportados, 720 executados, 88 ignorados, zero falhas/erros.
+- Colecao Postman validada como JSON; novas requisicoes nao executadas contra ambiente remoto.
+- Nao houve benchmark com volume de producao ou validacao visual do frontend.
+  Avaliar plano de execucao com volume representativo antes de propor indices adicionais.
+
+
+## Escutas puladas e concluidas - teste manual em 23/11/2026
+
+O usuario relatou ter aberto varios albuns e pulado as faixas. Ao sincronizar,
+essas escutas nao apareceram em Ecos. Depois de ouvir faixas completas e
+sincronizar novamente, os registros apareceram.
+
+Esse resultado registra o comportamento observado pelo usuario no teste manual;
+nao estabelece uma exigencia universal do Spotify de ouvir a faixa inteira nem
+um limiar garantido em segundos. Nao foram capturadas as respostas HTTP dessa
+sessao para comparar os eventos recebidos do provedor.
+
+O backend importa os eventos retornados pelo historico recente do Spotify.
+Nao ha filtro local por tempo efetivamente ouvido nem por conclusao da faixa.
+A duracao cadastrada da musica nao representa o tempo que o usuario ouviu.
+Por isso, iniciar ou pular faixas nao deve ser usado isoladamente como prova de
+falha na sincronizacao ou no agrupamento. Se houver divergencia, comparar a
+resposta de sincronizacao (fetched, imported, alreadyKnown, skipped, complete e
+newestPlayedAt) com a consulta de albuns executada em seguida, sem expor tokens.
