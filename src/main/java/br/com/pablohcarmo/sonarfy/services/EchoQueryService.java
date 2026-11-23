@@ -104,7 +104,7 @@ public class EchoQueryService {
         args.add(limit + 1);
         var rows = jdbc.query("""
                 WITH ranked AS (
-                    SELECT a.spotify_id, a.name, a.cover, l.played_at, l.listen_id,
+                    SELECT a.album_id, l.user_id, a.spotify_id, a.name, a.cover, l.played_at, l.listen_id,
                            COUNT(*) OVER (PARTITION BY a.album_id) AS listen_count,
                            ROW_NUMBER() OVER (PARTITION BY a.album_id
                                ORDER BY l.played_at DESC, l.listen_id DESC) AS position
@@ -113,12 +113,15 @@ public class EchoQueryService {
                     JOIN Albums a ON a.album_id = t.album_id
                     WHERE l.user_id = ?
                 ), latest AS (SELECT * FROM ranked WHERE position = 1)
-                SELECT * FROM latest %s
+                SELECT latest.*, r.review_id FROM latest
+                LEFT JOIN Reviews r ON r.album_id = latest.album_id AND r.user_id = latest.user_id
+                %s
                 ORDER BY played_at DESC, listen_id DESC LIMIT ?
                 """.formatted(boundary), (rs, n) -> new AlbumRow(
                 new EchoAlbumsPageResponseDto.AlbumItem(
                         new EchoAlbumDto(rs.getString("spotify_id"), rs.getString("name"), rs.getString("cover")),
-                        toUtc(rs.getObject("played_at", OffsetDateTime.class)), rs.getLong("listen_count")),
+                        toUtc(rs.getObject("played_at", OffsetDateTime.class)), rs.getLong("listen_count"),
+                        rs.getObject("review_id", Long.class) != null, rs.getObject("review_id", Long.class)),
                 rs.getLong("listen_id")), args.toArray());
         boolean more = rows.size() > limit;
         var page = more ? rows.subList(0, limit) : rows;

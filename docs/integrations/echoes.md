@@ -187,6 +187,15 @@ resposta de sincronizacao (fetched, imported, alreadyKnown, skipped, complete e
 newestPlayedAt) com a consulta de albuns executada em seguida, sem expor tokens.
 
 
+## Estado Avaliar/Avaliado
+
+`GET /api/echoes/albums` agora inclui `rated` e `reviewId` em cada item. Preserve
+os dois campos no adapter e no estado da página; mostre Avaliado quando rated for
+true, sem desabilitar o acesso à edição. Após criar/editar/excluir, revalide a lista
+ao retornar à página, inclusive por histórico do navegador. Nenhum novo sync com
+Spotify é necessário. Regras e pontos concretos de integração estão em
+[avaliações](reviews.md#estado-e-invalidação). O frontend permanece somente leitura.
+
 ## CI simulation cleanup - PR #84
 
 The CI log from 23/11/2026 showed EADDRINUSE on 127.0.0.1:55442 when
