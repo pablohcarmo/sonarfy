@@ -1,6 +1,35 @@
 # Integração — Ecos
 
-Documenta a arquitetura da sincronização de escutas recentes do Spotify (`POST /api/echoes/sync`) e o guia de integração para o frontend.
+Documenta a arquitetura da sincronização e consulta de escutas recentes do Spotify
+e o guia de integração para o frontend.
+
+## Automação da consulta em 23/11/2026
+
+`EchoQueryPostgresTest` executa a cadeia real de segurança, controller e consulta
+com duas contas de fixture em PostgreSQL descartável. O setup valida o schema
+versionado, sem `create-drop`, e não recebe a conexão do banco da aplicação.
+Foram automatizados: autenticação ausente/de propósito incorreto, conta
+inativa/não verificada, limites e cursores inválidos, isolamento entre dois
+históricos não vazios, cursor de outra conta, leitura após desconectar e
+paginação completa de 51 escutas em 26 páginas de tamanho dois, incluindo
+empates de horário, sem repetição de IDs e com término em `nextCursor: null`.
+
+Execução direcionada: `EchoCursorCodecTest,EchoesControllerTest,EchoQueryPostgresTest`,
+com `-Dsonarfy.test.echoes-postgres=true`, `-DforkCount=0` e
+`-Dspring.test.context.cache.maxSize=4`: 19 testes executados, zero falhas/erros.
+A CI já inclui explicitamente `EchoQueryPostgresTest` no passo PostgreSQL de
+Ecos. Isso registra a configuração de execução contínua, não um resultado remoto.
+Esses testes usam credenciais de fixture e não consultam o Spotify real.
+
+A suíte completa, com `-Dsonarfy.test.echoes-postgres=true` e os mesmos limites de
+memória, passou: 806 reportados, 718 executados, 88 ignorados, zero falhas/erros.
+As suítes opt-in de simulação e outros domínios permaneceram desabilitadas nessa
+execução; testes ignorados não contam como executados.
+
+Para repetir, prepare `db/tables.sql` em um PostgreSQL descartável com banco
+local dedicado `sonarfy_echoes_validation` e configure `SONARFY_ECHOES_TEST_JDBC_URL`,
+`SONARFY_TEST_DB_USER` e `SONARFY_TEST_DB_PASSWORD` apenas no ambiente do processo.
+Execute `.\mvnw.cmd test -Dtest=EchoCursorCodecTest,EchoesControllerTest,EchoQueryPostgresTest -Dsonarfy.test.echoes-postgres=true`.
 
 ## Arquitetura e garantias de concorrência
 
@@ -14,10 +43,14 @@ Documenta a arquitetura da sincronização de escutas recentes do Spotify (`POST
 
 - Em `GET /api/spotify/connection`: quando `status === "CONNECTED"` e `recentListensAuthorized === false`, orientar o usuário a reconectar o Spotify via `POST /api/spotify/authorization` para conceder `user-read-recently-played`.
 - Para `POST /api/echoes/sync` (`credentials: "omit"`, `cache: "no-store"`):
-  - `200`: atualizar estado/contagem e sinalizar se `possibleGap === true` ou `complete === false`. Se houver `Retry-After`, aguardar o prazo mesmo nessa resposta parcial; ele também é aplicado pelo backend.
+  - `200`: atualizar estado/contagem e sinalizar se `possibleGap === true` ou `complete === false`. Se houver `Retry-After`, aguardar o prazo mesmo nessa resposta parcial; ele também é aplicado pelo backend. Depois de sincronizar, reiniciar a listagem `GET /api/echoes` sem `cursor`.
   - `409`: consultar `GET /api/spotify/connection` para distinguir `DISCONNECTED`, `REAUTHORIZATION_REQUIRED` ou `recentListensAuthorized: false`.
-  - `429` ou `503`: ler `Retry-After` (quando presente) e exibir mensagem amigável de aguardo.
+  - `429` ou `503`: ler `Retry-After` (exposto via CORS em `Access-Control-Expose-Headers`) e exibir mensagem amigável de aguardo.
   - `502` ou `504`: exibir mensagem amigável de indisponibilidade temporária sem detalhes técnicos.
+- Para `GET /api/echoes?limit=20&cursor=...` (`credentials: "omit"`, `cache: "no-store"`):
+  - `200`: renderizar `items` usando `item.id` como chave estável; paginar passando `nextCursor` enquanto não for `null`; exibir `sync.lastSucceededAt` e `sync.historyStartsAt` com o aviso de que Ecos acumula apenas o que foi sincronizado a partir das reproduções recentes.
+  - Se `sync.nextAllowedAt` estiver no futuro, o botão "Sincronizar" pode respeitar o cooldown antes mesmo de nova chamada.
+  - `400` (cursor inválido/expirado): reiniciar a listagem a partir da primeira página sem `cursor`.
 
 ## Reserva e deploy
 
