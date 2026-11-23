@@ -31,6 +31,21 @@ local dedicado `sonarfy_echoes_validation` e configure `SONARFY_ECHOES_TEST_JDBC
 `SONARFY_TEST_DB_USER` e `SONARFY_TEST_DB_PASSWORD` apenas no ambiente do processo.
 Execute `.\mvnw.cmd test -Dtest=EchoCursorCodecTest,EchoesControllerTest,EchoQueryPostgresTest -Dsonarfy.test.echoes-postgres=true`.
 
+### Revalidação da sincronização após a consulta em 23/11/2026
+
+O contexto de `EchoSyncPostgresSimulationTest` registra um mock de
+`EchoQueryService`, nova dependência do controller que não participa dos cenários
+de sincronização. A segurança, o serviço de sincronização, o writer e o cliente
+Feign continuam reais, com PostgreSQL temporário e simulação Postman.
+
+A execução direcionada com `-Dtest=EchoSyncPostgresSimulationTest` e
+`-Dsonarfy.test.echoes-sync-e2e=true` passou: seis executados, zero falhas/erros.
+A suíte completa repetida com `sonarfy.test.echoes-postgres`,
+`sonarfy.test.echoes-sync-e2e` e `sonarfy.test.spotify-api-sim` habilitados passou:
+807 reportados, 725 executados, 82 ignorados, zero falhas/erros. Foram mantidos
+`-DforkCount=0` e `-Dspring.test.context.cache.maxSize=4` por memória local.
+O resultado é local, sem chamadas ao Spotify real ou validação remota desta correção.
+
 ## Arquitetura e garantias de concorrência
 
 1. **Sem transação aberta durante chamadas HTTP:** `EchoSyncService.sync` não usa `@Transactional` no método principal. Ele adquire um lease/cooldown curto em `echo_sync_state`, obtém a credencial via `SpotifyAccessTokenService.getValidCredential` (`REQUIRES_NEW`) e libera bloqueios antes de consultar `GET /v1/me/player/recently-played`.

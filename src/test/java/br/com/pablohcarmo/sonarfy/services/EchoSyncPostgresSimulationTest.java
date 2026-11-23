@@ -35,6 +35,7 @@ import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.cloud.openfeign.FeignAutoConfiguration;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -65,7 +66,10 @@ class EchoSyncPostgresSimulationTest {
             AuthSpotifyService.class, SpotifyAccessTokenService.class,
             SpotifyRecentlyPlayedService.class, EchoImportWriter.class,
             EchoSyncService.class, EchoesController.class})
-    static class Config extends EchoesPersistencePostgresTest.Config {}
+    static class Config extends EchoesPersistencePostgresTest.Config {
+        // A consulta não participa dos cenários desta suíte de sincronização.
+        @Bean EchoQueryService echoQueryService() { return Mockito.mock(EchoQueryService.class); }
+    }
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
