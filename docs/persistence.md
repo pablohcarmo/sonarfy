@@ -1,5 +1,32 @@
 # Persistência das classes existentes
 
+A preparação interna de desativação adiciona a tabela
+`account_deactivation_requests` pela migration 010, após 009. O schema
+consolidado já a inclui para bancos novos. Não há endpoints ou envio de e-mail
+nesta etapa; a aplicação da migration no banco da aplicação exige autorização
+específica. Consulte [persistência e validação da desativação](integrations/account-deactivation.md).
+
+## Aplicação local da migration 010 em 21/11/2026
+
+Após autorização explícita, `010_create_account_deactivation_requests.sql` foi
+aplicada em uma única transação no banco local `sonarfy`, em `localhost:5433`.
+O serviço estava indisponível após o reinício. O contêiner foi reconstruído pelo
+serviço `db` do Compose, reutilizando o volume original `infra_db_data`, cuja
+inicialização PostgreSQL 17 foi verificada previamente em modo somente leitura.
+Nenhum banco vazio foi inicializado e o Adminer não foi iniciado.
+
+A inspeção confirmou 009 presente e 010 ausente antes da aplicação. Backup
+completo em formato custom, com catálogo verificado, em
+`target/db-backups/sonarfy-before-deactivation-010-20261121-200716.dump`
+(ignorado pelo Git). Não foi executado teste de restauração desse backup.
+
+Após o commit, foram conferidas colunas, nulabilidade, chave primária,
+unicidade, FK e constraints de hash e datas. As contagens e fingerprints das
+14 tabelas públicas anteriores permaneceram iguais; a tabela nova ficou vazia.
+Permaneceram quatro contas, duas relações, 29 registros de refresh e uma conexão
+Spotify. Nenhuma conta ou solicitação foi criada ou modificada para testes nesse
+banco. A validação funcional continua restrita ao PostgreSQL descartável.
+
 A reativação acrescenta `users.access_token_version` e a outbox dedicada
 `reactivation_mail_outbox`, por meio da migration 009 após 008. O schema
 consolidado já contém ambos para bancos novos. Preparar a migration não autoriza
