@@ -14,6 +14,15 @@ public class ReviewController {
     private final ReviewService reviews;
     public ReviewController(ReviewService reviews) { this.reviews = reviews; }
 
+    // A comunidade usa somente dados públicos de autores elegíveis, sem ampliar permissões de escrita.
+    @GetMapping("/albums/{spotifyId}/reviews")
+    public ResponseEntity<ReviewDto.AlbumPage> community(@AuthenticationPrincipal User actor, @PathVariable String spotifyId,
+            @RequestParam(defaultValue = "20") int limit, @RequestParam(defaultValue = "recent") String sort,
+            @RequestParam(required = false) String cursor) {
+        return ResponseEntity.ok().header("Cache-Control", "no-store")
+                .body(reviews.album(actor.getId(), spotifyId, limit, sort, cursor));
+    }
+
     // Coleção é uma leitura de avaliações existentes, sem ampliar permissões de escrita.
     @GetMapping("/profile/by-handle/{handle}/collection")
     public ResponseEntity<ReviewDto.CollectionPage> collection(@AuthenticationPrincipal User actor, @PathVariable String handle,

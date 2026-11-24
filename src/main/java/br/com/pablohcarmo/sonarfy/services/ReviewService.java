@@ -96,6 +96,51 @@ public class ReviewService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Limit must be 1 to 50; beforeId must be positive.");
     }
 
+    // Elegibilidade e avaliações compartilham um snapshot; toda página restringe o álbum no banco.
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public ReviewDto.AlbumPage album(long actor, String spotifyId, int limit, String sort, String cursor) {
+        validatePage(limit, null);
+        eligible(actor, false);
+        if (spotifyId == null || !spotifyId.matches("[A-Za-z0-9]{22}")
+                || !java.util.Set.of("recent", "oldest", "highest", "lowest").contains(sort))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid album review options.");
+        var albums = db.query("SELECT album_id FROM albums WHERE spotify_id = ?", (rs, n) -> rs.getLong(1), spotifyId);
+        if (albums.isEmpty()) throw missing();
+        long album = albums.getFirst();
+        String context = "album-reviews:" + actor + ":" + album + ":" + sort;
+        var position = cursor == null ? null : cursors.decode(context, cursor);
+        boolean byRating = sort.equals("highest") || sort.equals("lowest");
+        String direction = sort.equals("oldest") || sort.equals("lowest") ? "ASC" : "DESC";
+        String comparison = direction.equals("ASC") ? ">" : "<";
+        var args = new java.util.ArrayList<Object>();
+        args.add(album);
+        String boundary = "";
+        if (position != null) {
+            if (byRating) {
+                boundary = " AND (r.rating, r.review_id) " + comparison + " (?, ?)";
+                args.add(java.math.BigDecimal.valueOf(position.halfPoints()).divide(java.math.BigDecimal.valueOf(2)));
+            } else boundary = " AND r.review_id " + comparison + " ?";
+            args.add(position.id());
+        }
+        args.add(limit + 1);
+        String order = byRating ? "r.rating " + direction + ", r.review_id " + direction : "r.review_id " + direction;
+        var rows = db.query("""
+                SELECT r.review_id, r.rating, r.review_text, r.created_at, r.updated_at,
+                    u.user_id, u.handle, u.display_name, u.avatar
+                FROM reviews r JOIN users u ON u.user_id = r.user_id AND u.active AND u.verified
+                WHERE r.album_id = ?
+                """ + boundary + " ORDER BY " + order + " LIMIT ?", (rs, n) -> new ReviewDto.CommunityItem(
+                rs.getLong("review_id"), new ReviewDto.Author(rs.getLong("user_id"), rs.getString("handle"),
+                rs.getString("display_name"), rs.getString("avatar")), rs.getBigDecimal("rating"), rs.getString("review_text"),
+                rs.getObject("created_at", OffsetDateTime.class).withOffsetSameInstant(ZoneOffset.UTC),
+                rs.getObject("updated_at", OffsetDateTime.class).withOffsetSameInstant(ZoneOffset.UTC)), args.toArray());
+        boolean more = rows.size() > limit;
+        var items = more ? rows.subList(0, limit) : rows;
+        String next = more ? cursors.encode(context, new CollectionCursorCodec.Position(items.getLast().reviewId(),
+                items.getLast().rating().multiply(java.math.BigDecimal.valueOf(2)).intValueExact())) : null;
+        return new ReviewDto.AlbumPage(items, next);
+    }
+
     // Contagens e página usam o mesmo snapshot; a ordenação e o keyset são globais no banco.
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ReviewDto.CollectionPage collection(long actor, String handle, int limit, String sort,

@@ -551,11 +551,17 @@ a persistência e concorrência são cobertas pelo teste PostgreSQL opt-in da CI
 
 ## Próximas entregas
 
-- Integrar o serviço interno de acesso aos futuros consumidores de sincronização.
+O serviço de acesso já atende a sincronização de [Ecos](echoes.md).
+A consulta de álbum por ID usa a credencial da aplicação e alimenta os
+[detalhes e a comunidade](album-page.md), cuja última implementação backend
+foi aceita pelo usuário em 24/11/2026 e aguarda o fluxo de review/merge.
+O estado das migrations e as evidências de testes estão no
+[contrato](../api/albums.md).
+
 - Tratamento do limite global de autorizações pendentes (issue #34).
-- Sincronização de escutas e consulta de dados musicais.
 - Observabilidade de falhas de persistência.
-- Consulta de álbuns e artistas em PR separado.
+- Busca de catálogo por nome e consulta dedicada de artistas ficam fora do
+  escopo backend da página do álbum.
 
 Referências: [Authorization Code Flow](https://developer.spotify.com/documentation/web-api/tutorials/code-flow)
 e [Redirect URIs](https://developer.spotify.com/documentation/web-api/concepts/redirect_uri).

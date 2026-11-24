@@ -2,9 +2,85 @@
 
 ## Estado da implementação
 
-Entrega 3: `GET /api/albums/{spotifyId}`, autenticado, com metadados e agregados
-da comunidade. As entregas anteriores forneceram cliente Spotify e catálogo.
+Entrega 4: detalhes e avaliações da comunidade por álbum, com autenticação,
+agregados, paginação e quatro ordenações. As entregas anteriores forneceram
+cliente Spotify, catálogo e detalhes.
 Referência de catálogo: issue [#52](https://github.com/pablohcarmo/sonarfy/issues/52).
+
+### Aceite do backend e pendências
+
+Em 24/11/2026, após receber os resultados da entrega 4, o usuário confirmou
+“Tudo certo, atualize a documentação”. Fica registrado o aceite do escopo backend
+da página: catálogo, detalhes/agregados, avaliação própria e comunidade com
+paginação e quatro ordenações. Isso não atribui testes visuais ao usuário nem
+representa o encerramento do projeto inteiro.
+
+A implementação final está na branch `feat/album-community-reviews`, encaminhada
+para review/merge. A aprovação da CI dessa alteração não foi observada.
+Migrations 017 e 018 já foram aplicadas ao banco local com autorização; a 019
+permanece pendente nesse banco, tendo sido validada apenas no descartável.
+Integração e validação do frontend continuam separadas, conforme o
+[guia da página](../integrations/album-page.md). Likes, comentários, respostas,
+notificações e busca de catálogo por nome não são pendências desse escopo.
+
+## Avaliações da comunidade
+
+`GET /api/albums/{spotifyId}/reviews?sort=recent&limit=20&cursor=...`
+exige Bearer de conta ativa e verificada e retorna `Cache-Control: no-store`:
+
+```json
+{
+  "items":[{
+    "reviewId":42,
+    "author":{"id":7,"handle":"musicfan","displayName":"Music Fan","avatarUrl":null},
+    "rating":8.5,
+    "reviewText":null,
+    "createdAt":"2026-11-24T12:00:00Z",
+    "updatedAt":"2026-11-24T12:00:00Z"
+  }],
+  "nextCursor":null
+}
+```
+
+Inclui avaliações próprias e de terceiros sem exigir seguimento, inclusive nota
+zero e avaliações sem texto. Exclui autores inativos ou não verificados, usando
+a mesma elegibilidade dos agregados. O DTO não expõe e-mail, localização ou dados
+cadastrais. Autor, conta solicitante e avaliações são lidos no mesmo snapshot
+transacional. Reativação restaura visibilidade nas leituras seguintes.
+
+`limit`: 1–50, padrão 20. `sort` aceita somente:
+
+| Valor | Ordem global no banco |
+| --- | --- |
+| `recent` (padrão) | `reviewId DESC` |
+| `oldest` | `reviewId ASC` |
+| `highest` | `rating DESC`, desempate por `reviewId DESC` |
+| `lowest` | `rating ASC`, desempate por `reviewId ASC` |
+
+Recentes/antigas seguem a ordem de atribuição do ID de publicação, como nas
+consultas existentes de avaliações; editar não altera essa posição. A paginação
+é keyset, com busca de `limit + 1`, sem offset, N+1 ou contagem global duplicada.
+Média e total permanecem no endpoint de detalhes.
+
+Enviar `nextCursor` como `cursor`, mantendo álbum, conta e ordenação. Nulo encerra
+a navegação; página vazia retorna `items: []` e `nextCursor: null`. O cursor é
+opaco, assinado e não concede permissão de escrita. Permanece válido se a avaliação
+da fronteira for excluída. Alterar álbum, conta ou ordenação exige reiniciar a
+paginação; reutilizar o cursor em outro contexto retorna 400. Não há snapshot
+entre requisições: publicações/exclusões e mudanças de elegibilidade afetam páginas
+seguintes. Nas ordenações por nota, edições podem mover itens entre fronteiras e
+causar repetição/omissão; após mutações, recarregar desde o início.
+
+Esta rota não consulta o Spotify nem importa catálogo. Consultar primeiro os
+detalhes para resolver um álbum desconhecido e só então carregar a lista. Álbum
+local conhecido sem avaliações elegíveis retorna 200 vazio; desconhecido retorna
+404. ID exige 22 caracteres alfanuméricos. ID, limit, sort ou cursor inválidos:
+400. Bearer ausente/inválido ou conta inelegível: 401.
+
+Leitura não autoriza editar ou excluir avaliações de terceiros. Não há likes,
+comentários, favoritos ou filtro de avaliações com texto nesta entrega. Aplicar
+a migration `019_add_album_review_rating_index.sql` em bancos existentes; a 018
+atende recentes/antigas e a 019 atende maior/menor nota.
 
 ## Detalhes do álbum
 
@@ -56,7 +132,7 @@ Resposta inválida de token retorna 502. No 429 da API de álbum, a resposta 503
 preserva `Retry-After` positivo quando fornecido. Erros controlados não retornam
 corpo externo nem credenciais e usam `no-store`. Falhas não geram catálogo parcial.
 Aplicar previamente migrations 017 (catálogo) e 018 (índice de avaliações por álbum)
-em bancos existentes. A lista da comunidade permanece para a próxima entrega.
+em bancos existentes. A lista da comunidade está descrita acima.
 
 ## Contrato interno entregue
 
@@ -118,7 +194,7 @@ Reutiliza Feign com 5 segundos de conexão, 10 segundos de leitura e sem retry
 automático. A categoria `NOT_FOUND` aplica-se à consulta de álbum; Ecos mantém
 sua tradução anterior de falhas da API.
 
-## Escopo definido para as próximas entregas
+## Escopo da página no backend
 
 - Listar avaliações, inclusive sem texto, com identidade pública do autor e data.
 - Ordenar por mais recentes, mais antigas, maior nota e menor nota, com paginação.
@@ -127,7 +203,7 @@ sua tradução anterior de falhas da API.
 
 A tela representa notas como estrelas de 0–5, preservando o contrato 0–10.
 Busca por nome, likes, comentários e notificações não integram esta entrega.
-A rota da lista da comunidade e seu DTO serão formalizados na próxima entrega.
+Detalhes e comunidade têm contratos separados para evitar duplicar metadados e agregados.
 
 ## Validação reproduzível
 
@@ -267,3 +343,37 @@ com backup restaurado e preservação das linhas anteriores, conforme o
   `target/album-after-migration-simulation.ndjson`, `target/album-live-result.json`
   e `target/album-live-postman.log`. O funcionamento contra o provedor real foi
   observado para o álbum e o mercado testados, separadamente dos cenários simulados.
+
+### Entrega 4 — validação local em 24/11/2026
+
+Branch iniciada após o merge do PR #95, sem testes iniciais conforme solicitação
+do usuário. Depois da implementação:
+
+- Suíte focada: 22 executados, zero falhas/erros (`AlbumDetailsPostgresTest`,
+  `AlbumCatalogPostgresTest` e `ReviewInputTest`).
+- Suíte completa: 887 reportados, 736 executados, 151 ignorados, zero falhas/erros
+  (`BUILD SUCCESS`). Flags: `-Dsonarfy.test.catalog-postgres=true`,
+  `-Dsonarfy.test.albums-postman=true`, `-Dsonarfy.test.spotify-api-sim=true` e
+  `-Dsonarfy.test.spotify-api-url=http://127.0.0.1:55468/spotify-api`.
+- HTTP real e segurança Bearer contra PostgreSQL 17 descartável em
+  `127.0.0.1:55467/sonarfy_catalog_validation`. Migration 019 aplicada nesse banco;
+  o teste removeu somente esse índice, reaplicou o script duas vezes e verificou
+  as ordenações e os dados preservados. Sem aplicação no banco pessoal.
+- Casos: quatro ordenações com desempate por ID e notas iguais, duas páginas sem
+  duplicatas, dados públicos do autor, nota zero/texto nulo, coincidência com os
+  agregados, cursor de outro álbum/conta/ordenação/domínio rejeitado, fronteira
+  excluída, edição sem reordenação em recentes e rejeição HTTP de exclusão por terceiro.
+  Inclui vazio, inexistente, ID e parâmetros inválidos, autor inelegível, reativação
+  e solicitante sem autenticação válida. Contadores de chamadas de álbum e de
+  emissão de token Spotify permaneceram zero nas leituras locais testadas.
+- A coleção Postman versionada executou contra o servidor real em duas situações:
+  vazia, 11 requisições e 22 asserções (próxima página omitida); preenchida,
+  12 requisições e 26 asserções. Zero falhas. Usa fixtures somente no banco
+  descartável, JWT temporário removido ao final e sem publicação de resultados.
+- Logs: `target/album-community-focused.log`, `target/album-community-full.log`,
+  `target/album-community-simulation.ndjson`, `target/albums-postman-empty.log`
+  e `target/albums-postman-community.log`. A CI já executa a classe e a coleção;
+  resultado remoto desta alteração ainda não observado.
+- Nenhuma alteração no frontend ou no banco da aplicação. A comunidade não
+  acrescenta chamadas ao Spotify; não houve nova validação com o provedor real
+  nesta entrega. A evidência anterior de catálogo real permanece separada acima.

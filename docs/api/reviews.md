@@ -5,14 +5,16 @@ Para a Coleção paginada com ordenações globais, filtro e totais, consulte o
 
 Primeira entrega: criar, consultar, substituir, excluir e listar avaliações do usuário
 autenticado, somente para álbuns já persistidos. Não depende do agrupamento de Ecos
-do PR #84. Busca/importação de novos álbuns depende da issue #52.
+do PR #84. A [consulta de detalhes do álbum](albums.md) resolve metadados ainda
+ausentes no catálogo; as operações de avaliação continuam usando apenas o banco local.
 
 Todas as rotas exigem `Authorization: Bearer <accessToken>` de conta ativa e
 verificada. O autor vem exclusivamente da autenticação. Respostas de leitura e
 criação/edição têm `Cache-Control: no-store`. Não retornam entidades JPA, e-mail,
 localização ou dados cadastrais. A leitura de terceiros está disponível no
 [contrato de avaliações no perfil](profile-reviews.md), também autenticado.
-Consultas da comunidade por álbum permanecem para outra entrega.
+Consultas da comunidade por álbum estão disponíveis no
+[contrato do álbum](albums.md#avaliações-da-comunidade), com ordenação e cursor próprios.
 
 ## Rotas
 

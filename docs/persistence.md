@@ -1,5 +1,18 @@
 # Persistência das classes existentes
 
+## Avaliações da comunidade por álbum — migration 019
+
+`019_add_album_review_rating_index.sql` cria
+`idx_reviews_album_rating_review_desc` em `Reviews (album_id, rating DESC, review_id DESC)`.
+Atende maior nota e, com leitura reversa, menor nota. O índice 018 atende recentes
+e antigas. Ambos restringem álbum e fronteira da paginação no banco.
+
+O schema consolidado inclui o índice para bancos novos. Em bancos existentes,
+aplicar o script 019 depois de 018; não importar o schema completo. Não há backfill,
+alteração de linhas, novas tabelas ou permissões de escrita. A migration é
+validada somente em banco descartável nesta entrega; não foi aplicada ao banco
+pessoal. A aplicação local autorizada de 017/018 não abrange automaticamente a 019.
+
 ## Consulta de detalhes do álbum — migration 018
 
 `018_add_album_reviews_index.sql` cria `idx_reviews_album_review_desc` em
