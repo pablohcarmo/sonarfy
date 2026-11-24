@@ -6,6 +6,7 @@ import br.com.pablohcarmo.sonarfy.entities.Permission;
 import br.com.pablohcarmo.sonarfy.entities.User;
 import br.com.pablohcarmo.sonarfy.events.ActivationEmailRequested;
 import br.com.pablohcarmo.sonarfy.exceptions.EmailDeliveryException;
+import br.com.pablohcarmo.sonarfy.repositories.AccountDeactivationRequestRepository;
 import br.com.pablohcarmo.sonarfy.repositories.PermissionRepository;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import br.com.pablohcarmo.sonarfy.validation.PersonalDataRules;
@@ -46,6 +47,7 @@ public class UserService implements UserDetailsService {
     private final ApplicationEventPublisher eventPublisher;
     private final RefreshTokenService refreshTokens;
     private final GeoNamesClient cities;
+    private final AccountDeactivationRequestRepository deactivations;
     private static final Logger logger = LoggerFactory.getLogger(UserService.class);
 
     public UserService (UserRepository userRepository,
@@ -53,7 +55,8 @@ public class UserService implements UserDetailsService {
                         PasswordEncoder passwordEncoder,
                         JwtService jwtService,
                         AuthEmailService authEmailService,
-                        ApplicationEventPublisher eventPublisher, RefreshTokenService refreshTokens, GeoNamesClient cities) {
+                        ApplicationEventPublisher eventPublisher, RefreshTokenService refreshTokens, GeoNamesClient cities,
+                        AccountDeactivationRequestRepository deactivations) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.permissionRepository = permissionRepository;
@@ -62,6 +65,7 @@ public class UserService implements UserDetailsService {
         this.eventPublisher = eventPublisher;
         this.refreshTokens = refreshTokens;
         this.cities = cities;
+        this.deactivations = deactivations;
     }
 
     @Transactional
@@ -234,6 +238,7 @@ public class UserService implements UserDetailsService {
         }
 
         // 4. Atualiza o e-mail e persiste a alteração no banco de dados
+        deactivations.invalidate(user.getId());
         user.setEmail(newEmail);
         userRepository.save(user);
 
@@ -317,6 +322,7 @@ public class UserService implements UserDetailsService {
         // Compartilha a transação e o bloqueio já mantido pela validação da senha.
         // Revoga antes de alterar a entidade, pois revokeAll recarrega o usuário bloqueado.
         refreshTokens.revokeAll(user.getId());
+        deactivations.invalidate(user.getId());
         user.setPassword(passwordEncoder.encode(newRawPassword));
 
         // Política compatível com os tokens emitidos pela biblioteca atual.
