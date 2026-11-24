@@ -12,6 +12,15 @@
   "auth":{"type":"bearer","bearer":[{"key":"token","value":"{{accessToken}}","type":"string"}]},
   "item":[
     {
+      "name":"Search albums without personal Spotify connection",
+      "request":{"method":"GET","url":"{{baseUrl}}/api/albums/search?q=Daft%20Punk&limit=2&offset=0"},
+      "event":[{"listen":"test","script":{"type":"text/javascript","exec":[
+        "pm.test('Search HTTP 200', () => pm.response.to.have.status(200));",
+        "pm.test('Search no store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'));",
+        "pm.test('Search page contract', () => { const b = pm.response.json(); pm.expect(b).to.have.all.keys('items','limit','offset','nextOffset'); pm.expect(b.limit).to.eql(2); pm.expect(b.offset).to.eql(0); pm.expect(b.items.length).to.be.at.most(2); for (const a of b.items) { pm.expect(a).to.have.all.keys('spotifyId','name','coverUrl','artist','releaseOn','releasePrecision','totalTracks'); pm.expect(a.spotifyId).to.match(/^[A-Za-z0-9]{22}$/); pm.expect(a.artist).to.have.all.keys('spotifyId','name'); } });"
+      ]}}]
+    },
+    {
       "name":"Resolve album and read details",
       "request":{"method":"GET","url":"{{baseUrl}}/api/albums/{{albumSpotifyId}}"},
       "event":[{"listen":"test","script":{"type":"text/javascript","exec":[

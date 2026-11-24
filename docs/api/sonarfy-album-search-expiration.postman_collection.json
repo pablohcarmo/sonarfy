@@ -1,0 +1,99 @@
+{
+  "info": {
+    "name": "Sonarfy - Natural access token expiration",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Local isolated account only. Waits for the real login token lifetime before checking album search returns 401. Token stays in runtime memory."
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:55444"
+    },
+    {
+      "key": "authLogin",
+      "value": ""
+    },
+    {
+      "key": "authPassword",
+      "value": ""
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Login da conta isolada",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/auth/login",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Sonarfy-CSRF",
+            "value": "1"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"login\":\"{{authLogin}}\",\"password\":\"{{authPassword}}\",\"rememberMe\":true}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Login 200', () => pm.response.to.have.status(200));",
+              "if (pm.response.code === 200) pm.variables.set('accessToken', pm.response.json().accessToken);",
+              "if(pm.response.code === 200) { const b=pm.response.json(); const p=JSON.parse(atob(b.accessToken.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))); pm.variables.set('tokenExpiresAt',p.exp); pm.test('TTL de acesso 900 segundos', () => pm.expect(b.expiresInSeconds).to.eql(900)); }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Aguardar expiracao natural e buscar",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/albums/search?q=Daft%20Punk"
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const remaining = Math.max(0, Number(pm.variables.get('tokenExpiresAt')) * 1000 - Date.now()) + 2000; setTimeout(() => {}, remaining);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Bearer naturalmente expirado retorna 401', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

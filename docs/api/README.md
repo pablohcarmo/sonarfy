@@ -6,9 +6,9 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 
 ## Índice de Contratos por Domínio
 
-- **[Busca de álbum para avaliação — proposta](album-search.md)** —
+- **[Busca de álbum para avaliação](album-search.md)** —
   `GET /api/albums/search`, seleção e publicação sem sincronização pessoal.
-  Não implementada. [Guia de integração](../integrations/album-search.md).
+  Backend implementado, sem deploy. [Guia de integração](../integrations/album-search.md).
 - **[Detalhes do álbum](albums.md)** — `GET /api/albums/{spotifyId}`, catálogo e
   agregados elegíveis. [Guia da página](../integrations/album-page.md).
 - **[Comunidade do álbum](albums.md#avaliações-da-comunidade)** —

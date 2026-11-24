@@ -85,6 +85,21 @@ http.createServer((req, res) => {
       return reply(200, { access_token: 'token-ok', token_type: 'Bearer', expires_in: catalogTokenMode === 'invalid' ? 0 : 3600 });
     });
   }
+  // Busca sintetica valida parametros e injeta falhas sem acessar o catalogo real.
+  if (url.pathname === '/v1/search' && req.method === 'GET') {
+    const q = url.searchParams.get('q');
+    if (url.searchParams.get('type') !== 'album' || url.searchParams.get('market') !== 'BR') return reply(400, {});
+    const status = Number(q);
+    if (status >= 400) return reply(status, { error: 'sensitive-provider-body' },
+      status === 429 ? { 'Retry-After': '900' } : {});
+    if (q === 'malformed') return reply(200, 'invalid-json');
+    const album = { id: '4aawyAB9vmqN3uQ7FjRGTy', name: 'Album One', type: 'album',
+      artists: [{ id: 'artist1', name: 'Artist One' }], release_date: '2024-05', release_date_precision: 'month' };
+    if (q === 'invalid') album.type = 'track';
+    const body = { albums: { items: q === 'empty' ? [] : [album], next: 'https://api.spotify.com/ignored' } };
+    if (q === 'timeout') return setTimeout(() => reply(200, body), 11500);
+    return reply(200, body);
+  }
   if (url.pathname.startsWith('/v1/albums/') && req.method === 'GET') {
     catalogAlbumRequests++;
     const requestedStatus = Number(url.pathname.match(/(401|403|404|429|503)$/)?.[1]);

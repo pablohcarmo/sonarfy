@@ -35,7 +35,7 @@ class AlbumDetailsPostgresTest {
     static final JsonMapper JSON = new JsonMapper();
     @Configuration @EnableAutoConfiguration
     @EnableFeignClients(clients = {SpotifyApiClient.class, SpotifyTokenClient.class})
-    @Import({SecurityConfig.class, AlbumController.class, AlbumDetailsService.class, AlbumCatalogStore.class,
+    @Import({SecurityConfig.class, AlbumController.class, AlbumSearchService.class, AlbumDetailsService.class, AlbumCatalogStore.class,
             AlbumCatalogService.class, SpotifyAlbumService.class, SpotifyCatalogTokenService.class, AuthSpotifyService.class,
             ReviewController.class, ReviewService.class, CollectionCursorCodec.class})
     static class Config extends EmailReservationIntegrationTest.Config {
@@ -73,6 +73,23 @@ class AlbumDetailsPostgresTest {
         actor = user("actor", true, true);
         tokens.invalidate("token-ok");
         control("reset");
+    }
+
+    // Busca nao persiste; selecao e publicacao reutilizam as rotas existentes sem conexao pessoal.
+    @Test void searchesThenResolvesAndPublishes() throws Exception {
+        assertEquals(401, get("search?q=Daft%20Punk", false).statusCode());
+        assertEquals(200, get("search?q=Daft%20Punk", true).statusCode());
+        assertEquals(0, db.queryForObject("SELECT count(*) FROM albums", Integer.class));
+        assertEquals(0, db.queryForObject("SELECT count(*) FROM spotify_connection", Integer.class));
+        assertEquals(200, get(ID, true).statusCode());
+        assertEquals(404, get(ID + "/reviews/me", true).statusCode());
+        var request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/albums/" + ID + "/reviews"))
+                .header("Authorization", "Bearer " + jwt.generateAccessToken(Long.toString(actor)))
+                .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString("{\"rating\":8.5}" )).build();
+        assertEquals(201, HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
+        assertEquals(409, HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
+        assertEquals(200, get(ID + "/reviews/me", true).statusCode());
+        assertEquals(1, control("ok").get("albumRequests").asInt());
     }
 
     // Média inclui zero e avaliações sem texto; edição, exclusão e elegibilidade refletem a próxima leitura.
