@@ -16,7 +16,7 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
   elegíveis, identidade pública do autor e paginação por ID.
 
 - **[Preparação da desativação](account-deactivation.md)** — persistência, invalidação
-  de autorizações e núcleo de solicitação/outbox; HTTP e confirmação indisponíveis.
+  de autorizações e núcleos de solicitação/outbox e confirmação; HTTP indisponível.
   [Guia de integração](../integrations/account-deactivation.md).
 
 - **[Reativação explícita de conta](account-reactivation.md)** — `POST /api/auth/reactivation`,

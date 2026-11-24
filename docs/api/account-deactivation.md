@@ -1,8 +1,9 @@
 # Desativação de conta — preparação interna
 
-A preparação inclui persistência, invalidação por credenciais e o núcleo interno
-de solicitação e reserva de entrega. **Nenhuma rota de desativação está disponível**,
+A preparação inclui persistência, invalidação por credenciais, solicitação,
+reserva de entrega e confirmação internas. **Nenhuma rota de desativação está disponível**,
 nenhum e-mail de desativação é enviado e a solicitação não altera conta ou sessões.
+Somente a confirmação interna consome o token e desativa a conta com revogação.
 As coleções HTTP existentes não mudam nesta etapa.
 
 A divisão aprovada é:
@@ -172,3 +173,38 @@ exatamente uma vez ou de chegada à caixa de entrada.
 
 Ainda não há controller, remetente, agendamento ou propriedade que habilite o
 fluxo externamente. Nenhum token é enviado antes de a confirmação estar pronta.
+
+## Incremento 3 — contrato da confirmação interna
+
+`AccountDeactivationConfirmationService.confirm(token)` consome a autorização
+vigente e revalida a conta ativa e verificada sob o mesmo bloqueio.
+Na mesma transação: consumir a autorização, revogar todas as famílias e históricos
+de refresh, incrementar versões de acesso e autorização Spotify e definir
+`active=false`. Qualquer falha deverá restaurar autorização, conta e sessões.
+
+O consumo JDBC, a alteração JPA e a revogação compartilham o `JpaTransactionManager`.
+O consumo mantém o bloqueio até o commit; o serviço recarrega o usuário antes de
+revalidar elegibilidade. Revoga refresh antes de modificar a entidade, pois a
+revogação também a recarrega. O flush final participa da transação: uma falha
+posterior ao flush ainda reverte todos os efeitos. A solicitação fica consumida;
+a outbox não poderá reservá-la novamente. Reativação explícita posterior remove
+a solicitação antiga e incrementa novamente as versões, sem restaurar sessões.
+
+Access tokens anteriores deixam de passar pelo filtro mesmo antes de expirar,
+e não voltam a funcionar após reativação. Refresh e login concorrentes usam o
+mesmo bloqueio/versão. Uma rotação que confirmar primeiro terá seu sucessor
+revogado; uma rotação que aguardar a desativação será recusada. Operações já em
+andamento não são canceladas retroativamente.
+
+Não excluir dados, relações, avaliações, coleção, Ecos ou conexão Spotify.
+Token inválido, expirado, substituído, consumido ou destinado a conta inelegível
+deverá produzir erro genérico 400, sem revogar sessões novas. Login normal
+continuará recusando a conta; somente a reativação explícita poderá restaurá-la.
+
+O futuro contrato HTTP será `POST /api/auth/account-deactivation-confirmation`,
+com JSON `{"token":"TOKEN_RECEBIDO_NO_EMAIL"}`, sem sessão ou Bearer como
+autorização, resposta 204 sem corpo em sucesso e `Cache-Control: no-store`.
+Um cabeçalho Authorization presente deverá ser ignorado nessa rota pública,
+como na confirmação de e-mail. Token ausente, vazio ou maior que 256 caracteres
+será recusado com 400. Não usar query string, GET ou abertura automática do link
+para confirmar. Ainda não há controller ou remetente nesta entrega.

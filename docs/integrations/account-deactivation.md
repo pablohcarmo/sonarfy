@@ -197,3 +197,61 @@ disponibilização externa condicionada à conclusão de todo o fluxo.
   aplicação. Nenhuma validação HTTP, SMTP real ou frontend desta funcionalidade.
 - CI atualizada para ambos os caminhos, ainda sem execução remota. Nenhum push
   ou PR nesta entrega. O stash original da preparação continua preservado.
+
+## Incremento 3 — confirmação interna atômica
+
+`AccountDeactivationConfirmationService` conclui a transição interna usando as
+tabelas e colunas existentes. Não há nova migration. A autorização é consumida
+sob bloqueio e a conta é recarregada; somente conta ativa e verificada prossegue.
+O serviço revoga todos os históricos e sucessores de refresh, incrementa versões
+de acesso e autorização Spotify e define `active=false`, com flush na mesma
+transação do consumo. Falha em qualquer etapa reverte todos esses efeitos.
+
+Relações, conexão Spotify, avaliações (incluindo favoritos/coleção), Ecos e
+catálogo são preservados. As regras existentes de elegibilidade passam a
+ocultar a conta inativa onde aplicáveis. Não há exclusão definitiva, desconexão
+Spotify nem reativação implícita pelo login. A reativação explícita continua
+exigindo credenciais atuais e login novo, sem restaurar sessões antigas.
+
+O consumo impede reservas posteriores de envio. Autorizações antigas permanecem
+recusadas mesmo depois da reativação; replay não revoga uma sessão criada após
+ela. Solicitações recusadas por inelegibilidade não consomem a autorização nem
+revogam sessões, pois a transação sofre rollback.
+
+`AccountDeactivationConfirmationPostgresTest` usa o mesmo banco descartável
+dedicado e serviços, JWT, JDBC/JPA e `JpaTransactionManager` reais. A rota de
+prova protegida existe somente no código de teste, para exercitar a cadeia
+Bearer antes e depois da transição/reativação. Não é um endpoint de desativação.
+Renderização e transporte de e-mail permanecem simulados na configuração.
+
+Os cenários verificam preservação por comparação das linhas de relações,
+Spotify, avaliações, escutas e catálogo, isolamento entre contas, revogação de
+históricos/sucessores, rejeição de login normal, reativação explícita, replay,
+elegibilidade/prazo, confirmação concorrente e refresh aguardando a transição.
+Uma falha injetada após flush real comprova rollback de estado, versões,
+consumo e sessões, permitindo confirmar novamente a mesma autorização.
+
+A CI inclui as quatro classes de desativação nos dois caminhos de schema.
+Permanecem pendentes controllers, DTOs HTTP, integração SMTP, agendamento e
+coleção Postman. O contrato planejado da confirmação está em
+[desativação](../api/account-deactivation.md). O fluxo continua indisponível
+externamente, sem propriedade que permita habilitá-lo parcialmente.
+
+### Validação local do incremento 3 em 24/11/2026
+
+- Base `7a128f5` (merge do PR #90). Após criar a branch,
+  `./mvnw.cmd test`: 857 reportados, 719 executados, 138 ignorados, sem falhas/erros.
+- Execução direcionada das quatro classes com
+  `-Dsonarfy.test.deactivation-postgres=true`: 48 cenários aprovados no schema
+  consolidado, incluindo 11 novos, sem falhas, erros ou ignorados.
+- Após recriar somente as tabelas de desativação pelas migrations 010 e 016
+  no banco descartável, `./mvnw.cmd test -Dsonarfy.test.deactivation-postgres=true`:
+  889 reportados, 767 executados, 122 ignorados, sem falhas/erros. Inclui os
+  mesmos 48 cenários no caminho incremental.
+- `git diff --check`: aprovado. CI configurada, ainda sem execução remota.
+- PostgreSQL 17.9 nativo, instância temporária exclusiva em `127.0.0.1:55453`,
+  banco `sonarfy_deactivation_test`. Sem nova migration e sem consultar ou
+  alterar o banco da aplicação. Frontend e stash original preservados.
+- Sem validação HTTP da operação de desativação, Postman ou SMTP real: a cadeia
+  Bearer foi exercitada somente pela rota de prova do teste. Sem push ou PR
+  nesta entrega. As evidências dos incrementos anteriores permanecem históricas.
