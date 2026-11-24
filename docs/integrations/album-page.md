@@ -8,8 +8,7 @@ Curtidas e comentários ficam fora do escopo.
 ## Entrega 1 — consulta interna ao Spotify
 
 O [contrato de álbum](../api/albums.md) descreve o cliente interno implementado.
-Ainda não há endpoint novo para o frontend consumir. Não disparar sincronização
-de Ecos como substituto para buscar um álbum desconhecido.
+Não disparar sincronização de Ecos como substituto para buscar um álbum desconhecido.
 
 ## Entrega 2 — catálogo local e enriquecimento
 
@@ -22,11 +21,33 @@ A migration `017_add_album_total_tracks.sql` deve preceder o uso desse serviço 
 bancos existentes. Registros anteriores continuam válidos com contagem nula até
 serem enriquecidos; não representar essa ausência como zero faixas.
 
-As próximas entregas fornecerão detalhes com agregados e lista paginada. A busca
-por nome fica fora do escopo. A obtenção/renovação da credencial será integrada
-ao endpoint; o resolver atual recebe um supplier de token, acionado apenas quando
-precisa acessar o Spotify. Isso não define uma exigência de conexão Spotify do
-usuário final. Não há endpoint novo para consumir nesta entrega.
+O resolver recebe um supplier de token, acionado apenas quando precisa acessar
+o Spotify. A entrega 3 integra esse supplier à credencial da aplicação.
+
+## Entrega 3 — detalhes e agregados
+
+Consuma `GET /api/albums/{spotifyId}` com Bearer Sonarfy. O
+[contrato completo](../api/albums.md#detalhes-do-álbum) define metadados, média e
+total. Não é necessário conectar a conta Spotify pessoal para abrir a página.
+
+- Mapear `name`, `coverUrl`, `artist.name`, `releaseOn`, `releasePrecision`
+  e `totalTracks` ao cabeçalho. Respeitar precisão de ano/mês/dia, sem inventar
+  dia ou mês em datas incompletas. A capa pode ser nula.
+- Usar `averageRating / 2` para as estrelas; `reviewCount` é o total elegível.
+  Média nula representa ausência de avaliações, diferente de média zero.
+- Usar `/api/albums/{spotifyId}/reviews/me` para Avaliar/Avaliado. Um 404 dessa
+  rota não significa que a nova consulta de detalhes também retornará 404.
+- Após criar, editar ou excluir a avaliação própria, invalidar os detalhes para
+  atualizar a média e a contagem; considerar também os fluxos de Coleção e feed.
+- Diferenciar 401 Sonarfy (sessão) de 502/503/504 (falha da integração).
+  Em 503, respeitar `Retry-After`, quando presente. Não iniciar OAuth pessoal
+  em resposta a erro da credencial da aplicação e não criar loops de retry.
+- A leitura pode buscar e persistir o catálogo; exibir carregamento. Um álbum
+  não encontrado retorna 404, distinto de provedor indisponível.
+
+Reiniciar o estado ao trocar de álbum ou conta. A lista de avaliações da comunidade
+e as quatro ordenações ficam para a próxima entrega. Busca por nome continua fora
+do escopo. O frontend não foi alterado nesta entrega.
 
 ## Regras de apresentação definidas
 

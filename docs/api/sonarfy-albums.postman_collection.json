@@ -1,0 +1,46 @@
+{
+  "info": {
+    "name": "Sonarfy - Album details",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Authenticated album details contract: docs/api/albums.md. Set baseUrl, accessToken and albumSpotifyId locally. Reading an unknown album may persist catalog metadata. No review writes. Provider failures are exercised by the integration tests against the versioned Postman simulation."
+  },
+  "variable": [
+    {"key":"baseUrl","value":"http://localhost:8080"},
+    {"key":"accessToken","value":""},
+    {"key":"albumSpotifyId","value":"4aawyAB9vmqN3uQ7FjRGTy"}
+  ],
+  "auth":{"type":"bearer","bearer":[{"key":"token","value":"{{accessToken}}","type":"string"}]},
+  "item":[
+    {
+      "name":"Resolve album and read details",
+      "request":{"method":"GET","url":"{{baseUrl}}/api/albums/{{albumSpotifyId}}"},
+      "event":[{"listen":"test","script":{"type":"text/javascript","exec":[
+        "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+        "pm.test('No store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'));",
+        "pm.test('Public album contract', () => { const b = pm.response.json(); pm.expect(b).to.have.all.keys('spotifyId','name','coverUrl','artist','releaseOn','releasePrecision','totalTracks','averageRating','reviewCount'); pm.expect(b.spotifyId).to.eql(pm.variables.get('albumSpotifyId')); pm.expect(b.artist).to.have.all.keys('spotifyId','name'); pm.expect(b.totalTracks).to.be.at.least(0); pm.expect(b.reviewCount).to.be.at.least(0); if (b.reviewCount === 0) pm.expect(b.averageRating).to.eql(null); else { pm.expect(b.averageRating).to.be.at.least(0); pm.expect(b.averageRating).to.be.at.most(10); } });"
+      ]}}]
+    },
+    {
+      "name":"Read locally after resolution",
+      "request":{"method":"GET","url":"{{baseUrl}}/api/albums/{{albumSpotifyId}}"},
+      "event":[{"listen":"test","script":{"type":"text/javascript","exec":[
+        "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+        "pm.test('Resolved identity', () => pm.expect(pm.response.json().spotifyId).to.eql(pm.variables.get('albumSpotifyId')));"
+      ]}}]
+    },
+    {
+      "name":"Reject malformed album ID",
+      "request":{"method":"GET","url":"{{baseUrl}}/api/albums/invalid"},
+      "event":[{"listen":"test","script":{"type":"text/javascript","exec":[
+        "pm.test('HTTP 400', () => pm.response.to.have.status(400));"
+      ]}}]
+    },
+    {
+      "name":"Reject missing Sonarfy Bearer",
+      "request":{"method":"GET","auth":{"type":"noauth"},"url":"{{baseUrl}}/api/albums/{{albumSpotifyId}}"},
+      "event":[{"listen":"test","script":{"type":"text/javascript","exec":[
+        "pm.test('HTTP 401', () => pm.response.to.have.status(401));"
+      ]}}]
+    }
+  ]
+}

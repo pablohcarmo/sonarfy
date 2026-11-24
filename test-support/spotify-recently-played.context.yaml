@@ -1,7 +1,7 @@
 simulation: spotify-recently-played
 generated: '2026-11-21'
 purpose:
-  stands_in_for: Spotify Web API GET /v1/me/player/recently-played with synthetic play history and error scenarios
+  stands_in_for: Spotify recent plays, album metadata and OAuth Client Credentials with synthetic responses and error scenarios
   unblocks: HTTP client serialization, timeout, pagination and sanitized error handling without real credentials
 assumptions:
   - id: spotify-retry-after-preservation
@@ -54,11 +54,11 @@ assumptions:
     source: https://developer.spotify.com/documentation/web-api/reference/get-an-album; src/test/java/br/com/pablohcarmo/sonarfy/services/SpotifyAlbumSimulationTest.java
     updated_at: '2026-11-24'
   - id: live-spotify-album-access
-    status: unknown
-    claim: The deployed application credential can retrieve album metadata in the selected market
-    reason: This delivery receives a token from its caller and was validated only against synthetic HTTP responses
-    verification: No live Spotify calls or credential acquisition were exercised; integrate credential acquisition and validate availability in the catalog delivery
-    source: docs/api/albums.md
+    status: supported
+    claim: The configured local application credential retrieved the tested public album metadata in market BR without a personal Spotify connection
+    reason: After the initial synthetic-only checks, the compiled application was run against live Spotify using Client Credentials and an empty disposable database
+    verification: On 2026-11-24, GET for album 4aawyAB9vmqN3uQ7FjRGTy returned 200 and persisted 18 total tracks with zero personal Spotify connections. The versioned Postman collection passed four requests and seven assertions against the real Sonarfy HTTP server. After restarting with unavailable local provider URLs, the same album returned 200 and identical JSON. This is evidence for the tested album, market and local app credentials only; other albums, markets and deployed configurations remain unverified. Temporary server, database and runtime JWT collection were removed; personal application table fingerprints remained unchanged
+    source: docs/api/albums.md; target/album-live-result.json; target/album-live-postman.log
     updated_at: '2026-11-24'
   - id: album-catalog-local-enrichment
     status: supported
@@ -67,7 +67,17 @@ assumptions:
     verification: On 2026-11-24, AlbumCatalogPostgresTest passed four tests with disposable PostgreSQL 17 and real Feign against Postman. It preserved a legacy album ID and review, resolved concurrent misses without duplicate artists or albums, skipped credential acquisition on a complete local hit, rolled back artist insertion after a database failure and reapplied migration 017 twice. No live Spotify calls or personal database changes
     source: src/test/java/br/com/pablohcarmo/sonarfy/services/AlbumCatalogPostgresTest.java; target/catalog-focused.log
     updated_at: '2026-11-24'
+  - id: album-details-application-credentials
+    status: supported
+    claim: The album details endpoint can resolve metadata using application credentials without a personal Spotify connection
+    reason: The caller uses Client Credentials and provides a market; complete local albums bypass token acquisition
+    verification: On 2026-11-24, AlbumDetailsPostgresTest used a real HTTP server, Sonarfy Bearer security, disposable PostgreSQL and real Feign against the Postman simulation. The mock checked Basic auth and grant_type=client_credentials. Tests covered cache hits, eligible aggregates, 401/403/404/429/503 provider responses, rejected or invalid tokens and token invalidation. The versioned Postman collection passed four requests and seven assertions against the real server; no live Spotify interaction
+    source: https://developer.spotify.com/documentation/web-api/tutorials/client-credentials-flow; src/test/java/br/com/pablohcarmo/sonarfy/services/AlbumDetailsPostgresTest.java; target/album-details-focused.log; target/albums-postman.log
+    updated_at: '2026-11-24'
 fingerprints:
+  - id: album-details-http
+    date: '2026-11-24'
+    cli: '1.85.0'
   - id: album-catalog-persistence
     date: '2026-11-24'
     cli: '1.85.0'

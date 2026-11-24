@@ -130,6 +130,7 @@ CREATE TABLE Reviews (
 );
 
 CREATE INDEX idx_reviews_user_review_desc ON Reviews (user_id, review_id DESC);
+CREATE INDEX idx_reviews_album_review_desc ON Reviews (album_id, review_id DESC);
 CREATE INDEX idx_reviews_user_rating_review_desc ON Reviews (user_id, rating DESC, review_id DESC);
 
 CREATE TABLE Access_Logs (

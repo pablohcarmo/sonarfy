@@ -6,8 +6,8 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 
 ## Índice de Contratos por Domínio
 
-- **[Álbum e avaliações da comunidade](albums.md)** — cliente Spotify e catálogo local;
-  novas rotas HTTP ainda em implementação. [Guia da página](../integrations/album-page.md).
+- **[Detalhes do álbum](albums.md)** — `GET /api/albums/{spotifyId}`, catálogo e
+  agregados elegíveis. [Guia da página](../integrations/album-page.md).
 
 - **[Feed único de atividades](feed.md)** — `GET /api/feed`, avaliações próprias e de perfis seguidos,
   histórico, cursor assinado e followingCount. [Guia de integração](../integrations/feed.md).
@@ -87,6 +87,7 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 | `POST` | `/api/profile/me/wallpaper` | `WallpaperController` | Bearer `access` | [profile-wallpaper.md](profile-wallpaper.md) |
 | `GET` | `/api/profile/by-handle/{handle}` | `ProfileController` | Bearer `access` | [profiles.md](profiles.md) |
 | `GET` | `/api/profile/by-handle/{handle}/reviews` | `ReviewController` | Bearer `access` | [profile-reviews.md](profile-reviews.md) |
+| `GET` | `/api/albums/{spotifyId}` | `AlbumController` | Bearer `access` | [albums.md](albums.md) |
 | `PUT` | `/api/profile/me` | `ProfileController` | Bearer `access` | [users-and-profile.md](users-and-profile.md#3-atualizar-perfil-público-bio-avatar-e-capa) |
 | `POST` | `/api/spotify/authorization` | `SpotifyController` | Bearer `access` | [spotify.md](../integrations/spotify.md) |
 | `GET` | `/api/spotify/callback` | `SpotifyController` | Público + `state` OAuth | [spotify.md](../integrations/spotify.md) |

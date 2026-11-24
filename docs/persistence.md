@@ -1,5 +1,18 @@
 # Persistência das classes existentes
 
+## Consulta de detalhes do álbum — migration 018
+
+`018_add_album_reviews_index.sql` cria `idx_reviews_album_review_desc` em
+`Reviews (album_id, review_id DESC)`. O prefixo por álbum atende a consulta de
+média e contagem filtrada por autores elegíveis. O schema consolidado contém
+o mesmo índice. Não há alteração de avaliações ou backfill de dados.
+
+Aplicar depois de `017_add_album_total_tracks.sql` em bancos existentes;
+não importar o schema consolidado sobre dados existentes. A entrega usa somente
+banco descartável para validar a criação/reaplicação do índice, preservação das
+avaliações e respostas do [endpoint](api/albums.md). A aplicação local autorizada
+está registrada abaixo; não houve aplicação em produção.
+
 ## Catálogo de álbuns — migration 017
 
 `017_add_album_total_tracks.sql` adiciona `Albums.total_tracks`, inteiro opcional
@@ -12,8 +25,45 @@ A consulta interna ao catálogo enriquece esses registros pelo Spotify e preserv
 o `album_id`. Artista principal e álbum são persistidos na mesma transação;
 unicidade por `spotify_id` evita duplicatas concorrentes. O importador de Ecos
 não sobrescreve a contagem conhecida. Datas e capas reutilizam sua normalização.
-Veja [contrato do catálogo](api/albums.md). Esta entrega não aplica a migration
-no banco pessoal ou em produção; a validação usa banco descartável dedicado.
+Veja [contrato do catálogo](api/albums.md). A validação original usou banco
+descartável; a aplicação local posterior autorizada está registrada abaixo.
+
+## Aplicação local das migrations 017 e 018 em 24/11/2026
+
+Após autorização explícita do usuário, o contêiner existente `sonarfy_test_db`
+foi iniciado, preservando o volume `infra_db_data` e o bind em `127.0.0.1:5433`.
+A inspeção de `localhost:5433/sonarfy` confirmou ambas as migrations pendentes.
+
+Backup completo customizado, com catálogo conferido:
+`target/db-backups/sonarfy-before-album-017-018-20261124-080940.dump`.
+O backup foi restaurado em PostgreSQL 17.9 descartável. Contagens e fingerprints
+das 19 tabelas conferiram, com sessões em UTC e ordenação determinística
+`COLLATE "C"`. As migrations foram ensaiadas duas vezes nessa restauração.
+
+Aplicadas em uma única transação, nesta ordem:
+
+1. `017_add_album_total_tracks.sql` — coluna opcional e check não negativo.
+2. `018_add_album_reviews_index.sql` — índice por álbum e ID descendente.
+
+A transação usou limites de espera de bloqueio (5s) e execução (60s), protegeu
+as tabelas anteriores contra escrita durante a conferência e comparou as linhas
+por suas colunas anteriores. As comparações antes do commit, depois dele e após
+os testes confirmaram a preservação dos dados das 19 tabelas. Coluna, constraint
+e definição/validade do índice foram verificadas. Os 25 álbuns permaneceram com
+`total_tracks` nulo, sem backfill; preservados também 11 avaliações, 164 escutas
+e quatro usuários. Nenhuma fixture foi criada no banco da aplicação.
+
+Depois da aplicação, a suíte automatizada e a coleção Postman passaram em banco
+descartável. O Spotify real foi validado com conta temporária e servidor real
+em outro banco descartável, removido ao final; nenhuma conexão Spotify pessoal
+foi necessária. A consulta local também passou com o provedor indisponível.
+Resultados e limites estão no [contrato do álbum](api/albums.md).
+
+Evidência local: `target/db-backups/album-migration-result.json`,
+`target/album-after-migration-tests.log`, `target/albums-postman.log`,
+`target/album-live-result.json` e `target/album-live-postman.log`.
+O contêiner da aplicação permaneceu iniciado. Servidores e bancos temporários
+de validação foram encerrados ou removidos; o backup foi preservado.
 
 A preparação interna de desativação adiciona a tabela
 `account_deactivation_requests` pela migration 010, após 009. O schema

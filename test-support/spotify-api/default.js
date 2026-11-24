@@ -1,4 +1,7 @@
 const http = require('node:http');
+let catalogTokenMode = 'ok';
+let catalogTokensIssued = 0;
+let catalogAlbumRequests = 0;
 
 // Respostas sintéticas no formato oficial de GET /v1/me/player/recently-played (sem campos removidos em 2026).
 const page1 = {
@@ -65,7 +68,28 @@ http.createServer((req, res) => {
     res.end(typeof body === 'string' ? body : JSON.stringify(body));
   };
 
+  if (url.pathname.startsWith('/__catalog/')) {
+    catalogTokenMode = url.pathname.split('/').pop();
+    if (catalogTokenMode === 'reset') { catalogTokenMode = 'ok'; catalogTokensIssued = 0; catalogAlbumRequests = 0; }
+    return reply(200, { tokensIssued: catalogTokensIssued, albumRequests: catalogAlbumRequests });
+  }
+  if (url.pathname === '/api/token' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    return req.on('end', () => {
+      if (req.headers.authorization !== 'Basic ' + Buffer.from('catalog-client:catalog-secret').toString('base64')
+          || new URLSearchParams(body).get('grant_type') !== 'client_credentials') return reply(401, {});
+      catalogTokensIssued++;
+      if (catalogTokenMode === '503') return reply(503, { error: 'sensitive-provider-body' });
+      if (catalogTokenMode === '401') return reply(401, { error: 'sensitive-provider-body' });
+      return reply(200, { access_token: 'token-ok', token_type: 'Bearer', expires_in: catalogTokenMode === 'invalid' ? 0 : 3600 });
+    });
+  }
   if (url.pathname.startsWith('/v1/albums/') && req.method === 'GET') {
+    catalogAlbumRequests++;
+    const requestedStatus = Number(url.pathname.match(/(401|403|404|429|503)$/)?.[1]);
+    if (requestedStatus) return reply(requestedStatus, { error: 'sensitive-provider-body' },
+      requestedStatus === 429 ? { 'Retry-After': '900' } : {});
     const token = (req.headers.authorization || '').replace('Bearer ', '');
     if (!token.startsWith('token-')) return reply(401, {});
     const status = Number(token.slice(6));

@@ -48,6 +48,13 @@ public class AuthSpotifyService {
         this.redirectUri = redirectUri;
     }
 
+    // Emite credencial da aplicação sem consentimento ou refresh token de usuário.
+    public SpotifyTokenResponseDto clientCredentials() {
+        var tokens = requestTokens(Map.of("grant_type", "client_credentials"), false);
+        SpotifyTokenResponseValidator.validateRefresh(tokens);
+        return tokens;
+    }
+
     // Reutiliza cliente e autenticação, distinguindo a revogação confirmada.
     public SpotifyTokenResponseDto refresh(String refreshToken) {
         return requestTokens(Map.of("grant_type", "refresh_token", "refresh_token", refreshToken), true);

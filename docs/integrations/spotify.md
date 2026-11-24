@@ -438,7 +438,16 @@ tentativas automaticamente por padrão, inclusive após timeout na troca do cód
 com Bearer fornecido pelo chamador e mercado opcional. Retorna metadados e total
 oficial de faixas, sem gravar catálogo nem renovar credenciais. Consulte o
 [contrato interno](../api/albums.md) e o [guia da página](album-page.md).
-Esta primeira entrega não disponibiliza um endpoint Sonarfy de álbum.
+O endpoint Sonarfy `GET /api/albums/{spotifyId}` agora integra esse cliente ao
+catálogo e aos agregados. Usa Client Credentials da aplicação, com as mesmas
+variáveis `SPOTIFY_CLIENT_ID` e `SPOTIFY_CLIENT_SECRET` existentes e
+`SPOTIFY_CATALOG_MARKET` opcional (padrão `BR`). Não depende de conexão pessoal,
+escopos de escutas ou refresh token. O token fica em memória por instância,
+com validade calculada desde o início da chamada e margem de 30 segundos.
+Um 401 da API invalida somente o token usado; não altera conexões de usuários.
+Não há nova tentativa automática na mesma chamada. Credencial rejeitada é falha
+de integração (502), não encerramento da sessão Sonarfy. Fonte:
+[Client Credentials](https://developer.spotify.com/documentation/web-api/tutorials/client-credentials-flow).
 
 ### Persistência interna de Ecos
 
