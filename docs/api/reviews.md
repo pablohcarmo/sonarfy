@@ -7,8 +7,9 @@ do PR #84. Busca/importação de novos álbuns depende da issue #52.
 Todas as rotas exigem `Authorization: Bearer <accessToken>` de conta ativa e
 verificada. O autor vem exclusivamente da autenticação. Respostas de leitura e
 criação/edição têm `Cache-Control: no-store`. Não retornam entidades JPA, e-mail,
-localização ou dados cadastrais. As rotas desta entrega não permitem ler avaliações
-de terceiros. Consultas públicas de perfil/álbum serão um contrato separado.
+localização ou dados cadastrais. A leitura de terceiros está disponível no
+[contrato de avaliações no perfil](profile-reviews.md), também autenticado.
+Consultas da comunidade por álbum permanecem para outra entrega.
 
 ## Rotas
 
@@ -109,7 +110,8 @@ estável. SQL, nomes de constraint e detalhes internos não fazem parte do contr
 ## Persistência, elegibilidade e compatibilidade
 
 Reutiliza Reviews do schema consolidado: `uk_review_user_album`, FKs, checks de
-intervalo e passo. Não há migration. Banco existente precisa conter essa estrutura;
+intervalo e passo. A consulta por perfil adiciona o índice da migration `014`.
+Banco existente precisa conter essa estrutura;
 não importe `db/tables.sql` sobre banco já inicializado. `is_favorite` permanece
 com default false na criação, sem endpoint de favoritos.
 
@@ -123,10 +125,10 @@ permanecem armazenadas, disponíveis ao próprio autor após reativação e novo
 Exclusão física da conta segue a FK `ON DELETE CASCADE` existente.
 
 Amplia a lista de álbuns de Ecos com `rated` e `reviewId` da conta autenticada;
-o contrato está descrito em [Ecos](echoes.md). Não altera perfis nem implementa agregados, contadores, feed,
-eventos, favoritos, catálogo ou leituras sociais. A coleção própria já pode ser
-consumida no perfil autenticado. Visibilidade de terceiros e efeito de inatividade
-nas futuras consultas sociais serão definidos e testados na próxima entrega.
+o contrato está descrito em [Ecos](echoes.md). A leitura por perfil está descrita
+em [avaliações no perfil](profile-reviews.md), incluindo visibilidade de terceiros
+e efeito de inatividade. Não implementa agregados, contadores, feed, eventos,
+favoritos ou catálogo.
 
 ## Validação reproduzível
 

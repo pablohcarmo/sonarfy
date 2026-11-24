@@ -69,9 +69,33 @@ public class ReviewService {
     // O ID imutável permite paginação estável mesmo quando a nota ou o texto mudam.
     @Transactional(readOnly = true)
     public ReviewDto.Page list(long actor, int limit, Long beforeId) {
+        validatePage(limit, beforeId);
+        eligible(actor, false);
+        return page(actor, limit, beforeId);
+    }
+
+    // Identidade e avaliações compartilham o snapshot de elegibilidade do autor.
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public ReviewDto.ProfilePage profile(long actor, String handle, int limit, Long beforeId) {
+        validatePage(limit, beforeId);
+        eligible(actor, false);
+        var authors = db.query("""
+                SELECT user_id, handle, display_name, avatar FROM users
+                WHERE lower(handle) = lower(?) AND active = true AND verified = true
+                """, (rs, n) -> new ReviewDto.Author(rs.getLong("user_id"), rs.getString("handle"),
+                rs.getString("display_name"), rs.getString("avatar")), handle);
+        if (authors.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found.");
+        var author = authors.getFirst();
+        var page = page(author.id(), limit, beforeId);
+        return new ReviewDto.ProfilePage(author, page.items(), page.nextBeforeId());
+    }
+
+    private static void validatePage(int limit, Long beforeId) {
         if (limit < 1 || limit > 50 || (beforeId != null && beforeId < 1))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Limit must be 1 to 50; beforeId must be positive.");
-        eligible(actor, false);
+    }
+
+    private ReviewDto.Page page(long actor, int limit, Long beforeId) {
         var rows = db.query(SELECT + " WHERE r.user_id = ? AND r.review_id < ? ORDER BY r.review_id DESC LIMIT ?",
                 this::map, actor, beforeId == null ? Long.MAX_VALUE : beforeId, limit + 1);
         boolean more = rows.size() > limit;

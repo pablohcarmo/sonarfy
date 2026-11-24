@@ -157,7 +157,8 @@ class ReviewPostgresTest {
 
     // Filtro Bearer real rejeita token inválido, ausente e contas inativas ou não verificadas em todas as rotas.
     @Test void authentication() throws Exception {
-        for (String route : List.of("GET " + album + "/me", "GET /api/reviews/me", "POST " + album,
+        for (String route : List.of("GET " + album + "/me", "GET /api/reviews/me",
+                "GET /api/profile/by-handle/other/reviews", "POST " + album,
                 "PUT /api/reviews/1", "DELETE /api/reviews/1")) {
             var parts = route.split(" ");
             var method = org.springframework.http.HttpMethod.valueOf(parts[0]);
@@ -249,6 +250,78 @@ class ReviewPostgresTest {
                 assertEquals(1, db.queryForObject("SELECT count(*) FROM reviews", Integer.class));
             } finally { pool.shutdownNow(); }
         }
+    }
+
+    // Perfil vazio difere de perfil indisponível; reativar preserva as avaliações publicadas.
+    @Test void profileVisibilityAndSafeAuthor() throws Exception {
+        String route = "/api/profile/by-handle/OTHER/reviews";
+        mvc.perform(get(route).header("Authorization", token(actor)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items").isEmpty())
+                .andExpect(jsonPath("$.nextBeforeId").isEmpty());
+        long id = reviews.create(other, "local-album", input).reviewId();
+        mvc.perform(get(route).header("Authorization", token(actor)))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.author.id").value(other)).andExpect(jsonPath("$.author.handle").value("other"))
+                .andExpect(jsonPath("$.author.displayName").value("other"))
+                .andExpect(jsonPath("$.author.avatarUrl").isEmpty()).andExpect(jsonPath("$.author.length()").value(4))
+                .andExpect(jsonPath("$.items[0].reviewId").value(id))
+                .andExpect(jsonPath("$.items[0].album.artist.name").value("Artist"))
+                .andExpect(jsonPath("$.items[0].rating").value(8.5))
+                .andExpect(jsonPath("$.items[0].email").doesNotExist());
+        for (String column : List.of("active", "verified")) {
+            db.update("UPDATE users SET " + column + " = false WHERE user_id = ?", other);
+            mvc.perform(get(route).header("Authorization", token(actor))).andExpect(status().isNotFound());
+            db.update("UPDATE users SET " + column + " = true WHERE user_id = ?", other);
+            mvc.perform(get(route).header("Authorization", token(actor)))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].reviewId").value(id));
+        }
+        mvc.perform(get("/api/profile/by-handle/missing/reviews").header("Authorization", token(actor)))
+                .andExpect(status().isNotFound());
+        db.update("UPDATE users SET handle = 'renamed' WHERE user_id = ?", other);
+        mvc.perform(get(route).header("Authorization", token(actor))).andExpect(status().isNotFound());
+        mvc.perform(get("/api/profile/by-handle/renamed/reviews").header("Authorization", token(actor)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.author.id").value(other));
+    }
+
+    // Fronteiras numéricas nunca mudam o autor; edições e empates não deslocam as páginas.
+    @Test void profilePaginationIsolationAndMutation() throws Exception {
+        var own = reviews.create(actor, "local-album", input);
+        List<Long> ids = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            db.update("INSERT INTO albums (artist_id, spotify_id, name) SELECT artist_id, ?, 'Album' FROM artists", "profile" + i);
+            ids.add(reviews.create(other, "profile" + i, input).reviewId());
+        }
+        db.update("UPDATE reviews SET created_at = '2026-01-01T00:00:00Z'");
+        Set<Long> seen = new HashSet<>(); Long cursor = null;
+        do {
+            var page = reviews.profile(actor, "other", 2, cursor);
+            for (var item : page.items()) assertTrue(seen.add(item.reviewId()));
+            cursor = page.nextBeforeId();
+        } while (cursor != null);
+        assertEquals(new HashSet<>(ids), seen);
+        var first = reviews.profile(actor, "other", 2, null);
+        reviews.replace(other, ids.getFirst(), new JsonMapper().readValue("{\"rating\":0}", ReviewInputDto.class));
+        var second = reviews.profile(actor, "other", 2, first.nextBeforeId());
+        assertEquals(List.of(ids.get(2), ids.get(1)), second.items().stream().map(r -> r.reviewId()).toList());
+        mvc.perform(get("/api/profile/by-handle/reviewer/reviews").param("beforeId", first.nextBeforeId().toString())
+                        .header("Authorization", token(other)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].reviewId").value(own.reviewId()));
+        mvc.perform(delete("/api/reviews/" + ids.getFirst()).header("Authorization", token(actor)))
+                .andExpect(status().isNotFound());
+        reviews.delete(other, ids.getFirst());
+        assertEquals(4, reviews.profile(actor, "other", 50, null).items().size());
+        assertEquals(1, reviews.profile(actor, "reviewer", 50, null).items().size());
+    }
+
+    // A rota valida limites e tipos antes de executar consultas sem limite.
+    @Test void profilePaginationValidation() throws Exception {
+        for (String query : List.of("limit=0", "limit=51", "limit=x", "beforeId=0", "beforeId=-1",
+                "beforeId=abc", "beforeId=9223372036854775808"))
+            mvc.perform(get("/api/profile/by-handle/other/reviews?" + query).header("Authorization", token(actor)))
+                    .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/profile/by-handle/other/reviews?beforeId=1").header("Authorization", token(actor)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items").isEmpty());
     }
 
     private String token(long id) { return "Bearer " + jwt.generateAccessToken(Long.toString(id)); }

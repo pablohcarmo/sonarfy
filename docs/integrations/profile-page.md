@@ -1,6 +1,15 @@
 # Perfil — consulta e edição textual
 
-O frontend existente permanece demonstrativo e não foi alterado nesta entrega.
+A seção de avaliações agora dispõe de leitura paginada autenticada para o próprio
+perfil e terceiros: [integração](reviews.md#avaliações-por-perfil) e
+[contrato](../api/profile-reviews.md). Cabeçalho e avaliações têm carregamentos
+separados; as demais listas demonstrativas não passam a ser dados reais.
+
+A integração de avaliações foi encaminhada ao especialista em frontend e o usuário
+confirmou seus testes conforme o [registro de validação](reviews.md#confirmação-de-integração-pelo-usuário).
+As referências a adapters demonstrativos abaixo descrevem a entrega original de
+perfil, não uma nova conferência do estado atual do frontend. O frontend não foi
+alterado por este agente.
 O adapter de produção deverá usar GET `/api/profile/me` sem handle na URL e
 GET `/api/profile/by-handle/{handle}` para um handle explícito, ambos com Bearer.
 Não selecionar o usuário por e-mail ou por identificador fornecido no corpo.
