@@ -1,8 +1,9 @@
 # Desativação de conta — preparação interna
 
-Esta primeira entrega prepara apenas persistência e tokens. **Nenhuma rota de
-desativação está disponível**, nenhum e-mail é enviado e nenhum estado de conta
-ou sessão é alterado. As coleções HTTP existentes não mudam nesta etapa.
+A preparação inclui persistência, invalidação por credenciais e o núcleo interno
+de solicitação e reserva de entrega. **Nenhuma rota de desativação está disponível**,
+nenhum e-mail de desativação é enviado e a solicitação não altera conta ou sessões.
+As coleções HTTP existentes não mudam nesta etapa.
 
 A divisão aprovada é:
 
@@ -20,9 +21,9 @@ reativa uma conta inativa automaticamente.
 
 `AccountDeactivationRequestRepository` exige uma transação externa em todas as
 operações. Não representa uma autorização HTTP nem valida senha ou elegibilidade.
-Os futuros serviços deverão autenticar o ator, conferir a senha e revalidar o
-estado da conta sob bloqueio antes de criar uma solicitação. O ID nunca poderá
-ser escolhido pelo cliente como forma de autorizar a operação.
+O serviço interno confere a senha e revalida o estado da conta sob bloqueio antes
+de criar uma solicitação. O futuro controller deverá fornecer o ID do principal
+autenticado, nunca um ID escolhido pelo cliente como forma de autorizar a operação.
 
 - `replace(userId)` bloqueia o usuário e substitui sua solicitação atual.
   Gera um segredo de 256 bits com `SecureRandom`, prefixo `deactivation.` e corpo
@@ -50,8 +51,8 @@ hash é revalidado depois do bloqueio do usuário, evitando consumir a autoriza�
 antiga se ocorrer substituição concorrente. Operações envolvendo vários usuários
 deverão manter a ordem crescente de ID já adotada no projeto.
 
-Na próxima entrega, senha, elegibilidade, criação/substituição e enfileiramento
-de e-mail deverão compartilhar a transação. Na confirmação futura, consumo,
+Senha, elegibilidade, criação/substituição e enfileiramento de e-mail já
+compartilham a transação do serviço interno. Na confirmação futura, consumo,
 revalidação da conta, desativação e revogação deverão confirmar ou sofrer rollback
 juntos. O consumo isolado do repository não desativa a conta.
 
@@ -61,7 +62,8 @@ vigente antes do SMTP, sem estender sua expiração, e reservar essa tentativa n
 transação apropriada. Uma entrega de resultado incerto poderá exigir um novo
 link; essa consequência deverá constar da integração. `replace` cria outra
 solicitação e não deve ser usado como retentativa automática que renova o prazo.
-A reserva/rotação de entrega ainda não está implementada nesta etapa.
+A reserva/rotação de entrega está implementada no incremento 2b abaixo; o
+transporte SMTP ainda não foi conectado.
 
 A confirmação futura também deverá recusar autorizações anteriores a mudanças
 de senha/e-mail ou ciclos de desativação/reativação, preservando a invalidação já
@@ -108,7 +110,7 @@ Resposta planejada `202 Accepted`:
 
 `202` significará solicitação e intenção de envio confirmadas atomicamente,
 sem token/link no JSON, sem desativar a conta e sem revogar sessões. O remetente
-precisará reservar e rotacionar tokens sem persistir o segredo nem renovar o
+deverá usar a reserva/rotação interna sem persistir o segredo nem renovar o
 prazo em retentativas. O link deverá usar fragmento e abrir uma confirmação
 explícita; abrir o link nunca deverá alterar a conta.
 
@@ -127,5 +129,46 @@ retentativa automática de entrega não é nova solicitação.
 
 Este é um contrato de implementação futura, sem controller, propriedade de
 ativação ou coleção executável nesta entrega. Não habilitar envios externos
-antes de concluir a confirmação, a outbox, as retentativas e a cobertura HTTP
+antes de concluir a confirmação, conectar o transporte às reservas e validar HTTP
 pela cadeia real de segurança.
+
+## Incremento 2b — solicitação interna e reserva de entrega
+
+`AccountDeactivationRequestService.request(authenticatedUserId, currentPassword)`
+implementa o núcleo do contrato planejado acima, sem controller. Campos ausentes
+ou em branco são recusados antes da reserva. Conta ativa e verificada é exigida
+antes do cooldown e novamente sob bloqueio. Senha incorreta ou acima de 72 bytes
+é recusada sem substituir a autorização, mas mantém o cooldown reservado.
+
+A reserva de cooldown usa a transação independente já existente. A transação de
+negócio recarrega a conta com bloqueio, valida a senha, substitui a autorização e
+grava uma intenção em `account_deactivation_mail_outbox`. Falha no enfileiramento
+restaura a autorização anterior. O destinatário é o endereço atual verificado
+recarregado, nunca um parâmetro do cliente. O serviço não retorna token ou link.
+
+`AccountDeactivationMailRepository.claim()` usa uma transação nova, bloqueando a
+conta antes da autorização/outbox e ignorando contas já bloqueadas por outro
+trabalhador. Após o bloqueio, relê a solicitação e a intenção atuais. Recusa conta
+inelegível, endereço divergente, evento substituído, invalidado, consumido,
+expirado ou ainda reservado. Uma reserva válida dura dois minutos.
+
+Na mesma transação da reserva, `rotateForDelivery` troca somente o hash por um
+segredo aleatório novo. UUID, emissão e expiração permanecem intactos. Só o
+resultado transitório contém o token; seu `toString()` o oculta. Nenhuma coluna
+da outbox guarda token bruto. O futuro remetente deverá aguardar o retorno de
+`claim()` e conferir `expiresAt` antes de iniciar o SMTP, fora da transação.
+
+`complete(delivery, delivered)` aceita somente o UUID de reserva ainda vigente
+para aquela conta e solicitação. Sucesso marca a intenção como entregue; falha
+libera a reserva e adia a próxima tentativa em 30 segundos. Reserva abandonada
+pode ser retomada após dois minutos; sua retomada rotaciona o token sem renovar
+o prazo. Uma tentativa antiga não pode concluir ou reagendar a nova reserva.
+
+Envio de resultado incerto poderá exigir outro link: ao retomar uma reserva, o
+link anterior deixa de ser válido. Alterações de credenciais ou substituições
+durante um futuro SMTP não poderão recolher mensagens já em trânsito, mas a
+confirmação deverá recusar a autorização antiga. Não há garantia de entrega
+exatamente uma vez ou de chegada à caixa de entrada.
+
+Ainda não há controller, remetente, agendamento ou propriedade que habilite o
+fluxo externamente. Nenhum token é enviado antes de a confirmação estar pronta.

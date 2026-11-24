@@ -1,4 +1,4 @@
-# Preparação da desativação — entrega 1
+# Preparação da desativação — operação e validação
 
 O frontend permanece somente leitura para o agente do backend. Seus controles
 demonstrativos não devem ser conectados a esta camada interna. Não há endpoint,
@@ -18,7 +18,8 @@ A tabela mantém uma solicitação atual por usuário, com FK `ON DELETE CASCADE
 UUID e hash únicos e constraints de formato do hash e consistência temporal.
 Substituição invalida o token anterior; consumo é de uso único; rollback restaura
 a autorização. A tabela não guarda senha, endereço de e-mail ou token bruto.
-Não foi criada uma outbox de e-mail nesta primeira entrega.
+A primeira entrega não criava outbox. O incremento 2b adiciona a tabela descrita
+abaixo, ainda sem conectar o transporte de e-mail.
 
 ## Validação
 
@@ -112,9 +113,9 @@ credenciais/autorização/sessões, consumo aguardando bloqueio, credenciais
 recusadas e reativação idempotente de conta já ativa. A CI executa ambas as
 classes explicitamente nos dois caminhos de schema.
 
-O contrato da solicitação HTTP está definido em
+No incremento 2a, o contrato da solicitação HTTP foi definido em
 [desativação](../api/account-deactivation.md),
-mas continua indisponível. Próximos incrementos: outbox e reserva/rotação de
+mas continuava indisponível. Os próximos incrementos previstos eram outbox e reserva/rotação de
 entrega sem token bruto, solicitação autenticada com senha e cooldown, confirmação
 atômica com revogação de sessões e posterior integração frontend.
 
@@ -134,3 +135,65 @@ histórico local. Esta retomada não autoriza nem executa migration na aplicaç�
 - `git diff --check`: aprovado. CI configurada, sem execução remota.
 - Nenhuma validação HTTP da desativação, SMTP real ou integração visual:
   não há endpoint de desativação. As evidências de 21/11 permanecem históricas.
+
+## Incremento 2b — solicitação interna e outbox
+
+O núcleo da solicitação, o controle de reenvio e a reserva/rotação agora estão
+implementados. Continuam ausentes controller, transporte e agendamento de envio.
+Não há configuração que habilite a desativação para usuários nesta versão.
+
+A migration `016_create_account_deactivation_mail_outbox.sql` cria a outbox
+depois das migrations existentes, incluindo 010 e 015. `db/tables.sql` contém a
+mesma estrutura para bancos novos. Não aplicar 016 sobre esse schema já
+inicializado; não existe executor automático de migrations. Aplicação no banco
+da aplicação continua dependendo de autorização específica.
+
+A outbox mantém uma intenção por usuário. Uma solicitação nova aceita substitui
+a intenção anterior e sua reserva. Não há token bruto, senha ou corpo de e-mail
+persistido. A tabela referencia o usuário; o vínculo com a autorização vigente
+é revalidado por UUID em toda reserva. Após invalidação de credenciais, expiração
+ou consumo, intenções obsoletas podem permanecer armazenadas, mas não podem ser
+reservadas. Não há expurgo nesta entrega; o volume é limitado a uma linha por
+usuário, removida por cascata se a conta for excluída por outro procedimento.
+
+Chamadores internos de `enqueue` compartilham a transação da solicitação.
+`claim` e `complete` confirmam suas próprias transações. Nunca envolver SMTP
+em uma transação da conta. O futuro remetente deve conferir o vencimento antes
+do envio, tratar falhas com `complete(delivery, false)` e tolerar resultado
+incerto: recuperar uma reserva rotaciona o token e invalida o link anterior.
+O atraso após falha é 30 segundos e a reserva abandonada expira em dois minutos;
+nenhuma retentativa prorroga os 15 minutos da autorização original.
+
+`AccountDeactivationRequestPostgresTest` exercita serviços reais com
+`JpaTransactionManager` e PostgreSQL descartável. Cobre senha/limite BCrypt,
+elegibilidade, cooldown após senha incorreta, rollback de substituição por falha
+de outbox, preservação de conta e sessões, rotação com prazo original, reserva
+concorrente, retomada de reserva abandonada e rejeição de eventos obsoletos.
+Nenhum teste dessa classe chama HTTP ou SMTP.
+
+Executar as três classes de desativação com:
+
+```powershell
+.\mvnw.cmd test '-Dtest=AccountDeactivationPersistencePostgresTest,AccountDeactivationInvalidationPostgresTest,AccountDeactivationRequestPostgresTest' '-Dsonarfy.test.deactivation-postgres=true'
+```
+
+A CI prepara o schema consolidado e repete as três classes após recriar somente
+as tabelas de desativação pelas migrations 010 e 016, no banco descartável.
+Próximo incremento: confirmação atômica e integração HTTP/SMTP, mantendo a
+disponibilização externa condicionada à conclusão de todo o fluxo.
+
+### Validação local do incremento 2b em 24/11/2026
+
+- 37 cenários das três classes de desativação aprovados sobre o schema
+  consolidado: 13 novos e 24 anteriores, sem falhas, erros ou ignorados.
+- Após remover somente as tabelas de desativação no banco descartável e aplicar
+  010 seguida de 016, `./mvnw.cmd test -Dsonarfy.test.deactivation-postgres=true`
+  aprovou 878 reportados, 756 executados e 122 ignorados, sem falhas ou erros.
+  Os mesmos 37 cenários estão incluídos nessa execução.
+- Definição da tabela idêntica entre a migration 016 e o schema consolidado;
+  `git diff --check` aprovado.
+- PostgreSQL 17.9 nativo, instância temporária exclusiva em `127.0.0.1:55453`,
+  banco `sonarfy_deactivation_test`. Nenhuma consulta ou alteração no banco da
+  aplicação. Nenhuma validação HTTP, SMTP real ou frontend desta funcionalidade.
+- CI atualizada para ambos os caminhos, ainda sem execução remota. Nenhum push
+  ou PR nesta entrega. O stash original da preparação continua preservado.

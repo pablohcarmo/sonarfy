@@ -127,10 +127,11 @@ jobs:
           docker exec "$POSTGRES_CONTAINER" psql -U following_test -d postgres -v ON_ERROR_STOP=1 -c "CREATE USER deactivation_test WITH PASSWORD 'isolated-deactivation-test'"
           docker exec "$POSTGRES_CONTAINER" createdb -U following_test -O deactivation_test sonarfy_deactivation_test
           docker exec -i "$POSTGRES_CONTAINER" psql -U deactivation_test -d sonarfy_deactivation_test -v ON_ERROR_STOP=1 < db/tables.sql
-          ./mvnw test -Dtest=AccountDeactivationPersistencePostgresTest,AccountDeactivationInvalidationPostgresTest -Dsonarfy.test.deactivation-postgres=true -Dsonarfy.test.deactivation-port=55451
-          docker exec "$POSTGRES_CONTAINER" psql -U deactivation_test -d sonarfy_deactivation_test -v ON_ERROR_STOP=1 -c 'DROP TABLE account_deactivation_requests'
+          ./mvnw test -Dtest=AccountDeactivationPersistencePostgresTest,AccountDeactivationInvalidationPostgresTest,AccountDeactivationRequestPostgresTest -Dsonarfy.test.deactivation-postgres=true -Dsonarfy.test.deactivation-port=55451
+          docker exec "$POSTGRES_CONTAINER" psql -U deactivation_test -d sonarfy_deactivation_test -v ON_ERROR_STOP=1 -c 'DROP TABLE account_deactivation_mail_outbox, account_deactivation_requests'
           docker exec -i "$POSTGRES_CONTAINER" psql -U deactivation_test -d sonarfy_deactivation_test -v ON_ERROR_STOP=1 < db/migrations/010_create_account_deactivation_requests.sql
-          ./mvnw test -Dtest=AccountDeactivationPersistencePostgresTest,AccountDeactivationInvalidationPostgresTest -Dsonarfy.test.deactivation-postgres=true -Dsonarfy.test.deactivation-port=55451
+          docker exec -i "$POSTGRES_CONTAINER" psql -U deactivation_test -d sonarfy_deactivation_test -v ON_ERROR_STOP=1 < db/migrations/016_create_account_deactivation_mail_outbox.sql
+          ./mvnw test -Dtest=AccountDeactivationPersistencePostgresTest,AccountDeactivationInvalidationPostgresTest,AccountDeactivationRequestPostgresTest -Dsonarfy.test.deactivation-postgres=true -Dsonarfy.test.deactivation-port=55451
 
       - name: Upload deactivation persistence test reports
         if: always()

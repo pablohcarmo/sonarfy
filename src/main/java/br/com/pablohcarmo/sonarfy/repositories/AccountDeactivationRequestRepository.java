@@ -30,8 +30,7 @@ public class AccountDeactivationRequestRepository {
     // A transação do chamador deverá incluir reautenticação e enfileiramento do e-mail.
     public Issued replace(long userId) {
         if (!lockAccount(userId)) throw new IllegalArgumentException("Account unavailable.");
-        byte[] bytes = new byte[32]; RANDOM.nextBytes(bytes);
-        String token = "deactivation." + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        String token = newToken();
         UUID id = UUID.randomUUID();
         return jdbc.queryForObject("""
                 INSERT INTO account_deactivation_requests (user_id, request_id, token_hash, issued_at, expires_at)
@@ -40,6 +39,24 @@ public class AccountDeactivationRequestRepository {
                     issued_at = EXCLUDED.issued_at, expires_at = EXCLUDED.expires_at, consumed_at = NULL
                 RETURNING expires_at
                 """, (row, index) -> new Issued(id, token, row.getObject("expires_at", OffsetDateTime.class)), userId, id, hash(token));
+    }
+
+    // Cada tentativa recebe um segredo novo, sem alterar emissão, identidade ou expiração.
+    public Optional<Issued> rotateForDelivery(long userId, UUID requestId) {
+        if (!lockAccount(userId)) return Optional.empty();
+        String token = newToken();
+        return jdbc.query("""
+                UPDATE account_deactivation_requests SET token_hash = ?
+                WHERE user_id = ? AND request_id = ? AND consumed_at IS NULL
+                    AND issued_at <= statement_timestamp() AND expires_at > statement_timestamp()
+                RETURNING expires_at
+                """, (row, index) -> new Issued(requestId, token, row.getObject("expires_at", OffsetDateTime.class)),
+                hash(token), userId, requestId).stream().findFirst();
+    }
+
+    private static String newToken() {
+        byte[] bytes = new byte[32]; RANDOM.nextBytes(bytes);
+        return "deactivation." + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
     // Revalida o hash após o bloqueio; o chamador deverá desativar a conta na mesma transação.
