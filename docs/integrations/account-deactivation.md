@@ -1,5 +1,10 @@
 # Preparação da desativação — operação e validação
 
+O incremento 4 conecta HTTP e SMTP, desabilitados por padrão e ainda sem página
+frontend integrada. Contrato vigente: [desativação HTTP](../api/account-deactivation-http.md).
+Os registros dos incrementos 1–3 abaixo são históricos; a operação atual está na
+seção do incremento 4 ao final deste documento.
+
 O frontend permanece somente leitura para o agente do backend. Seus controles
 demonstrativos não devem ser conectados a esta camada interna. Não há endpoint,
 página de confirmação, envio SMTP ou coleção Postman nova nesta etapa. O texto
@@ -255,3 +260,114 @@ externamente, sem propriedade que permita habilitá-lo parcialmente.
 - Sem validação HTTP da operação de desativação, Postman ou SMTP real: a cadeia
   Bearer foi exercitada somente pela rota de prova do teste. Sem push ou PR
   nesta entrega. As evidências dos incrementos anteriores permanecem históricas.
+
+## Incremento 4 — HTTP e SMTP, desabilitados por padrão
+
+O backend conecta solicitação autenticada, envio transacional por outbox e
+confirmação pública por token. `app.account-deactivation.enabled=true` registra
+controllers, remetente e configuração de agendamento. A ausência da propriedade
+ou `false` mantém esses componentes ausentes; não foi alterada a configuração
+local da aplicação para habilitar a funcionalidade.
+
+O filtro de não armazenamento executa antes de CORS e autenticação para que
+rejeições também recebam `Cache-Control: no-store`. A confirmação usa somente
+o token no corpo e ignora Authorization; a solicitação exige Bearer real. Não
+há confirmação por GET, cookie ou abertura do link.
+
+### Preparação para disponibilizar
+
+1. Manter o fluxo desligado enquanto a página e o adapter não estiverem prontos.
+2. Verificar as migrations 010 e 016 em cada ambiente antes de habilitar.
+   Esta entrega não adiciona migration e não as aplica na aplicação.
+3. Configurar SMTP e `app.frontend-url` no mecanismo seguro do ambiente. O link
+   usa `/confirm-account-deactivation.html#token=...` sob essa URL.
+4. Integrar a página frontend e homologar CORS, fragmento, confirmação explícita,
+   mensagens e sessão. Somente então habilitar a propriedade em todas as
+   instâncias que atendem esse fluxo.
+
+Para validação isolada, pode-se fornecer
+`--app.account-deactivation.enabled=true` ao iniciar a API. O intervalo do
+remetente usa `app.account-deactivation.dispatch-delay-ms` (padrão 5000 ms).
+As configurações e credenciais locais ignoradas pelo Git não foram incluídas
+no commit; não copiar credenciais para argumentos ou arquivos versionados.
+
+Desabilitar a propriedade remove os endpoints e o remetente no próximo início
+da instância, sem reativar contas já desativadas, limpar versões ou apagar dados.
+Não recolhe um SMTP que já começou. Intenções persistidas continuam sujeitas ao
+prazo original; ao retomar, o remetente revalida estado e reserva antes do envio.
+Não usar rollback para uma versão que ignore a revogação por versão de acesso.
+
+### Integração frontend pendente — somente leitura nesta entrega
+
+O adapter atual mantém `deactivateAccount` indisponível. Ele deverá solicitar a
+senha atual e tratar 202 como espera por e-mail, preservando a sessão e a conta
+até a confirmação. Não enviar ID ou destinatário, nem implementar exclusão
+definitiva por esse contrato. Respeitar 429; nova solicitação exige senha atual.
+
+A página pública deverá capturar e remover o fragmento da URL, apresentar uma
+ação explícita e enviar o token exclusivamente no JSON da confirmação, com
+`credentials: 'omit'` e `cache: 'no-store'`. Não disparar o POST ao carregar a
+página ou ao abrir o link. Em 400, orientar nova solicitação. Após 204, credenciais
+locais da conta desativada devem ser descartadas; voltar a usar a conta exige
+reativação explícita e novo login. A homologação visual fica com a entrega do
+frontend; nenhum arquivo, branch ou dependência dele foi alterado.
+
+### Coleção e transporte
+
+[Coleção Postman](../api/sonarfy-account-deactivation.postman_collection.json):
+executar `1 Request` sobre conta de teste ativa/verificada, capturar o token no
+SMTP de teste e depois executar `2 Confirm`. A segunda pasta confirma, verifica
+revogação e replay, reativa explicitamente e faz novo login. Ela altera a conta
+de teste; nunca usar contas reais.
+
+As execuções CLI separadas precisam compartilhar um ambiente local com
+`accessToken`, `oldRefreshCookie` e `deactivationToken`. O login preenche as duas
+primeiras durante a execução; salvar os valores localmente é responsabilidade
+da ferramenta de validação, sem exportá-los para o repositório.
+
+```powershell
+postman collection run docs/api/sonarfy-account-deactivation.postman_collection.json -e CAMINHO_AMBIENTE_LOCAL -i '1 Request' --no-report-events
+postman collection run docs/api/sonarfy-account-deactivation.postman_collection.json -e CAMINHO_AMBIENTE_LOCAL -i '2 Confirm' --no-report-events
+```
+
+`AccountDeactivationHttpPostgresTest` usa HTTP pela cadeia real do Spring MVC,
+segurança, JWT e PostgreSQL; somente o transporte é simulado. Cobre fluxo completo,
+autenticação, JSON/Content-Type, limite BCrypt, cooldown, CORS/no-store, replay,
+retentativa sem ampliar vencimento e revalidação imediatamente antes de enviar.
+`AccountDeactivationDisabledTest` cobre ausência/false da propriedade sem exigir
+banco. A CI executa as cinco classes PostgreSQL nos dois caminhos de schema.
+
+### Evidências atuais do incremento 4 — 24/11/2026
+
+- Base `0552c34`, merge do PR #91. Após criar a branch, `./mvnw.cmd test`:
+  863 reportados, 719 executados, 144 ignorados, sem falhas ou erros.
+- Validação direcionada inicial com `./mvnw.cmd test '-Dtest=AccountDeactivation*Test' '-Dsonarfy.test.deactivation-postgres=true'`:
+  69 cenários aprovados no schema consolidado. Depois foi acrescentado o teste
+  de não registro de token em erro de binding, incluído na suíte final abaixo.
+- Após recriar somente as tabelas de desativação pelas migrations existentes
+  010 e 016 no PostgreSQL descartável, execução final de
+  `./mvnw.cmd test -Dsonarfy.test.deactivation-postgres=true`: 911 reportados,
+  789 executados, 122 ignorados, sem falhas/erros. Inclui 70 cenários de
+  desativação: 48 anteriores, 20 HTTP/envio e dois de funcionalidade desligada.
+- `./mvnw.cmd package -DskipTests`: API empacotada para validação integrada.
+  A API foi iniciada com um arquivo temporário próprio via `spring.config.location`,
+  apontando somente para PostgreSQL e SMTP em loopback, com credenciais sintéticas.
+- Coleção Postman na API real: 14 requisições e 32 asserções aprovadas,
+  `--no-report-events`, sem publicar resultados. Inclui solicitação, confirmação,
+  replay, rejeição de access/refresh antigos, login recusado enquanto inativa,
+  reativação explícita e novo login; o JWT antigo continua recusado após reativar.
+- O transporte real `EmailService`/JavaMail foi exercitado contra receptor SMTP
+  local, com rejeição 550 na primeira tentativa e aceite no reenvio. O segredo
+  foi rotacionado e o token da tentativa anterior foi recusado com 400.
+- Verificações adicionais na API real: CORS recusado com 403/no-store; após
+  reiniciar com a opção desligada, ambas as rotas retornaram 404 com uma sessão
+  válida na rota autenticada. Nenhum token bruto apareceu no log da API isolada.
+- PostgreSQL 17.9 nativo em `127.0.0.1:55453/sonarfy_deactivation_test`; API em
+  `127.0.0.1:55454`; SMTP em porta efêmera local. Não houve conexão com o banco
+  da aplicação ou com provedor SMTP externo. Não há nova migration.
+- JSON da coleção válido e `git diff --check` aprovado. CI atualizada, sem
+  execução remota nesta entrega. Sem push, PR, alteração ou build do frontend.
+
+Ainda pendentes para liberação: página e adapter frontend, homologação visual
+e entrega/recebimento pelo provedor SMTP real, usando contas de teste autorizadas.
+O backend permanece desabilitado por padrão até essas validações.

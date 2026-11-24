@@ -3,6 +3,7 @@ package br.com.pablohcarmo.sonarfy.config;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
 import br.com.pablohcarmo.sonarfy.security.BearerAuthenticationFilter;
 import br.com.pablohcarmo.sonarfy.security.AuthCsrfFilter;
+import br.com.pablohcarmo.sonarfy.security.AccountDeactivationNoStoreFilter;
 import br.com.pablohcarmo.sonarfy.services.JwtService;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
@@ -19,6 +20,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.filter.CorsFilter;
 
 @Configuration
 @EnableWebSecurity
@@ -31,6 +33,7 @@ public class SecurityConfig {
         return http
                 // Integra o CORS à segurança para processar o preflight antes da autenticação.
                 .cors(Customizer.withDefaults())
+                .addFilterBefore(new AccountDeactivationNoStoreFilter(), CorsFilter.class)
 
                 // Bearer não usa cookie; login, refresh e logout recebem proteção pelo AuthCsrfFilter.
                 .csrf(AbstractHttpConfigurer::disable)
@@ -66,6 +69,7 @@ public class SecurityConfig {
                             "/api/auth/resend-activation-email",
                             "/api/auth/forgot-password",
                             "/api/auth/email-change-confirmation",
+                            "/api/auth/account-deactivation-confirmation",
                             "/api/auth/reset-password"
                     ).permitAll();
 

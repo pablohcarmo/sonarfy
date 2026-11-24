@@ -64,6 +64,20 @@ public class AccountDeactivationMailRepository {
                 lease, owner, id).stream().findFirst();
     }
 
+    // O relógio do banco e o vínculo atual são revalidados imediatamente antes do futuro SMTP.
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+    public boolean canSend(Delivery delivery) {
+        return Boolean.TRUE.equals(db.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM account_deactivation_mail_outbox o
+                    JOIN account_deactivation_requests r ON r.user_id = o.user_id AND r.request_id = o.request_id
+                    JOIN users u ON u.user_id = r.user_id
+                    WHERE o.user_id = ? AND o.request_id = ? AND o.lease_id = ?
+                        AND o.delivered_at IS NULL AND o.lease_until > statement_timestamp()
+                        AND r.consumed_at IS NULL AND r.issued_at <= statement_timestamp() AND r.expires_at > statement_timestamp()
+                        AND u.active AND u.verified AND u.email = o.recipient AND o.recipient = ?)
+                """, Boolean.class, delivery.userId(), delivery.requestId(), delivery.leaseId(), delivery.recipient()));
+    }
+
     // Somente a reserva atual pode concluir ou reagendar, inclusive após substituição da solicitação.
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public boolean complete(Delivery delivery, boolean delivered) {

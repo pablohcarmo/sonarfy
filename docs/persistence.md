@@ -2,8 +2,8 @@
 
 A preparação interna de desativação adiciona a tabela
 `account_deactivation_requests` pela migration 010, após 009. O schema
-consolidado já a inclui para bancos novos. Não há endpoints ou envio de e-mail
-nesta etapa; a aplicação da migration no banco da aplicação exige autorização
+consolidado já a inclui para bancos novos. HTTP e envio são desabilitados por
+padrão; a aplicação da migration no banco da aplicação exige autorização
 específica. Consulte [persistência e validação da desativação](integrations/account-deactivation.md).
 
 O núcleo de solicitação adiciona `account_deactivation_mail_outbox` pela migration
@@ -11,7 +11,8 @@ O núcleo de solicitação adiciona `account_deactivation_mail_outbox` pela migr
 inclui a mesma tabela. Mantém uma intenção por usuário, destinatário verificado,
 UUID da solicitação e reserva temporária; não persiste token bruto. A reserva
 revalida a autorização vigente e rotaciona somente seu hash, sem ampliar o prazo.
-Ainda não há controller ou remetente de desativação. A migration 016 não foi
+Controller e remetente dependem de `app.account-deactivation.enabled=true`;
+consulte o [contrato HTTP](api/account-deactivation-http.md). A migration 016 não foi
 aplicada ao banco da aplicação nesta entrega.
 
 ## Aplicação local da migration 010 em 21/11/2026

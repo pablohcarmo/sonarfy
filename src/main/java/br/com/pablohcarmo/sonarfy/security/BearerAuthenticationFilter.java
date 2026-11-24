@@ -30,6 +30,7 @@ public class BearerAuthenticationFilter extends OncePerRequestFilter {
         String path = request.getRequestURI().substring(request.getContextPath().length());
         return "/api/auth/update-pending-email".equals(path)
                 || "/api/auth/email-change-confirmation".equals(path)
+                || "/api/auth/account-deactivation-confirmation".equals(path)
                 || AuthCsrfFilter.isSessionRequest(request);
     }
 
