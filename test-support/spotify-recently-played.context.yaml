@@ -4,6 +4,34 @@ purpose:
   stands_in_for: Spotify recent plays, album metadata and OAuth Client Credentials with synthetic responses and error scenarios
   unblocks: HTTP client serialization, timeout, pagination and sanitized error handling without real credentials
 assumptions:
+  - id: album-search-natural-token-expiration
+    status: supported
+    claim: Album search rejects a naturally expired Sonarfy access token with HTTP 401
+    reason: Invalid-token checks alone do not demonstrate natural expiration of a normally issued login token
+    verification: On 2026-11-24 the detached Postman run logged in with HTTP 200, confirmed a 900-second TTL, waited 15 minutes and received HTTP 401 for album search using that same token. Two requests and three assertions passed, with zero failures and exit code 0
+    source: docs/api/sonarfy-album-search-expiration.postman_collection.json; docs/api/album-search.md
+    updated_at: '2026-11-24'
+  - id: album-search-live-postman-flow
+    status: supported
+    claim: The local Sonarfy HTTP flow can search Spotify with application credentials and publish and edit a review for an account without a personal Spotify connection
+    reason: Provider-only searches and mocked tests do not establish the complete application flow with the real catalog
+    verification: On 2026-11-24 the versioned live smoke collection passed 18 requests and 35 assertions using normal Sonarfy login, a dedicated PostgreSQL database and the real Spotify API. Search by album and artist, next page, empty filtered search, detail selection, create, reopen, duplicate preservation, edit and cleanup passed. SQL confirmed one test user, one selected album, zero Spotify connections, zero listens and zero remaining reviews. An arbitrary random query unexpectedly matched albums; explicit nonexistent album and artist filters exercised the empty state. Frontend and remote deployment were not tested
+    source: docs/api/sonarfy-album-search-smoke.postman_collection.json; docs/api/album-search.md
+    updated_at: '2026-11-24'
+  - id: album-search-app-catalog
+    status: supported
+    claim: Application Client Credentials can search album and artist text with type album and market BR for the tested application
+    reason: Orbit search metadata did not establish Client Credentials support; official Spotify documentation and a live probe supplied the missing evidence
+    verification: On 2026-11-24 token issuance and searches for Random Access Memories and Daft Punk returned HTTP 200, two album objects and a next page indicator; secrets stayed in memory. This does not establish other markets, credentials or deployed availability
+    source: https://developer.spotify.com/documentation/web-api/reference/search; https://developer.spotify.com/documentation/web-api/tutorials/client-credentials-flow; docs/api/album-search.md
+    updated_at: '2026-11-24'
+  - id: album-search-caller-errors
+    status: supported
+    claim: The search caller sanitizes modeled provider failures and searches without writing catalog data or requiring a personal Spotify connection
+    reason: Search previews must remain independent of catalog persistence and personal authorization
+    verification: On 2026-11-24 real controller and Feign passed Postman simulation cases for pagination, empty results, 401, 403, 404, 429 with Retry-After 900, 5xx, malformed JSON, incompatible metadata and timeout. Request events confirmed encoded query and fixed album type. Separate PostgreSQL HTTP tests passed search, detail resolution, publication and duplicate 409 with zero personal connections; two collection runs passed 25 assertions each
+    source: src/test/java/br/com/pablohcarmo/sonarfy/services/AlbumSearchSimulationTest.java; src/test/java/br/com/pablohcarmo/sonarfy/services/AlbumDetailsPostgresTest.java; test-support/spotify-api/default.js
+    updated_at: '2026-11-24'
   - id: spotify-retry-after-preservation
     status: supported
     claim: Spotify rate-limit responses provide Retry-After in seconds; the client preserves positive values without shortening them
@@ -82,6 +110,9 @@ assumptions:
     source: src/test/java/br/com/pablohcarmo/sonarfy/services/AlbumDetailsPostgresTest.java; target/album-community-focused.log; target/albums-postman-empty.log; target/albums-postman-community.log
     updated_at: '2026-11-24'
 fingerprints:
+  - id: album-search
+    date: '2026-11-24'
+    cli: '1.85.0'
   - id: album-community-pagination
     date: '2026-11-24'
     cli: '1.85.0'

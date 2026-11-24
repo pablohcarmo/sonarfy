@@ -1,0 +1,439 @@
+{
+  "info": {
+    "name": "Sonarfy - Album search live smoke",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Run only with an isolated test account and database. Uses live Spotify through Sonarfy. Creates, edits and deletes one review. Supply authLogin/authPassword locally; tokens stay in runtime variables. Does not test natural token expiration."
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:55444"
+    },
+    {
+      "key": "authLogin",
+      "value": ""
+    },
+    {
+      "key": "authPassword",
+      "value": ""
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Login da conta isolada",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/auth/login",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Sonarfy-CSRF",
+            "value": "1"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"login\":\"{{authLogin}}\",\"password\":\"{{authPassword}}\",\"rememberMe\":true}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Login 200', () => pm.response.to.have.status(200));",
+              "if (pm.response.code === 200) pm.variables.set('accessToken', pm.response.json().accessToken);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Busca por artista - Spotify real",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/albums/search?q=Daft%20Punk&limit=2&offset=0"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Search HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('Search no store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'));",
+              "pm.test('Search page contract', () => { const b = pm.response.json(); pm.expect(b).to.have.all.keys('items','limit','offset','nextOffset'); pm.expect(b.limit).to.eql(2); pm.expect(b.offset).to.eql(0); pm.expect(b.items.length).to.be.at.most(2); for (const a of b.items) { pm.expect(a).to.have.all.keys('spotifyId','name','coverUrl','artist','releaseOn','releasePrecision','totalTracks'); pm.expect(a.spotifyId).to.match(/^[A-Za-z0-9]{22}$/); pm.expect(a.artist).to.have.all.keys('spotifyId','name'); } });",
+              "pm.test('Artista retorna resultados', () => pm.expect(pm.response.json().items.length).to.be.above(0));",
+              "if(pm.response.code===200){const b=pm.response.json();pm.variables.set('albumSpotifyId',b.items[0].spotifyId);pm.variables.set('selectedName',b.items[0].name);pm.variables.set('nextOffset',b.nextOffset);}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Busca por nome de album",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/albums/search?q=Random%20Access%20Memories&limit=2&offset=0"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('Nome de album encontra resultados', () => pm.expect(pm.response.json().items.length).to.be.above(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Proxima pagina",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/albums/search?q=Daft%20Punk&limit=2&offset={{nextOffset}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('Offset avanca', () => pm.expect(pm.response.json().offset).to.eql(Number(pm.variables.get('nextOffset'))));",
+              "pm.test('Pagina contem albuns', () => pm.expect(pm.response.json().items.length).to.be.above(0));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Busca sem resultados",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/albums/search?q=album%3Azzsonarfynonexistent9e7c5f3b8a1d%20artist%3Azzsonarfynonexistent9e7c5f3b8a1d&limit=2"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('Vazio sem proxima pagina', () => { const b=pm.response.json();pm.expect(b.items).to.eql([]);pm.expect(b.nextOffset).to.eql(null);});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Selecionar e resolver detalhes",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/albums/{{albumSpotifyId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('No store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'));",
+              "pm.test('Public album contract', () => { const b = pm.response.json(); pm.expect(b).to.have.all.keys('spotifyId','name','coverUrl','artist','releaseOn','releasePrecision','totalTracks','averageRating','reviewCount'); pm.expect(b.spotifyId).to.eql(pm.variables.get('albumSpotifyId')); pm.expect(b.artist).to.have.all.keys('spotifyId','name'); pm.expect(b.totalTracks).to.be.at.least(0); pm.expect(b.reviewCount).to.be.at.least(0); if (b.reviewCount === 0) pm.expect(b.averageRating).to.eql(null); else { pm.expect(b.averageRating).to.be.at.least(0); pm.expect(b.averageRating).to.be.at.most(10); } });",
+              "pm.test('Titulo corresponde a selecao', () => pm.expect(pm.response.json().name).to.eql(pm.variables.get('selectedName')));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Ainda sem avaliacao propria",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/albums/{{albumSpotifyId}}/reviews/me"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404', () => pm.response.to.have.status(404));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Publicar avaliacao",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/albums/{{albumSpotifyId}}/reviews",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"rating\": 8.5, \"reviewText\": \"Validacao Postman com Spotify real.\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201', () => pm.response.to.have.status(201));",
+              "pm.test('Location presente', () => pm.expect(pm.response.headers.get('Location')).to.include('/reviews/me'));",
+              "if(pm.response.code===201) pm.variables.set('reviewId',pm.response.json().reviewId);",
+              "pm.test('Nota publicada', () => pm.expect(pm.response.json().rating).to.eql(8.5));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reabrir avaliacao",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/albums/{{albumSpotifyId}}/reviews/me"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('Mesmo ID', () => pm.expect(pm.response.json().reviewId).to.eql(Number(pm.variables.get('reviewId'))));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Duplicata preserva avaliacao",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/albums/{{albumSpotifyId}}/reviews",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"rating\": 1}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 409', () => pm.response.to.have.status(409));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Confirmar preservacao apos duplicata",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/albums/{{albumSpotifyId}}/reviews/me"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('Mesmo ID', () => pm.expect(pm.response.json().reviewId).to.eql(Number(pm.variables.get('reviewId'))));",
+              "pm.test('Duplicata nao sobrescreve nota', () => pm.expect(pm.response.json().rating).to.eql(8.5));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Editar avaliacao existente",
+      "request": {
+        "method": "PUT",
+        "url": "{{baseUrl}}/api/reviews/{{reviewId}}",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"rating\": 9, \"reviewText\": \"Edicao validada pelo Postman.\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('Edicao conserva ID e altera nota', () => {const b=pm.response.json();pm.expect(b.reviewId).to.eql(Number(pm.variables.get('reviewId')));pm.expect(b.rating).to.eql(9);});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reabrir edicao",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/albums/{{albumSpotifyId}}/reviews/me"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+              "pm.test('Edicao persistida', () => {const b=pm.response.json();pm.expect(b.reviewId).to.eql(Number(pm.variables.get('reviewId')));pm.expect(b.rating).to.eql(9);pm.expect(b.reviewText).to.eql('Edicao validada pelo Postman.');});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Consulta invalida",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/albums/search?q=a"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 400', () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sem sessao",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/albums/search?q=Daft%20Punk",
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 401', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bearer invalido",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/albums/search?q=Daft%20Punk",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "invalid",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 401', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Excluir somente avaliacao de teste",
+      "request": {
+        "method": "DELETE",
+        "url": "{{baseUrl}}/api/reviews/{{reviewId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 204', () => pm.response.to.have.status(204));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Confirmar exclusao",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/albums/{{albumSpotifyId}}/reviews/me"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404', () => pm.response.to.have.status(404));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,8 +1,14 @@
 # Avaliar Álbum a partir de uma pesquisa
 
-Status: proposta pendente de implementação e validação. Este guia define a
-integração futura; não autoriza nem registra alterações no frontend.
+Status: backend implementado e acesso real ao catálogo validado em 24/11/2026,
+sem deploy. Este guia define a integração futura do frontend;
+não autoriza nem registra alterações nesse repositório.
 O [contrato HTTP](../api/album-search.md) é a referência para campos e erros.
+
+Smoke test da API com Spotify real aprovado localmente: busca, paginação,
+seleção, publicação e edição sem conexão pessoal. As coleções Postman e os
+limites dessa evidência estão no contrato HTTP; a página frontend e o ambiente
+remoto ainda precisam de validação própria.
 
 O usuário logado clica em Avaliar Álbum no Feed e informa nome de álbum ou
 artista. Essa ação deve abrir a seleção por pesquisa sem exigir Ecos ou conexão
@@ -37,5 +43,5 @@ As credenciais Spotify pertencem ao backend. O navegador usa somente Bearer
 Sonarfy, `cache: "no-store"` e `credentials: "omit"` nessas rotas. O cliente
 não fornece `userId`, token Spotify ou credenciais da aplicação.
 
-Nenhuma rota de busca está disponível até implementação e deploy. Não usar
+O endpoint precisa de deploy para ficar disponível no ambiente remoto. Não usar
 sincronização pessoal como substituto ou resultados de demonstração como dados reais.

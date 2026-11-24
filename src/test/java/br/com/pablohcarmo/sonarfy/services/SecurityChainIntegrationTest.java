@@ -47,8 +47,12 @@ class SecurityChainIntegrationTest {
     @Configuration
     @EnableWebMvc
     @Import({EmailReservationIntegrationTest.Config.class, SecurityConfig.class, CorsConfig.class,
-            AuthController.class, UserController.class, AuthService.class})
-    static class Config {}
+            AuthController.class, UserController.class, AuthService.class,
+            br.com.pablohcarmo.sonarfy.controllers.AlbumController.class})
+    static class Config {
+        @Bean AlbumSearchService albumSearch() { return mock(AlbumSearchService.class); }
+        @Bean AlbumDetailsService albumDetails() { return mock(AlbumDetailsService.class); }
+    }
 
     @Autowired WebApplicationContext context;
     @Autowired UserRepository users;
@@ -58,9 +62,23 @@ class SecurityChainIntegrationTest {
     @Autowired DataSource dataSource;
     @Autowired EmailService transport;
     @Autowired EmailTemplateService templates;
+    @Autowired AlbumSearchService albumSearch;
     @Value("${api.security.token.secret}") String signingKey;
     private MockMvc mvc;
     private User user;
+
+    // A rota exige Bearer Sonarfy antes de executar busca ou validar parametros externos.
+    @Test
+    void albumSearchRequiresSonarfyBearer() throws Exception {
+        reset(albumSearch);
+        mvc.perform(get("/api/albums/search").param("q", "Daft Punk")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/albums/search").param("q", "Daft Punk").header("Authorization", "Bearer invalid"))
+                .andExpect(status().isUnauthorized());
+        verifyNoInteractions(albumSearch);
+        mvc.perform(get("/api/albums/search").param("q", "Daft Punk")
+                .header("Authorization", "Bearer " + jwt.generateAccessToken(user.getId().toString()))).andExpect(status().isOk());
+        verify(albumSearch).search(user.getId(), "Daft Punk", 10, 0);
+    }
 
     @BeforeEach
     void setUp() {

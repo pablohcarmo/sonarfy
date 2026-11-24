@@ -200,7 +200,7 @@ jobs:
             cat "$simulation_log"
             exit 1
           fi
-          ./mvnw test -Dtest=SpotifyRecentlyPlayedSimulationTest,SpotifyAlbumSimulationTest -Dsonarfy.test.spotify-api-sim=true
+          ./mvnw test -Dtest=SpotifyRecentlyPlayedSimulationTest,SpotifyAlbumSimulationTest,AlbumSearchSimulationTest -Dsonarfy.test.spotify-api-sim=true
 
       - name: Validate versioned schema and Spotify migration in disposable PostgreSQL
         env:

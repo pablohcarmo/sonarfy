@@ -16,6 +16,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 )
 public interface SpotifyApiClient {
 
+    // O tipo fica fixo no contrato do cliente; a consulta segue como parametro codificado.
+    @GetMapping("/v1/search?type=album")
+    br.com.pablohcarmo.sonarfy.dto.SpotifyAlbumSearchDto searchAlbums(
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+            @RequestParam("q") String query, @RequestParam("market") String market,
+            @RequestParam("limit") int limit, @RequestParam("offset") int offset);
+
     // Consulta metadados completos sem depender do histórico de escutas.
     @GetMapping("/v1/albums/{id}")
     SpotifyAlbumResponseDto getAlbum(@RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,

@@ -1,9 +1,11 @@
 package br.com.pablohcarmo.sonarfy.controllers;
 
 import br.com.pablohcarmo.sonarfy.dto.AlbumDetailsDto;
+import br.com.pablohcarmo.sonarfy.dto.AlbumSearchPageDto;
 import br.com.pablohcarmo.sonarfy.entities.User;
 import br.com.pablohcarmo.sonarfy.exceptions.*;
 import br.com.pablohcarmo.sonarfy.services.AlbumDetailsService;
+import br.com.pablohcarmo.sonarfy.services.AlbumSearchService;
 import org.springframework.http.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -13,7 +15,18 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/albums")
 public class AlbumController {
     private final AlbumDetailsService albums;
-    public AlbumController(AlbumDetailsService albums) { this.albums = albums; }
+    private final AlbumSearchService search;
+    public AlbumController(AlbumDetailsService albums, AlbumSearchService search) {
+        this.albums = albums; this.search = search;
+    }
+
+    // Busca independente de OAuth pessoal e das rotas existentes de detalhes e avaliacoes.
+    @GetMapping("/search")
+    public ResponseEntity<AlbumSearchPageDto> search(
+            @AuthenticationPrincipal User actor, @RequestParam String q,
+            @RequestParam(defaultValue = "10") int limit, @RequestParam(defaultValue = "0") int offset) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(search.search(actor.getId(), q, limit, offset));
+    }
 
     // Identidade do solicitante vem do Bearer Sonarfy, sem exigir conexão Spotify pessoal.
     @GetMapping("/{spotifyId}")

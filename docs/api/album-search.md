@@ -1,8 +1,8 @@
 # Busca e seleção de álbum para avaliação
 
-Status: proposta de contrato em 24/11/2026. A rota de busca ainda não está
-implementada nem implantada. As rotas de detalhes e avaliações citadas já existem.
-A busca real com as credenciais atuais continua pendente de validação.
+Status: backend implementado em 24/11/2026, sem deploy nesta entrega.
+Client Credentials e buscas reais por álbum e artista validados com HTTP 200.
+As rotas de detalhes e avaliações citadas já existem.
 
 ## Objetivo e autenticação
 
@@ -17,7 +17,7 @@ O Ecos permanece independente e mantém suas restrições de autorização pesso
 
 Exemplo: `/api/albums/search?q=Daft%20Punk&limit=10&offset=0`.
 
-| Parâmetro | Regra proposta |
+| Parâmetro | Regra |
 | --- | --- |
 | `q` | Obrigatório, string com 2–100 pontos de código Unicode após trim de espaços Unicode; NUL rejeitado |
 | `limit` | Inteiro entre 1 e 10; padrão 10 |
@@ -126,5 +126,46 @@ As regras completas de substituição, exclusão e privacidade permanecem no
 
 Fontes externas: [Search](https://developer.spotify.com/documentation/web-api/reference/search)
 e [Client Credentials](https://developer.spotify.com/documentation/web-api/tutorials/client-credentials-flow).
-Limites locais, formato de resposta e fluxo acima são decisões propostas para o
-Sonarfy, não garantias de uma implementação já existente.
+Limites locais e formato de resposta são decisões do Sonarfy.
+
+## Evidências e limites da validação
+
+Em 24/11/2026, Client Credentials da aplicação retornou 200; consultas
+`Random Access Memories` e `Daft Punk`, com `type=album`, `market=BR`,
+`limit=2` e `offset=0`, retornaram dois álbuns e indicação de próxima página.
+Credenciais e token permaneceram somente em memória, sem logs ou artefatos.
+Essa verificação direta confirma acesso ao catálogo; não comprova o fluxo
+completo Sonarfy de busca, seleção e publicação em produção.
+
+`AlbumSearchSimulationTest` exercita controller, serviço e Feign reais contra
+a simulação Postman versionada, incluindo 401/403/404, 429, 5xx, JSON inválido,
+metadados incompatíveis e timeout. A conta de teste não tem conexão Spotify.
+`SecurityChainIntegrationTest` verifica Bearer ausente, inválido e válido.
+`AlbumDetailsPostgresTest` passou com servidor HTTP, Bearer e PostgreSQL 17
+descartável: busca sem persistência, seleção por detalhes, criação e duplicata
+409 sem conexão Spotify pessoal. A coleção versionada passou nos cenários
+de comunidade vazia e preenchida: 12 requisições e 25 assertions por execução.
+A suíte padrão passou com 895 testes, zero falhas e 168 condicionais ignorados;
+os testes PostgreSQL e da busca simulada foram ativados separadamente.
+O smoke test Postman também passou contra o backend local e Spotify real,
+com PostgreSQL exclusivo e conta sem conexão Spotify: 18 requisições e 35
+assertions. Incluiu login normal, pesquisa por álbum/artista, próxima página,
+seleção, criação, reabertura, duplicata sem sobrescrita, edição, exclusão da
+avaliação de teste, consulta inválida e Bearer ausente/inválido.
+Uma consulta aleatória pode encontrar resultados pela relevância do Spotify;
+o cenário vazio usou filtros `album:` e `artist:` inexistentes.
+O teste Postman de expiração natural também passou: login 200, TTL de 900
+segundos e busca com o mesmo Bearer retornando 401 após 15 minutos; duas
+requisições, três assertions, zero falhas e código de saída 0.
+A interface foi validada separadamente pelo usuário, que confirmou busca e
+publicação mesmo com permissão de escutas do Ecos pendente. Não houve deploy.
+
+Coleções reproduzíveis (usar somente conta e banco de teste isolados):
+
+- [Smoke test com Spotify real](sonarfy-album-search-smoke.postman_collection.json).
+  Informar `baseUrl`, `authLogin` e `authPassword` localmente. O Bearer emitido
+  pelo login permanece apenas nas variáveis da execução. A coleção cria,
+  edita e exclui uma avaliação, portanto não usar uma conta com dados pessoais.
+- [Expiração natural do Bearer](sonarfy-album-search-expiration.postman_collection.json).
+  Aguarda o prazo real do token (15 minutos). Executar com
+  `--timeout 950000 --timeout-script 930000 --no-report-events`.
