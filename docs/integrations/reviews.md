@@ -1,5 +1,9 @@
 # Integrar a ação Avaliar
 
+Para a seção Coleção com ordenações globais, filtro e contagens, usar o
+[guia específico](profile-collection.md). As limitações de filtro/contagem citadas
+abaixo continuam aplicáveis às rotas antigas `/reviews/me` e de avaliações por perfil.
+
 Contrato: [avaliações próprias](../api/reviews.md). Esta entrega modifica apenas o
 backend. Nenhum arquivo do frontend foi alterado. As telas atuais de perfil/feed
 ainda usam fixtures para avaliações; esta API não substitui um feed social.
@@ -108,6 +112,13 @@ nem aprovação de CI remota. Nenhum arquivo do frontend foi alterado por este a
 
 ## Próxima entrega
 
-Definir consultas de avaliações por álbum e seus agregados. A avaliação é persistida
+Notificações da plataforma, likes, comentários e respostas são funcionalidades
+futuras, fora desta versão e dos seus critérios de conclusão. O feed pode ser
+implementado sem essas interações. Não criar contratos, eventos ou dependências
+preventivas para elas. Essa definição não altera e-mails transacionais de conta
+e segurança. Consulte o [escopo da versão](../../README.md#escopo-desta-versão).
+
+Consultas de avaliações por álbum e seus agregados exigem definição de escopo
+própria; este documento não determina sua prioridade. A avaliação é persistida
 imediatamente, sem rascunho; eventual atividade social decorrente da publicação
 precisará de contrato próprio. Não existe outbox/evento preventivo nesta entrega.

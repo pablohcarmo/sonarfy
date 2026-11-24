@@ -28,6 +28,19 @@ A ideia central é transformar como as pessoas exploram e discutem música, reun
 
 ## Funcionalidades previstas
 
+### Escopo desta versão
+
+O feed faz parte do escopo desta versão. O sistema de notificações da plataforma,
+likes, comentários e respostas não serão implementados nesta versão: são
+funcionalidades futuras, sem prazo definido, e não são critérios de conclusão
+da entrega atual. A implementação do feed não depende dessas interações.
+
+Essa decisão não altera os e-mails transacionais dos fluxos de conta e segurança.
+Os itens da visão geral abaixo não constituem uma lista de pendências da versão;
+disponibilidade e limitações devem ser conferidas nos contratos de cada funcionalidade.
+
+### Visão geral do produto
+
 - Cadastro e autenticação de usuários
 - Perfil personalizado com bio, avatar e capa
 - Busca por usuários e interação social

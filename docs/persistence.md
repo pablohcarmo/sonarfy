@@ -296,6 +296,22 @@ Os relatórios locais ficam em `target/surefire-reports` e não são versionados
 
 ## Índice de avaliações por perfil
 
+A consulta de Coleção adiciona `015_add_collection_rating_index.sql`, após 014:
+`idx_reviews_user_rating_review_desc` em `(user_id, rating DESC, review_id DESC)`.
+As duas direções de ordenação por nota usam o mesmo índice; o índice 014 continua
+atendendo a ordenação por publicação. Não há alteração de tabelas ou dados.
+Justificativa estrutural, sem afirmação de ganho quantitativo: o índice oferece
+autor e fronteira composta na ordem do keyset. Não foi feito benchmark representativo.
+
+Em 24/11/2026 UTC (23/11 no horário local), a importação do schema consolidado,
+a aplicação incremental de 015 sobre schema sem esse índice e sua reaplicação
+passaram no PostgreSQL 17.9 descartável em `127.0.0.1:55469`, banco
+`sonarfy_collection_http_validation`. Contagem e fingerprint das avaliações
+permaneceram iguais; o catálogo confirmou a definição e um único índice.
+Nenhuma migração desta entrega foi aplicada no banco da aplicação.
+O script usa IF NOT EXISTS; em tabelas grandes planejar janela, pois CREATE INDEX
+pode bloquear gravações. Não importar o schema consolidado em banco existente.
+
 A migration `014_add_profile_reviews_index.sql` cria
 `idx_reviews_user_review_desc` sobre `Reviews (user_id, review_id DESC)`.
 O índice atende a restrição por autor e a ordenação/fronteira da paginação

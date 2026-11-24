@@ -13,13 +13,14 @@ import java.time.ZoneOffset;
 @Service
 public class ReviewService {
     private final JdbcTemplate db;
+    private final CollectionCursorCodec cursors;
     private static final String SELECT = """
             SELECT r.*, a.spotify_id, a.name, a.cover, ar.spotify_id AS artist_spotify_id, ar.name AS artist_name
             FROM reviews r JOIN albums a ON a.album_id = r.album_id
             JOIN artists ar ON ar.artist_id = a.artist_id
             """;
 
-    public ReviewService(JdbcTemplate db) { this.db = db; }
+    public ReviewService(JdbcTemplate db, CollectionCursorCodec cursors) { this.db = db; this.cursors = cursors; }
 
     // Serializa mutações da conta e relê sua elegibilidade após aguardar o bloqueio.
     private void eligible(long actor, boolean lock) {
@@ -93,6 +94,52 @@ public class ReviewService {
     private static void validatePage(int limit, Long beforeId) {
         if (limit < 1 || limit > 50 || (beforeId != null && beforeId < 1))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Limit must be 1 to 50; beforeId must be positive.");
+    }
+
+    // Contagens e página usam o mesmo snapshot; a ordenação e o keyset são globais no banco.
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public ReviewDto.CollectionPage collection(long actor, String handle, int limit, String sort,
+                                               String writtenOnly, String cursor) {
+        eligible(actor, false);
+        validatePage(limit, null);
+        if (!java.util.Set.of("recent", "oldest", "highest", "lowest").contains(sort)
+                || !("true".equals(writtenOnly) || "false".equals(writtenOnly)))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid collection options.");
+        var authors = db.query("""
+                SELECT user_id, handle, display_name, avatar FROM users
+                WHERE lower(handle) = lower(?) AND active = true AND verified = true
+                """, (rs, n) -> new ReviewDto.Author(rs.getLong("user_id"), rs.getString("handle"),
+                rs.getString("display_name"), rs.getString("avatar")), handle);
+        if (authors.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found.");
+        var author = authors.getFirst();
+        String context = actor + ":" + author.id() + ":" + sort + ":" + writtenOnly;
+        var position = cursor == null ? null : cursors.decode(context, cursor);
+        String written = "review_text IS NOT NULL AND btrim(review_text) <> ''";
+        var counts = db.query("SELECT count(*), count(*) FILTER (WHERE " + written + ") FROM reviews WHERE user_id = ?",
+                (rs, n) -> new long[]{rs.getLong(1), rs.getLong(2)}, author.id()).getFirst();
+        boolean filtered = "true".equals(writtenOnly);
+        boolean byRating = sort.equals("highest") || sort.equals("lowest");
+        String direction = sort.equals("lowest") || sort.equals("oldest") ? "ASC" : "DESC";
+        String comparison = direction.equals("ASC") ? ">" : "<";
+        var args = new java.util.ArrayList<Object>();
+        args.add(author.id());
+        String predicate = " WHERE r.user_id = ?" + (filtered ? " AND (" + written + ")" : "");
+        if (position != null) {
+            if (byRating) {
+                predicate += " AND (r.rating, r.review_id) " + comparison + " (?, ?)";
+                var rating = java.math.BigDecimal.valueOf(position.halfPoints()).divide(java.math.BigDecimal.valueOf(2));
+                args.add(rating);
+            } else predicate += " AND r.review_id " + comparison + " ?";
+            args.add(position.id());
+        }
+        args.add(limit + 1);
+        String order = byRating ? "r.rating " + direction + ", r.review_id " + direction : "r.review_id " + direction;
+        var rows = db.query(SELECT + predicate + " ORDER BY " + order + " LIMIT ?", this::map, args.toArray());
+        boolean more = rows.size() > limit;
+        var items = more ? rows.subList(0, limit) : rows;
+        String next = more ? cursors.encode(context, new CollectionCursorCodec.Position(items.getLast().reviewId(),
+                items.getLast().rating().multiply(java.math.BigDecimal.valueOf(2)).intValueExact())) : null;
+        return new ReviewDto.CollectionPage(author, items, counts[0], filtered ? counts[1] : counts[0], next);
     }
 
     private ReviewDto.Page page(long actor, int limit, Long beforeId) {

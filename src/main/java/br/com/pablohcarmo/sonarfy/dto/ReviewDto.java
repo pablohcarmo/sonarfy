@@ -11,4 +11,6 @@ public record ReviewDto(long reviewId, Album album, BigDecimal rating, String re
     public record Page(List<ReviewDto> items, Long nextBeforeId) {}
     public record Author(long id, String handle, String displayName, String avatarUrl) {}
     public record ProfilePage(Author author, List<ReviewDto> items, Long nextBeforeId) {}
+    public record CollectionPage(Author author, List<ReviewDto> items, long totalReviews,
+                                 long matchingReviews, String nextCursor) {}
 }

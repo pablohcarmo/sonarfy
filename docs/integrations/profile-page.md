@@ -1,5 +1,13 @@
 # Perfil — consulta e edição textual
 
+A Coleção possui agora [contrato e guia de integração próprios](profile-collection.md),
+com ordenações, filtro, totais e cursor opaco. A integração frontend permanece pendente.
+
+Notificações da plataforma, likes, comentários e respostas ficam para versões
+futuras e não integram os critérios de conclusão desta versão. Isso inclui as
+listas ou ações demonstrativas de respostas no perfil; não apresentá-las como
+funcionalidades reais. O feed permanece independente dessas interações.
+
 A seção de avaliações agora dispõe de leitura paginada autenticada para o próprio
 perfil e terceiros: [integração](reviews.md#avaliações-por-perfil) e
 [contrato](../api/profile-reviews.md). Cabeçalho e avaliações têm carregamentos

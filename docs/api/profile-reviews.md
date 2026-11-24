@@ -1,5 +1,8 @@
 # Avaliações no perfil
 
+A seção Coleção usa uma [rota específica](profile-collection.md), com ordenações,
+filtro e totais. A rota de avaliações abaixo mantém seu contrato e cursor originais.
+
 `GET /api/profile/by-handle/{handle}/reviews?limit=20&beforeId=123`
 exige Bearer de conta ativa e verificada, inclusive para consultar terceiros.
 O handle é comparado sem distinguir maiúsculas, como na consulta do perfil;
