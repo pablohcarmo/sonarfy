@@ -371,3 +371,16 @@ banco. A CI executa as cinco classes PostgreSQL nos dois caminhos de schema.
 Ainda pendentes para liberação: página e adapter frontend, homologação visual
 e entrega/recebimento pelo provedor SMTP real, usando contas de teste autorizadas.
 O backend permanece desabilitado por padrão até essas validações.
+
+### Aplicação local autorizada das migrations em 24/11/2026
+
+Após autorização posterior do usuário, as migrations 015 e 016 foram aplicadas
+nessa ordem, em uma transação, no banco da aplicação `localhost:5433/sonarfy`.
+A 010 foi conferida e não foi reaplicada. Houve backup completo, restauração
+validada e ensaio das duas migrations em PostgreSQL descartável antes da execução.
+
+As 18 tabelas anteriores mantiveram contagens e fingerprints; a nova outbox
+ficou vazia; o índice da Coleção e as constraints da outbox foram conferidos. Não foram
+executados testes funcionais com alteração de contas nesse banco, nem habilitada
+a funcionalidade. Detalhes e caminho do backup estão no
+[registro de persistência](../persistence.md#aplicação-local-das-migrations-015-e-016-em-24112026).

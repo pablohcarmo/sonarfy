@@ -12,8 +12,46 @@ inclui a mesma tabela. Mantém uma intenção por usuário, destinatário verifi
 UUID da solicitação e reserva temporária; não persiste token bruto. A reserva
 revalida a autorização vigente e rotaciona somente seu hash, sem ampliar o prazo.
 Controller e remetente dependem de `app.account-deactivation.enabled=true`;
-consulte o [contrato HTTP](api/account-deactivation-http.md). A migration 016 não foi
-aplicada ao banco da aplicação nesta entrega.
+consulte o [contrato HTTP](api/account-deactivation-http.md). A aplicação local
+autorizada da migration 016 está registrada abaixo.
+
+## Aplicação local das migrations 015 e 016 em 24/11/2026
+
+Após autorização explícita do usuário, o banco `localhost:5433/sonarfy`
+(PostgreSQL 17.9) foi inspecionado. A migration 010 já estava aplicada com suas
+colunas e constraints corretas e não foi reaplicada. Estavam pendentes:
+
+1. `015_add_collection_rating_index.sql`: índice de ordenação da Coleção.
+2. `016_create_account_deactivation_mail_outbox.sql`: outbox de desativação.
+
+O Docker estava parado e o contêiner anterior não existia. O volume persistente
+`infra_db_data` foi conferido primeiro em modo somente leitura: cluster PostgreSQL
+17 existente, com `PG_VERSION` e controle íntegros, encerrado normalmente. O
+contêiner `sonarfy_test_db` foi reconstruído com `postgres:17.9`, reutilizando esse
+volume e publicando somente `127.0.0.1:5433`. A inicialização tinha guarda para
+exigir o cluster existente; nenhum banco vazio ou volume novo foi inicializado.
+O serviço permaneceu em execução após a operação.
+
+Backup completo customizado, com catálogo conferido:
+`target/db-backups/sonarfy-before-deactivation-015-016-20261124-054635.dump`.
+O backup foi efetivamente restaurado em PostgreSQL 17.9 descartável e as contagens
+e fingerprints das 18 tabelas foram comparadas com a aplicação, com ordenação
+determinística `COLLATE "C"`. Os dados restaurados conferiram integralmente.
+As migrations 015 e 016 foram ensaiadas nessa restauração antes da aplicação.
+
+No banco da aplicação, ambas foram aplicadas em uma única transação, com limite
+de espera por bloqueios e de execução. As tabelas anteriores foram protegidas
+contra escrita durante a conferência; comparação antes do commit e novamente
+após o commit confirmou que todas as linhas existentes foram preservadas.
+
+Foram conferidos a definição do índice, as sete colunas e as quatro constraints
+da outbox (PK, unicidade, FK e consistência da reserva). O catálogo passou a ter
+19 tabelas; a outbox nova permaneceu vazia. Nenhuma conta, sessão, relação,
+avaliação ou solicitação foi criada ou alterada para testes na aplicação.
+
+A aplicação das migrations não habilita HTTP ou SMTP de desativação. A opção
+continua desabilitada por padrão; a integração frontend e a homologação de envio
+externo continuam pendentes. Os registros anteriores abaixo são históricos.
 
 ## Aplicação local da migration 010 em 21/11/2026
 
