@@ -1,5 +1,19 @@
 # Persistência das classes existentes
 
+## Inicialização do banco no Azure — 24/11/2026
+
+O contêiner PostgreSQL 17.9 da VM foi inicializado com `db/tables.sql`, que
+incorpora as migrations 001–019. Não houve importação dos cadastros locais nem
+reexecução individual das migrations sobre o schema consolidado.
+
+A comparação de dumps de estrutura com um banco temporário de referência
+confirmou igualdade de tabelas, colunas, defaults, constraints, índices e
+sequências. O banco de referência foi removido. Na conferência inicial havia
+19 tabelas, nenhuma linha de negócio e somente as três permissões obrigatórias.
+Essa contagem descreve a inicialização, não o estado após cadastros no site.
+O volume é persistente e a porta do banco não é publicada no host.
+Veja [implantação e validações](../deploy/README.md).
+
 ## Avaliações da comunidade por álbum — migration 019
 
 `019_add_album_review_rating_index.sql` cria
@@ -9,9 +23,26 @@ e antigas. Ambos restringem álbum e fronteira da paginação no banco.
 
 O schema consolidado inclui o índice para bancos novos. Em bancos existentes,
 aplicar o script 019 depois de 018; não importar o schema completo. Não há backfill,
-alteração de linhas, novas tabelas ou permissões de escrita. A migration é
-validada somente em banco descartável nesta entrega; não foi aplicada ao banco
-pessoal. A aplicação local autorizada de 017/018 não abrange automaticamente a 019.
+alteração de linhas, novas tabelas ou permissões de escrita. A validação inicial
+usou banco descartável; a aplicação local posterior está registrada abaixo.
+
+### Aplicação local da migration 019 em 24/11/2026
+
+Após autorização do usuário, foi conferido o schema de `localhost:5433/sonarfy`
+contra as tabelas, colunas, constraints nomeadas e índices do schema consolidado.
+Somente `idx_reviews_album_rating_review_desc` estava ausente; 017 e 018 já
+estavam presentes. Foi aplicado apenas o script 019, sem reaplicar as anteriores.
+
+Backup completo customizado, com catálogo do arquivo conferido:
+`target/db-backups/sonarfy-before-community-019-20261124-101357.dump`.
+A aplicação ocorreu em transação única, com limites de espera por bloqueios de
+5s e execução de 60s. A definição e a validade do índice foram verificadas.
+Contagens e fingerprints das 19 tabelas, em UTC e com ordenação `COLLATE "C"`,
+conferiram antes/depois da operação e após o commit, sem alteração de linhas.
+
+Nenhum teste automatizado, Postman ou teste de restauração foi executado nesta
+operação, conforme solicitação do usuário. O banco local permaneceu iniciado.
+Evidência: `target/db-backups/community-019-migration-result.json`.
 
 ## Consulta de detalhes do álbum — migration 018
 

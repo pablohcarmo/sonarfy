@@ -51,10 +51,10 @@ Spotify quando faltar, média e total de avaliações elegíveis e comunidade pa
 com quatro ordenações. O gerenciamento da avaliação própria reutiliza os contratos
 existentes. Notas permanecem em 0–10, apresentadas como estrelas de 0–5 na interface.
 
-O usuário aceitou a entrega backend em 24/11/2026. A última implementação está na
-branch `feat/album-community-reviews`, encaminhada para review, CI e
-merge. A migration 019 foi validada em banco descartável e ainda precisa ser
-aplicada ao banco local; 017 e 018 já foram aplicadas com autorização e backup.
+O usuário aceitou a entrega backend em 24/11/2026 e confirmou o merge do PR #96.
+As migrations 017, 018 e 019 foram aplicadas ao banco local com autorização,
+backup e conferência de preservação dos dados. A aplicação da 019 não executou
+testes adicionais, conforme solicitado.
 Integração e validação visual do frontend são trabalho separado. Esse aceite
 não representa a conclusão do projeto inteiro.
 
@@ -82,6 +82,15 @@ O Sonarfy busca criar um espaço em que fãs de música, críticos e colecionado
 - construir uma identidade musical própria dentro da plataforma.
 
 ## Integração com Spotify
+
+O backend e o banco foram implantados em contêineres no Azure; a configuração
+HTTPS e a correção dos cabeçalhos do proxy estão registradas no
+[guia de implantação](deploy/README.md). A publicação não remove a restrição
+do Spotify em Development Mode: sincronizar escutas exige uma conta autorizada
+no Dashboard. A liberação para qualquer conta continua pendente do provedor.
+O [registro de restrições](docs/integrations/spotify.md#restrições-do-provedor-e-publicação--24112026)
+também descreve a alternativa de busca de álbuns com Client Credentials,
+ainda não implementada nem validada com uma busca real neste trabalho.
 
 A entrega atual permite autorizar uma conta Spotify, redirecionar o callback ao
 frontend com o desfecho da operação (`?spotify=connected|denied|invalid_state|error`),

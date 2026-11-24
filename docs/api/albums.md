@@ -15,8 +15,7 @@ da página: catálogo, detalhes/agregados, avaliação própria e comunidade com
 paginação e quatro ordenações. Isso não atribui testes visuais ao usuário nem
 representa o encerramento do projeto inteiro.
 
-A implementação final está na branch `feat/album-community-reviews`, encaminhada
-para review/merge. A aprovação da CI dessa alteração não foi observada.
+A implementação final foi integrada na branch `main` pelo PR #96 (`6a4edbb`).
 Migrations 017 e 018 já foram aplicadas ao banco local com autorização; a 019
 permanece pendente nesse banco, tendo sido validada apenas no descartável.
 Integração e validação do frontend continuam separadas, conforme o

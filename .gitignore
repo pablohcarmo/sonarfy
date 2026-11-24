@@ -12,6 +12,7 @@ HELP.md
 # Configurações locais sensíveis e infraestrutura
 src/main/resources/application.properties
 src/main/infra/
+deploy/config/
 
 # Ferramentas locais de desenvolvimento e IA
 AGENTS.md

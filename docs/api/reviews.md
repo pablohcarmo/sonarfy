@@ -18,6 +18,11 @@ Consultas da comunidade por álbum estão disponíveis no
 
 ## Rotas
 
+Para o fluxo proposto de pesquisa por álbum/artista, consulte
+[busca e seleção para avaliação](album-search.md). A busca ainda não foi
+implementada; as operações abaixo permanecem compatíveis e não exigem conexão
+Spotify pessoal. O álbum deve estar persistido antes da publicação.
+
 | Método e rota | Resultado |
 | --- | --- |
 | `POST /api/albums/{spotifyId}/reviews` | `201` com avaliação e `Location` apontando para a consulta própria por álbum |
