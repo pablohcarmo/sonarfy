@@ -262,11 +262,12 @@ jobs:
           docker exec -i "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_echoes_validation -v ON_ERROR_STOP=1 < db/migrations/012_create_echoes.sql
           ./mvnw test -Dtest=EchoesPersistencePostgresTest,EchoQueryPostgresTest -Dsonarfy.test.echoes-postgres=true
 
-      - name: Execute Echoes sync end-to-end tests against PostgreSQL and Postman simulation
+      - name: Execute Echoes sync and album catalog tests against PostgreSQL and Postman simulation
         env:
           SONARFY_TEST_DB_USER: sonarfy_ci
           SONARFY_TEST_DB_PASSWORD: isolated-ci-password
           SONARFY_ECHOES_TEST_JDBC_URL: jdbc:postgresql://localhost:5432/sonarfy_echoes_validation
+          SONARFY_CATALOG_TEST_JDBC_URL: jdbc:postgresql://localhost:5432/sonarfy_catalog_validation
         run: |
           simulation_log="$RUNNER_TEMP/echoes-sync-simulation.log"
           source test-support/ci-simulation.sh
@@ -290,4 +291,6 @@ jobs:
           fi
           docker exec -i "${{ job.services.postgres.id }}" psql -U sonarfy_ci -d sonarfy_echoes_validation -v ON_ERROR_STOP=1 -c "ALTER TABLE echo_sync_state DROP COLUMN IF EXISTS lease_id"
           docker exec -i "${{ job.services.postgres.id }}" psql -U sonarfy_ci -d sonarfy_echoes_validation -v ON_ERROR_STOP=1 < db/migrations/013_add_echo_sync_lease_id.sql
-          ./mvnw test -Dtest=EchoSyncPostgresSimulationTest -Dsonarfy.test.echoes-sync-e2e=true
+          docker exec "${{ job.services.postgres.id }}" createdb -U sonarfy_ci sonarfy_catalog_validation
+          docker exec -i "${{ job.services.postgres.id }}" psql -U sonarfy_ci -d sonarfy_catalog_validation -v ON_ERROR_STOP=1 < db/tables.sql
+          ./mvnw test -Dtest=EchoSyncPostgresSimulationTest,AlbumCatalogPostgresTest -Dsonarfy.test.echoes-sync-e2e=true -Dsonarfy.test.catalog-postgres=true

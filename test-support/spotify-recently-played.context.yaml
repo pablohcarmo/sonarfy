@@ -60,7 +60,17 @@ assumptions:
     verification: No live Spotify calls or credential acquisition were exercised; integrate credential acquisition and validate availability in the catalog delivery
     source: docs/api/albums.md
     updated_at: '2026-11-24'
+  - id: album-catalog-local-enrichment
+    status: supported
+    claim: The catalog caller persists successful album metadata while preserving local album identity
+    reason: The resolver uses the existing Spotify ID and commits artist and album in a separate database transaction after HTTP
+    verification: On 2026-11-24, AlbumCatalogPostgresTest passed four tests with disposable PostgreSQL 17 and real Feign against Postman. It preserved a legacy album ID and review, resolved concurrent misses without duplicate artists or albums, skipped credential acquisition on a complete local hit, rolled back artist insertion after a database failure and reapplied migration 017 twice. No live Spotify calls or personal database changes
+    source: src/test/java/br/com/pablohcarmo/sonarfy/services/AlbumCatalogPostgresTest.java; target/catalog-focused.log
+    updated_at: '2026-11-24'
 fingerprints:
+  - id: album-catalog-persistence
+    date: '2026-11-24'
+    cli: '1.85.0'
   - id: spotify-album-client
     date: '2026-11-24'
     cli: '1.85.0'
