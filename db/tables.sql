@@ -91,6 +91,7 @@ CREATE TABLE Albums (
     spotify_id VARCHAR(255) NOT NULL UNIQUE,
     name VARCHAR(500) NOT NULL,
     length_seconds INTEGER,
+    total_tracks INTEGER CONSTRAINT chk_album_total_tracks CHECK (total_tracks >= 0),
     cover VARCHAR(255),
     release_on VARCHAR(10),
     release_date_precision VARCHAR(5),

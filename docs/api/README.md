@@ -6,7 +6,7 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 
 ## Índice de Contratos por Domínio
 
-- **[Álbum e avaliações da comunidade](albums.md)** — cliente interno Spotify;
+- **[Álbum e avaliações da comunidade](albums.md)** — cliente Spotify e catálogo local;
   novas rotas HTTP ainda em implementação. [Guia da página](../integrations/album-page.md).
 
 - **[Feed único de atividades](feed.md)** — `GET /api/feed`, avaliações próprias e de perfis seguidos,

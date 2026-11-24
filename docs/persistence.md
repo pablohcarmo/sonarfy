@@ -1,5 +1,20 @@
 # Persistência das classes existentes
 
+## Catálogo de álbuns — migration 017
+
+`017_add_album_total_tracks.sql` adiciona `Albums.total_tracks`, inteiro opcional
+com constraint `chk_album_total_tracks` para valores não negativos. A coluna nula
+identifica álbuns ainda sem contagem oficial, incluindo os importados por Ecos.
+Não há backfill a partir de escutas ou faixas locais. O schema consolidado já
+inclui a coluna para bancos novos; bancos existentes recebem somente a migration.
+
+A consulta interna ao catálogo enriquece esses registros pelo Spotify e preserva
+o `album_id`. Artista principal e álbum são persistidos na mesma transação;
+unicidade por `spotify_id` evita duplicatas concorrentes. O importador de Ecos
+não sobrescreve a contagem conhecida. Datas e capas reutilizam sua normalização.
+Veja [contrato do catálogo](api/albums.md). Esta entrega não aplica a migration
+no banco pessoal ou em produção; a validação usa banco descartável dedicado.
+
 A preparação interna de desativação adiciona a tabela
 `account_deactivation_requests` pela migration 010, após 009. O schema
 consolidado já a inclui para bancos novos. HTTP e envio são desabilitados por
