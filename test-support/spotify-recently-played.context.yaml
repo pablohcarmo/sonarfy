@@ -46,7 +46,24 @@ assumptions:
     verification: Requires manual validation with a test account after sync endpoint delivery
     source: docs/integrations/spotify.md
     updated_at: '2026-11-21'
+  - id: spotify-album-metadata
+    status: supported
+    claim: Album metadata exposes total_tracks independently of its embedded track page
+    reason: Official Get Album reference defines total_tracks; the caller ignores the embedded page
+    verification: On 2026-11-24, SpotifyAlbumSimulationTest used real Feign against the local Postman simulation and returned 70 tracks with an empty embedded track page, with and without market. The focused suite passed 13 tests; synthetic failures covered 401, 403, 404, 429 with Retry-After 900, 500, 503, invalid JSON, invalid metadata and timeout. Request events were observed in target/spotify-album-simulation.ndjson
+    source: https://developer.spotify.com/documentation/web-api/reference/get-an-album; src/test/java/br/com/pablohcarmo/sonarfy/services/SpotifyAlbumSimulationTest.java
+    updated_at: '2026-11-24'
+  - id: live-spotify-album-access
+    status: unknown
+    claim: The deployed application credential can retrieve album metadata in the selected market
+    reason: This delivery receives a token from its caller and was validated only against synthetic HTTP responses
+    verification: No live Spotify calls or credential acquisition were exercised; integrate credential acquisition and validate availability in the catalog delivery
+    source: docs/api/albums.md
+    updated_at: '2026-11-24'
 fingerprints:
+  - id: spotify-album-client
+    date: '2026-11-24'
+    cli: '1.85.0'
   - id: reviews-http-after-disconnection
     date: '2026-11-23'
     commit: 066a41c
