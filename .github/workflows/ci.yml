@@ -60,7 +60,7 @@ jobs:
         run: |
           docker exec "$POSTGRES_CONTAINER" createdb -U sonarfy_ci sonarfy_reviews_validation
           docker exec -i "$POSTGRES_CONTAINER" psql -U sonarfy_ci -d sonarfy_reviews_validation -v ON_ERROR_STOP=1 < db/tables.sql
-          ./mvnw test -Dtest=ReviewPostgresTest -Dsonarfy.test.reviews-postgres=true
+          ./mvnw test -Dtest=ReviewPostgresTest,FeedPostgresTest -Dsonarfy.test.reviews-postgres=true
 
       - name: Execute following HTTP, persistence and concurrency tests
         timeout-minutes: 5

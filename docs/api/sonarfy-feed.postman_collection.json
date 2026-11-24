@@ -1,0 +1,197 @@
+{
+  "info": {
+    "name": "Sonarfy Feed",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Somente leitura. Usar fixtures estáveis e conta de teste ativa/verificada. Definir accessToken localmente; não versionar credenciais."
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "feedQuery",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Sem Bearer",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/feed"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 401\", () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Limite zero",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/feed?limit=0"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Limite excessivo",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/feed?limit=51"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Limite malformado",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/feed?limit=abc"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cursor vazio",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/feed?cursor="
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cursor inválido",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/feed?cursor=invalid"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 400\", () => pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Percorrer feed",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/api/feed?limit=2{{feedQuery}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"HTTP 200\", () => pm.response.to.have.status(200));",
+              "pm.test(\"No store\", () => pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'));",
+              "const p = pm.response.json();",
+              "pm.test(\"Public page\", () => { pm.expect(Object.keys(p).sort()).to.eql(['followingCount','items','nextCursor']); pm.expect(p.followingCount).to.be.a('number').and.at.least(0); pm.expect(p.items.length).to.be.at.most(2); });",
+              "const previous = JSON.parse(pm.variables.get('feedSeen') || '[]');",
+              "for (const r of p.items) {",
+              " pm.test('Public item '+r.reviewId, () => { pm.expect(Object.keys(r).sort()).to.eql(['album','author','createdAt','rating','reviewId','reviewText','updatedAt']); pm.expect(Object.keys(r.author).sort()).to.eql(['avatarUrl','displayName','handle','id']); pm.expect(Object.keys(r.album).sort()).to.eql(['artist','coverUrl','name','spotifyId']); pm.expect(Object.keys(r.album.artist).sort()).to.eql(['name','spotifyId']); pm.expect(r.rating).to.be.within(0,10); pm.expect(r.rating*2).to.eql(Math.floor(r.rating*2)); pm.expect(r.reviewText === null || typeof r.reviewText === 'string').to.eql(true); pm.expect(Number.isFinite(Date.parse(r.createdAt))).to.eql(true); pm.expect(Number.isFinite(Date.parse(r.updatedAt))).to.eql(true); pm.expect(previous).not.to.include(r.reviewId); if(previous.length) pm.expect(r.reviewId).to.be.below(previous[previous.length-1]); });",
+              " previous.push(r.reviewId);",
+              "}",
+              "pm.variables.set('feedSeen',JSON.stringify(previous));",
+              "if(p.nextCursor !== null) { pm.expect(p.items.length).to.eql(2); pm.variables.set('feedQuery','&cursor='+encodeURIComponent(p.nextCursor)); pm.execution.setNextRequest('Percorrer feed'); }",
+              "else { pm.variables.unset('feedSeen'); pm.variables.set('feedQuery',''); }"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
