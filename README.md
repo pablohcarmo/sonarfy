@@ -44,6 +44,24 @@ Essa decisão não altera os e-mails transacionais dos fluxos de conta e seguran
 Os itens da visão geral abaixo não constituem uma lista de pendências da versão;
 disponibilidade e limitações devem ser conferidas nos contratos de cada funcionalidade.
 
+### Página do álbum
+
+O escopo backend implementado reúne detalhes do álbum, catálogo com busca no
+Spotify quando faltar, média e total de avaliações elegíveis e comunidade paginada
+com quatro ordenações. O gerenciamento da avaliação própria reutiliza os contratos
+existentes. Notas permanecem em 0–10, apresentadas como estrelas de 0–5 na interface.
+
+O usuário aceitou a entrega backend em 24/11/2026. A última implementação está na
+branch `feat/album-community-reviews`, encaminhada para review, CI e
+merge. A migration 019 foi validada em banco descartável e ainda precisa ser
+aplicada ao banco local; 017 e 018 já foram aplicadas com autorização e backup.
+Integração e validação visual do frontend são trabalho separado. Esse aceite
+não representa a conclusão do projeto inteiro.
+
+Consulte o [contrato do álbum](docs/api/albums.md), o
+[guia de integração da página](docs/integrations/album-page.md) e o
+[estado das migrations](docs/persistence.md).
+
 ### Visão geral do produto
 
 - Cadastro e autenticação de usuários
@@ -68,8 +86,11 @@ O Sonarfy busca criar um espaço em que fãs de música, críticos e colecionado
 A entrega atual permite autorizar uma conta Spotify, redirecionar o callback ao
 frontend com o desfecho da operação (`?spotify=connected|denied|invalid_state|error`),
 consultar o estado da conexão e desconectá-la, com tokens armazenados cifrados e
-suporte a rotação de chaves. Renovação automática, sincronização de escutas e
-consulta de álbuns e artistas permanecem para entregas posteriores. Consulte a
+suporte a rotação de chaves e renovação sob demanda. Ecos oferece sincronização
+e consulta de escutas. A página do álbum usa Client Credentials da aplicação para
+buscar metadados ausentes, sem exigir conexão Spotify pessoal; a comunidade é
+uma leitura local. Busca por nome e consulta dedicada de artistas não integram
+essa entrega. Consulte a
 [configuração, o contrato de integração do frontend e o escopo](docs/integrations/spotify.md).
 
 ## Contratos da API

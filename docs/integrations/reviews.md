@@ -35,8 +35,9 @@ executado nesta conferência.
    atualizar o estado local. Se a resposta se perder, o GET por álbum resolve o estado.
 
 Não solicite importação ao Spotify nem dispare sync de Ecos ao avaliar. POST com
-álbum desconhecido retorna `404`; busca/persistência de catálogo fora de Ecos
-depende da issue #52. Não prometa avaliar qualquer ID Spotify nesta etapa.
+álbum desconhecido retorna `404`. Na página do álbum, consultar primeiro os
+[detalhes](album-page.md) para resolver/persistir o catálogo pelo Spotify antes
+de abrir a criação. O POST de avaliação continua sem importar catálogo.
 GET/POST não exigem conexão Spotify ativa, apenas catálogo local e conta elegível.
 
 ## Estado e invalidação
@@ -58,8 +59,9 @@ Após criar/editar/excluir:
 - Perfil próprio: invalide a coleção de avaliações (`GET /api/reviews/me`) e reinicie
   a primeira página para evitar duplicatas. Identifique cada item por `reviewId` e
   cada avaliação própria por álbum. Remova o item após DELETE.
-- Página do álbum: invalide a avaliação própria. Agregados e lista de outras pessoas
-  ainda não têm endpoint nesta entrega; não fabrique esses valores no adapter.
+- Página do álbum: invalide a avaliação própria e os detalhes com agregados;
+  reinicie a comunidade desde a primeira página. Os endpoints e suas regras estão
+  no [guia da página do álbum](album-page.md).
 - Feed: qualquer estado local já carregado que represente essa avaliação deve ser
   invalidado. Recarregar `GET /api/feed` desde o início; não há eventos sociais.
 
@@ -126,7 +128,7 @@ sem essas interações. Não criar contratos, eventos ou dependências
 preventivas para elas. Essa definição não altera e-mails transacionais de conta
 e segurança. Consulte o [escopo da versão](../../README.md#escopo-desta-versão).
 
-Consultas de avaliações por álbum e seus agregados exigem definição de escopo
-própria; este documento não determina sua prioridade. A avaliação é persistida
+Consultas de avaliações por álbum e seus agregados estão definidas no
+[contrato do álbum](../api/albums.md). A avaliação é persistida
 imediatamente, sem rascunho; o feed consulta as avaliações existentes,
 sem duplicar publicações. Não existe outbox/evento preventivo nesta entrega.

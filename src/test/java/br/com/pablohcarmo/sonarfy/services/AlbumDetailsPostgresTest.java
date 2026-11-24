@@ -3,6 +3,7 @@ package br.com.pablohcarmo.sonarfy.services;
 import br.com.pablohcarmo.sonarfy.client.*;
 import br.com.pablohcarmo.sonarfy.config.SecurityConfig;
 import br.com.pablohcarmo.sonarfy.controllers.AlbumController;
+import br.com.pablohcarmo.sonarfy.controllers.ReviewController;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,7 +36,8 @@ class AlbumDetailsPostgresTest {
     @Configuration @EnableAutoConfiguration
     @EnableFeignClients(clients = {SpotifyApiClient.class, SpotifyTokenClient.class})
     @Import({SecurityConfig.class, AlbumController.class, AlbumDetailsService.class, AlbumCatalogStore.class,
-            AlbumCatalogService.class, SpotifyAlbumService.class, SpotifyCatalogTokenService.class, AuthSpotifyService.class})
+            AlbumCatalogService.class, SpotifyAlbumService.class, SpotifyCatalogTokenService.class, AuthSpotifyService.class,
+            ReviewController.class, ReviewService.class, CollectionCursorCodec.class})
     static class Config extends EmailReservationIntegrationTest.Config {
         @Bean @Override LocalContainerEntityManagerFactoryBean entityManagerFactory(DataSource ds) {
             var factory = super.entityManagerFactory(ds);
@@ -63,6 +65,8 @@ class AlbumDetailsPostgresTest {
     @Autowired JdbcTemplate db;
     @Autowired JwtService jwt;
     @Autowired SpotifyCatalogTokenService tokens;
+    @Autowired ReviewService reviews;
+    @Autowired CollectionCursorCodec cursors;
     long actor;
     @BeforeEach void prepare() throws Exception {
         db.execute("TRUNCATE users, artists CASCADE");
@@ -130,10 +134,104 @@ class AlbumDetailsPostgresTest {
             var command = new java.util.ArrayList<String>();
             if (System.getProperty("os.name").startsWith("Windows")) command.addAll(java.util.List.of("cmd.exe", "/c"));
             command.addAll(java.util.List.of("postman", "collection", "run", runtime.toString(), "--no-report-events"));
-            var process = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(Path.of("target/albums-postman.log").toFile()).start();
-            if (!process.waitFor(60, TimeUnit.SECONDS)) { process.destroyForcibly(); fail("Postman timed out"); }
-            assertEquals(0, process.exitValue(), "See target/albums-postman.log");
+            for (String scenario : new String[]{"empty", "community"}) {
+                if (scenario.equals("community")) seedCommunity();
+                var log = Path.of("target/albums-postman-" + scenario + ".log");
+                var process = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(log.toFile()).start();
+                if (!process.waitFor(60, TimeUnit.SECONDS)) { process.destroyForcibly(); fail("Postman timed out"); }
+                assertEquals(0, process.exitValue(), "See " + log);
+            }
         } finally { Files.deleteIfExists(runtime); }
+    }
+
+    // Todas as ordenações são globais, com desempate e paginação sem duplicatas para notas iguais.
+    @Test void paginatesCommunityWithFourSortOrdersAndPublicAuthors() throws Exception {
+        long[] ids = seedCommunity();
+        db.execute("DROP INDEX idx_reviews_album_rating_review_desc");
+        for (int i = 0; i < 2; i++) db.execute(Files.readString(Path.of("db/migrations/019_add_album_review_rating_index.sql")));
+        String[] sorts = {"recent", "oldest", "highest", "lowest"};
+        long[][] expected = {{ids[3],ids[2],ids[1],ids[0]}, {ids[0],ids[1],ids[2],ids[3]},
+                {ids[1],ids[2],ids[0],ids[3]}, {ids[3],ids[0],ids[2],ids[1]}};
+        for (int i = 0; i < sorts.length; i++) {
+            var found = new java.util.ArrayList<Long>();
+            String cursor = null;
+            do {
+                var response = get(ID + "/reviews?limit=2&sort=" + sorts[i] + (cursor == null ? "" : "&cursor=" + cursor), true);
+                assertEquals(200, response.statusCode());
+                assertEquals("no-store", response.headers().firstValue("Cache-Control").orElseThrow());
+                assertFalse(response.body().contains("email")); assertFalse(response.body().contains("password"));
+                var page = JSON.readTree(response.body());
+                for (var item : page.get("items")) found.add(item.get("reviewId").asLong());
+                cursor = page.get("nextCursor").isNull() ? null : page.get("nextCursor").asText();
+            } while (cursor != null);
+            assertArrayEquals(expected[i], found.stream().mapToLong(Long::longValue).toArray());
+        }
+        var recent = JSON.readTree(get(ID + "/reviews", true).body());
+        assertEquals(ids[3], recent.get("items").get(0).get("reviewId").asLong());
+        assertTrue(recent.get("items").get(0).get("reviewText").isNull());
+        assertEquals(0, recent.get("items").get(0).get("rating").asInt());
+        assertEquals(4, JSON.readTree(get(ID, true).body()).get("reviewCount").asInt());
+        assertEquals(6.75, JSON.readTree(get(ID, true).body()).get("averageRating").asDouble());
+        assertEquals(0, control("ok").get("albumRequests").asInt());
+        assertEquals(0, control("ok").get("tokensIssued").asInt());
+    }
+
+    // Cursor não é permissão e não pode atravessar álbum, conta, ordenação ou domínio de consulta.
+    @Test void bindsCursorContextAndKeepsBoundaryAfterDeletion() throws Exception {
+        long[] ids = seedCommunity();
+        String cursor = JSON.readTree(get(ID + "/reviews?limit=2&sort=highest", true).body()).get("nextCursor").asText();
+        assertEquals(400, get(ID + "/reviews?sort=lowest&cursor=" + cursor, true).statusCode());
+        String otherAlbum = "0000000000000000000000";
+        db.update("INSERT INTO albums (artist_id, spotify_id, name) SELECT artist_id, ?, 'Other' FROM artists", otherAlbum);
+        assertEquals(400, get(otherAlbum + "/reviews?sort=highest&cursor=" + cursor, true).statusCode());
+        long original = actor;
+        actor = user("visitor", true, true);
+        assertEquals(400, get(ID + "/reviews?sort=highest&cursor=" + cursor, true).statusCode());
+        actor = original;
+        String profileCursor = cursors.encode(actor + ":" + actor + ":recent:false", new CollectionCursorCodec.Position(ids[0],17));
+        assertEquals(400, get(ID + "/reviews?cursor=" + profileCursor, true).statusCode());
+        long owner = db.queryForObject("SELECT user_id FROM reviews WHERE review_id = ?", Long.class, ids[2]);
+        reviews.delete(owner, ids[2]);
+        var next = JSON.readTree(get(ID + "/reviews?sort=highest&cursor=" + cursor, true).body());
+        assertEquals(ids[0], next.get("items").get(0).get("reviewId").asLong());
+        assertEquals(ids[3], next.get("items").get(1).get("reviewId").asLong());
+        assertTrue(next.get("nextCursor").isNull());
+        reviews.replace(actor, ids[0], JSON.readValue("{\"rating\":9}", br.com.pablohcarmo.sonarfy.dto.ReviewInputDto.class));
+        assertEquals(ids[3], JSON.readTree(get(ID + "/reviews", true).body()).get("items").get(0).get("reviewId").asLong());
+        var denied = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/reviews/" + ids[1]))
+                .header("Authorization", "Bearer " + jwt.generateAccessToken(Long.toString(actor))).DELETE().build();
+        assertEquals(404, HttpClient.newHttpClient().send(denied, HttpResponse.BodyHandlers.ofString()).statusCode());
+    }
+
+    // Vazio não é álbum desconhecido; desativação oculta publicações e reativação restaura a visibilidade.
+    @Test void handlesEmptyIneligibleAuthorsAndInvalidQueries() throws Exception {
+        long[] ids = seedCommunity();
+        for (String query : new String[]{"limit=0", "limit=51", "limit=abc", "sort=rating", "cursor=bad", "cursor="})
+            assertEquals(400, get(ID + "/reviews?" + query, true).statusCode(), query);
+        assertEquals(401, get(ID + "/reviews", false).statusCode());
+        assertEquals(400, get("bad/reviews", true).statusCode());
+        assertEquals(404, get("0000000000000000000000/reviews", true).statusCode());
+        db.update("UPDATE users SET active = false WHERE user_id <> ?", actor);
+        reviews.delete(actor, ids[0]);
+        assertEquals(0, JSON.readTree(get(ID + "/reviews", true).body()).get("items").size());
+        db.update("UPDATE users SET active = true WHERE handle = 'zero'");
+        assertEquals(1, JSON.readTree(get(ID + "/reviews", true).body()).get("items").size());
+        db.update("UPDATE users SET verified = false WHERE user_id = ?", actor);
+        assertEquals(401, get(ID + "/reviews", true).statusCode());
+    }
+
+    long[] seedCommunity() {
+        db.update("INSERT INTO artists (spotify_id, name) VALUES ('artist1', 'Artist One') ON CONFLICT DO NOTHING");
+        db.update("INSERT INTO albums (artist_id, spotify_id, name, total_tracks) SELECT artist_id, ?, 'Album One', 70 FROM artists ON CONFLICT DO NOTHING", ID);
+        long[] owners = {actor, user("highest",true,true), user("tie",true,true), user("zero",true,true),
+                user("hidden",false,true), user("unverified",true,false)};
+        double[] ratings = {8.5,10,8.5,0,10,10};
+        long[] ids = new long[owners.length];
+        for (int i = 0; i < owners.length; i++) ids[i] = db.queryForObject("""
+                INSERT INTO reviews (user_id, album_id, rating, review_text)
+                SELECT ?, album_id, ?, ? FROM albums WHERE spotify_id = ? RETURNING review_id
+                """, Long.class, owners[i], ratings[i], i == 0 || i == 3 ? null : "Written review", ID);
+        return ids;
     }
 
     long user(String handle, boolean active, boolean verified) {

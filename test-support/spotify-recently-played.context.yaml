@@ -74,7 +74,17 @@ assumptions:
     verification: On 2026-11-24, AlbumDetailsPostgresTest used a real HTTP server, Sonarfy Bearer security, disposable PostgreSQL and real Feign against the Postman simulation. The mock checked Basic auth and grant_type=client_credentials. Tests covered cache hits, eligible aggregates, 401/403/404/429/503 provider responses, rejected or invalid tokens and token invalidation. The versioned Postman collection passed four requests and seven assertions against the real server; no live Spotify interaction
     source: https://developer.spotify.com/documentation/web-api/tutorials/client-credentials-flow; src/test/java/br/com/pablohcarmo/sonarfy/services/AlbumDetailsPostgresTest.java; target/album-details-focused.log; target/albums-postman.log
     updated_at: '2026-11-24'
+  - id: album-community-local-read
+    status: supported
+    claim: Reading the community for a known local album does not request metadata or application credentials from Spotify
+    reason: The community query resolves local identity and filters reviews and eligible authors in PostgreSQL
+    verification: On 2026-11-24, AlbumDetailsPostgresTest exercised four global sort orders with rating ties, keyset pages, context-bound cursors, deleted cursor boundaries, account eligibility, reactivation and forbidden third-party deletion through the real secured HTTP server. After community reads and local aggregates, the provider counters remained zero for both album requests and token issuance. The versioned Postman collection passed the empty scenario with 11 requests and 22 assertions and the populated scenario with 12 requests and 26 assertions; all fixtures stayed in disposable PostgreSQL
+    source: src/test/java/br/com/pablohcarmo/sonarfy/services/AlbumDetailsPostgresTest.java; target/album-community-focused.log; target/albums-postman-empty.log; target/albums-postman-community.log
+    updated_at: '2026-11-24'
 fingerprints:
+  - id: album-community-pagination
+    date: '2026-11-24'
+    cli: '1.85.0'
   - id: album-details-http
     date: '2026-11-24'
     cli: '1.85.0'

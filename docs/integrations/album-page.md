@@ -5,6 +5,21 @@ quantidade de faixas, média, total de avaliações, ação Avaliar/Avaliado, li
 Spotify, compartilhamento e avaliações da comunidade com ordenação.
 Curtidas e comentários ficam fora do escopo.
 
+## Situação da entrega
+
+O usuário aceitou o escopo backend em 24/11/2026, após a entrega de detalhes,
+agregados, catálogo e comunidade paginada. A implementação final segue para
+review, CI e merge da branch `feat/album-community-reviews`.
+A migration 019 ainda precisa ser aplicada ao banco local; 017 e 018 já foram
+aplicadas. Esses estados não devem ser confundidos com disponibilidade da última
+alteração na `main` ou com integração visual concluída.
+
+Testes automatizados: 736 executados, 151 ignorados, zero falhas. Postman contra
+servidor real e banco descartável: 23 requisições e 48 asserções, zero falhas,
+entre comunidade vazia e preenchida. A validação anterior com Spotify real
+continua registrada no [contrato](../api/albums.md). A comunidade não exige novas
+chamadas ao provedor. Não houve nova validação visual nem alteração do frontend.
+
 ## Entrega 1 — consulta interna ao Spotify
 
 O [contrato de álbum](../api/albums.md) descreve o cliente interno implementado.
@@ -45,9 +60,34 @@ total. Não é necessário conectar a conta Spotify pessoal para abrir a página
 - A leitura pode buscar e persistir o catálogo; exibir carregamento. Um álbum
   não encontrado retorna 404, distinto de provedor indisponível.
 
-Reiniciar o estado ao trocar de álbum ou conta. A lista de avaliações da comunidade
-e as quatro ordenações ficam para a próxima entrega. Busca por nome continua fora
-do escopo. O frontend não foi alterado nesta entrega.
+Reiniciar o estado ao trocar de álbum ou conta. Busca por nome continua fora do
+escopo. O frontend não foi alterado nesta entrega.
+
+## Entrega 4 — avaliações da comunidade
+
+Após resolver os detalhes, consultar
+`GET /api/albums/{spotifyId}/reviews?sort=recent&limit=20` com Bearer Sonarfy.
+A lista consulta somente o banco; desconhecido retorna 404, sem tentar importar
+catálogo. Encadear depois dos detalhes evita uma corrida na primeira abertura.
+
+- Usar `reviewId` como identidade do item e `author` como identidade pública do
+  autor. Renderizar `rating / 2` estrelas, texto opcional e datas em UTC convertidas
+  para o fuso da interface. Uma nota sem texto continua sendo uma avaliação.
+- Mapear o seletor: Mais recentes → `recent`; Mais antigas → `oldest`;
+  Maior nota → `highest`; Menor nota → `lowest`.
+- Enviar `nextCursor` como `cursor` sem modificar; nulo encerra. Não calcular
+  cursores ou aplicar ordenação somente sobre os itens já carregados.
+- Troca de álbum, conta ou ordenação reinicia a lista. Após mutações próprias,
+  invalidar detalhes e reiniciar a lista; não reutilizar cursores de outro contexto.
+  Na ordenação por nota, edições concorrentes podem mover itens entre páginas.
+- Resposta vazia de álbum conhecido é 200; parâmetros inválidos são 400.
+  Sessão inválida é 401 e álbum desconhecido é 404. O total da comunidade e a
+  média continuam vindo dos detalhes, sem contar apenas a página carregada.
+- Leitura não concede edição/exclusão de avaliações de terceiros. Não preencher
+  likes, comentários ou contadores sociais a partir de fixtures.
+
+O backend da página passa a cobrir o escopo funcional acordado; a integração
+visual e sua validação permanecem no trabalho separado de frontend.
 
 ## Regras de apresentação definidas
 

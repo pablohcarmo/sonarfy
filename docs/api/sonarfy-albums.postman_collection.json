@@ -2,7 +2,7 @@
   "info": {
     "name": "Sonarfy - Album details",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Authenticated album details contract: docs/api/albums.md. Set baseUrl, accessToken and albumSpotifyId locally. Reading an unknown album may persist catalog metadata. No review writes. Provider failures are exercised by the integration tests against the versioned Postman simulation."
+    "description": "Authenticated album details contract: docs/api/albums.md. Set baseUrl, accessToken and albumSpotifyId locally. Reading an unknown album may persist catalog metadata. No review writes. Provider failures are exercised by the integration tests against the versioned Postman simulation. Community requests verify public authors, all four sorts, keyset pagination when available, input validation and authentication. Empty and populated scenarios run against real HTTP in AlbumDetailsPostgresTest."
   },
   "variable": [
     {"key":"baseUrl","value":"http://localhost:8080"},
@@ -41,6 +41,91 @@
       "event":[{"listen":"test","script":{"type":"text/javascript","exec":[
         "pm.test('HTTP 401', () => pm.response.to.have.status(401));"
       ]}}]
+    },
+    {
+      "name":"Read recent community reviews",
+      "request":{"method":"GET","url":"{{baseUrl}}/api/albums/{{albumSpotifyId}}/reviews?sort=recent&limit=2"},
+      "event":[
+        {"listen":"test","script":{"type":"text/javascript","exec":[
+          "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+          "pm.test('No store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'));",
+          "pm.test('Community contract', () => { const b = pm.response.json(); pm.expect(b).to.have.all.keys('items','nextCursor'); pm.expect(b.items).to.be.an('array'); pm.expect(b.items.length).to.be.at.most(2); for (const r of b.items) { pm.expect(r).to.have.all.keys('reviewId','author','rating','reviewText','createdAt','updatedAt'); pm.expect(r.author).to.have.all.keys('id','handle','displayName','avatarUrl'); pm.expect(r.rating).to.be.at.least(0); pm.expect(r.rating).to.be.at.most(10); } });",
+          "const b = pm.response.json(); pm.collectionVariables.set('communityCursor', b.nextCursor || ''); pm.collectionVariables.set('communityIds', JSON.stringify(b.items.map(r => r.reviewId)));"
+        ]}}
+      ]
+    },
+    {
+      "name":"Read next community page when available",
+      "request":{"method":"GET","url":"{{baseUrl}}/api/albums/{{albumSpotifyId}}/reviews?sort=recent&limit=2&cursor={{communityCursor}}"},
+      "event":[
+        {"listen":"prerequest","script":{"type":"text/javascript","exec":["if (!pm.collectionVariables.get('communityCursor')) pm.execution.skipRequest();"]}},
+        {"listen":"test","script":{"type":"text/javascript","exec":[
+          "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+          "pm.test('No store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'));",
+          "pm.test('Community contract', () => { const b = pm.response.json(); pm.expect(b).to.have.all.keys('items','nextCursor'); pm.expect(b.items).to.be.an('array'); pm.expect(b.items.length).to.be.at.most(2); for (const r of b.items) { pm.expect(r).to.have.all.keys('reviewId','author','rating','reviewText','createdAt','updatedAt'); pm.expect(r.author).to.have.all.keys('id','handle','displayName','avatarUrl'); pm.expect(r.rating).to.be.at.least(0); pm.expect(r.rating).to.be.at.most(10); } });",
+          "pm.test('No repeated reviews', () => { const previous = JSON.parse(pm.collectionVariables.get('communityIds') || '[]'); for (const r of pm.response.json().items) pm.expect(previous).not.to.include(r.reviewId); });"
+        ]}}
+      ]
+    },
+    {
+      "name":"Read community reviews: oldest",
+      "request":{"method":"GET","url":"{{baseUrl}}/api/albums/{{albumSpotifyId}}/reviews?sort=oldest&limit=2"},
+      "event":[
+        {"listen":"test","script":{"type":"text/javascript","exec":[
+          "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+          "pm.test('No store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'));",
+          "pm.test('Community contract', () => { const b = pm.response.json(); pm.expect(b).to.have.all.keys('items','nextCursor'); pm.expect(b.items).to.be.an('array'); pm.expect(b.items.length).to.be.at.most(2); for (const r of b.items) { pm.expect(r).to.have.all.keys('reviewId','author','rating','reviewText','createdAt','updatedAt'); pm.expect(r.author).to.have.all.keys('id','handle','displayName','avatarUrl'); pm.expect(r.rating).to.be.at.least(0); pm.expect(r.rating).to.be.at.most(10); } });"
+        ]}}
+      ]
+    },
+    {
+      "name":"Read community reviews: highest",
+      "request":{"method":"GET","url":"{{baseUrl}}/api/albums/{{albumSpotifyId}}/reviews?sort=highest&limit=2"},
+      "event":[
+        {"listen":"test","script":{"type":"text/javascript","exec":[
+          "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+          "pm.test('No store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'));",
+          "pm.test('Community contract', () => { const b = pm.response.json(); pm.expect(b).to.have.all.keys('items','nextCursor'); pm.expect(b.items).to.be.an('array'); pm.expect(b.items.length).to.be.at.most(2); for (const r of b.items) { pm.expect(r).to.have.all.keys('reviewId','author','rating','reviewText','createdAt','updatedAt'); pm.expect(r.author).to.have.all.keys('id','handle','displayName','avatarUrl'); pm.expect(r.rating).to.be.at.least(0); pm.expect(r.rating).to.be.at.most(10); } });"
+        ]}}
+      ]
+    },
+    {
+      "name":"Read community reviews: lowest",
+      "request":{"method":"GET","url":"{{baseUrl}}/api/albums/{{albumSpotifyId}}/reviews?sort=lowest&limit=2"},
+      "event":[
+        {"listen":"test","script":{"type":"text/javascript","exec":[
+          "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+          "pm.test('No store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'));",
+          "pm.test('Community contract', () => { const b = pm.response.json(); pm.expect(b).to.have.all.keys('items','nextCursor'); pm.expect(b.items).to.be.an('array'); pm.expect(b.items.length).to.be.at.most(2); for (const r of b.items) { pm.expect(r).to.have.all.keys('reviewId','author','rating','reviewText','createdAt','updatedAt'); pm.expect(r.author).to.have.all.keys('id','handle','displayName','avatarUrl'); pm.expect(r.rating).to.be.at.least(0); pm.expect(r.rating).to.be.at.most(10); } });"
+        ]}}
+      ]
+    },
+    {
+      "name":"Reject invalid community limit",
+      "request":{"method":"GET","url":"{{baseUrl}}/api/albums/{{albumSpotifyId}}/reviews?limit=51"},
+      "event":[
+        {"listen":"test","script":{"type":"text/javascript","exec":[
+          "pm.test('HTTP 400', () => pm.response.to.have.status(400));"
+        ]}}
+      ]
+    },
+    {
+      "name":"Reject invalid community order",
+      "request":{"method":"GET","url":"{{baseUrl}}/api/albums/{{albumSpotifyId}}/reviews?sort=invalid"},
+      "event":[
+        {"listen":"test","script":{"type":"text/javascript","exec":[
+          "pm.test('HTTP 400', () => pm.response.to.have.status(400));"
+        ]}}
+      ]
+    },
+    {
+      "name":"Reject anonymous community access",
+      "request":{"method":"GET","url":"{{baseUrl}}/api/albums/{{albumSpotifyId}}/reviews","auth":{"type":"noauth"}},
+      "event":[
+        {"listen":"test","script":{"type":"text/javascript","exec":[
+          "pm.test('HTTP 401', () => pm.response.to.have.status(401));"
+        ]}}
+      ]
     }
   ]
 }
