@@ -1,10 +1,15 @@
-# Desativação de conta — preparação interna
+# Desativação de conta — preparação interna (incrementos 1–3)
 
-A preparação inclui persistência, invalidação por credenciais, solicitação,
-reserva de entrega e confirmação internas. **Nenhuma rota de desativação está disponível**,
-nenhum e-mail de desativação é enviado e a solicitação não altera conta ou sessões.
-Somente a confirmação interna consome o token e desativa a conta com revogação.
-As coleções HTTP existentes não mudam nesta etapa.
+Este documento registra as etapas internas anteriores. O contrato HTTP vigente,
+envio e configuração do incremento 4 estão em
+[desativação HTTP](account-deactivation-http.md). O fluxo externo continua
+desligado por padrão até a integração da página frontend.
+
+Nos incrementos 1–3, a preparação incluiu persistência, invalidação por credenciais, solicitação,
+reserva de entrega e confirmação internas. **Nenhuma rota de desativação estava disponível**,
+nenhum e-mail de desativação era enviado e a solicitação não alterava conta ou sessões.
+Somente a confirmação interna consumia o token e desativava a conta com revogação.
+As coleções HTTP existentes não mudaram nessas etapas.
 
 A divisão aprovada é:
 

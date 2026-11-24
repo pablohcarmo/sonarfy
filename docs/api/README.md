@@ -15,8 +15,8 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 - **[Avaliações por perfil](profile-reviews.md)** — consulta autenticada de perfis
   elegíveis, identidade pública do autor e paginação por ID.
 
-- **[Preparação da desativação](account-deactivation.md)** — persistência, invalidação
-  de autorizações e núcleos de solicitação/outbox e confirmação; HTTP indisponível.
+- **[Desativação de conta](account-deactivation-http.md)** — solicitação autenticada,
+  envio e confirmação por token; desabilitada por padrão, aguardando frontend.
   [Guia de integração](../integrations/account-deactivation.md).
 
 - **[Reativação explícita de conta](account-reactivation.md)** — `POST /api/auth/reactivation`,
