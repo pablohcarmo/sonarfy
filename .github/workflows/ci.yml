@@ -293,4 +293,4 @@ jobs:
           docker exec -i "${{ job.services.postgres.id }}" psql -U sonarfy_ci -d sonarfy_echoes_validation -v ON_ERROR_STOP=1 < db/migrations/013_add_echo_sync_lease_id.sql
           docker exec "${{ job.services.postgres.id }}" createdb -U sonarfy_ci sonarfy_catalog_validation
           docker exec -i "${{ job.services.postgres.id }}" psql -U sonarfy_ci -d sonarfy_catalog_validation -v ON_ERROR_STOP=1 < db/tables.sql
-          ./mvnw test -Dtest=EchoSyncPostgresSimulationTest,AlbumCatalogPostgresTest -Dsonarfy.test.echoes-sync-e2e=true -Dsonarfy.test.catalog-postgres=true
+          ./mvnw test -Dtest=EchoSyncPostgresSimulationTest,AlbumCatalogPostgresTest,AlbumDetailsPostgresTest -Dsonarfy.test.echoes-sync-e2e=true -Dsonarfy.test.catalog-postgres=true -Dsonarfy.test.albums-postman=true

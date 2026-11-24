@@ -2,10 +2,61 @@
 
 ## Estado da implementação
 
-Entrega 2: resolução do catálogo local com persistência idempotente e busca no
-Spotify quando faltar o álbum ou seu total oficial de faixas. Ainda não há novas
-rotas HTTP Sonarfy nem alteração do fluxo de avaliações.
+Entrega 3: `GET /api/albums/{spotifyId}`, autenticado, com metadados e agregados
+da comunidade. As entregas anteriores forneceram cliente Spotify e catálogo.
 Referência de catálogo: issue [#52](https://github.com/pablohcarmo/sonarfy/issues/52).
+
+## Detalhes do álbum
+
+`GET /api/albums/{spotifyId}` exige Bearer Sonarfy de conta ativa e verificada.
+Não exige conexão Spotify do usuário. IDs devem conter 22 caracteres alfanuméricos.
+Retorna `200` com `Cache-Control: no-store`:
+
+```json
+{
+  "spotifyId":"4aawyAB9vmqN3uQ7FjRGTy",
+  "name":"Album One",
+  "coverUrl":null,
+  "artist":{"spotifyId":"artist1","name":"Artist One"},
+  "releaseOn":"2024-05",
+  "releasePrecision":"mes",
+  "totalTracks":70,
+  "averageRating":8.25,
+  "reviewCount":2
+}
+```
+
+`averageRating` usa 0–10, arredondada a duas casas decimais. Contagem e média
+incluem avaliações sem texto e nota zero, inclusive a avaliação própria. Consideram
+somente autores ativos e verificados, independentemente de seguimento. Sem
+avaliações elegíveis: média nula e contagem zero. Conta solicitante e agregados
+são relidos no mesmo snapshot após resolver o catálogo. Desativação posterior
+ao início desse snapshot aparece na próxima consulta; avaliações não são apagadas.
+Datas e precisão podem ser nulas. Não são retornados IDs internos ou dados privados.
+
+O catálogo completo é servido localmente. Se faltar álbum ou contagem oficial,
+busca no Spotify com Client Credentials da aplicação (`SPOTIFY_CLIENT_ID` e
+`SPOTIFY_CLIENT_SECRET` existentes). `SPOTIFY_CATALOG_MARKET` aceita duas letras
+maiúsculas e tem padrão `BR`; o mercado é configurado no backend, sem parâmetro
+correspondente no frontend. Tokens ficam somente em memória por instância,
+com renovação antecipada; não há refresh token, scopes de usuário ou persistência
+de nova conexão. Um 401 do provedor invalida apenas o token da aplicação usado
+nessa chamada; a próxima tentativa obtém outro. Não há retry automático do GET.
+
+| Status | Comportamento |
+| --- | --- |
+| 400 | ID malformado |
+| 401 | Bearer ausente/inválido ou conta inelegível |
+| 404 | Álbum não encontrado no Spotify |
+| 502 | Credencial da aplicação rejeitada ou acesso negado pelo provedor |
+| 503 | Provedor indisponível, resposta inválida ou rate limit |
+| 504 | Timeout do provedor |
+
+Resposta inválida de token retorna 502. No 429 da API de álbum, a resposta 503
+preserva `Retry-After` positivo quando fornecido. Erros controlados não retornam
+corpo externo nem credenciais e usam `no-store`. Falhas não geram catálogo parcial.
+Aplicar previamente migrations 017 (catálogo) e 018 (índice de avaliações por álbum)
+em bancos existentes. A lista da comunidade permanece para a próxima entrega.
 
 ## Contrato interno entregue
 
@@ -13,8 +64,8 @@ Referência de catálogo: issue [#52](https://github.com/pablohcarmo/sonarfy/iss
 registro local completo sem obter credencial nem acessar o Spotify. Se o registro
 não existir ou `total_tracks` for nulo (legado/Ecos), obtém o token pelo supplier,
 consulta o cliente de álbum e grava artista principal e álbum atomicamente.
-A obtenção da credencial e a autorização Sonarfy serão integradas ao endpoint na
-próxima entrega. Este serviço interno não concede acesso HTTP a dados.
+O endpoint de detalhes fornece a credencial da aplicação e aplica a autorização
+Sonarfy. O serviço de catálogo continua interno, sem conceder acesso HTTP por si só.
 
 A leitura e a gravação usam transações separadas da chamada externa. A gravação
 reutiliza os IDs por `spotify_id`, inclusive em concorrência, e preserva vínculos
@@ -31,7 +82,8 @@ Não é calculada duração total a partir de páginas incompletas de faixas.
 Migration para bancos existentes: `017_add_album_total_tracks.sql`. O campo
 `total_tracks` é inteiro não negativo e aceita nulo para registros antigos.
 O schema consolidado também contém essa coluna. Não aplicar schema completo
-sobre banco existente. A migration não será aplicada ao banco pessoal nesta entrega.
+sobre banco existente. A aplicação local posterior autorizada está registrada
+no [guia de persistência](../persistence.md).
 
 `SpotifyAlbumService.fetch(accessToken, spotifyId, market)` consulta
 `GET https://api.spotify.com/v1/albums/{id}` usando Bearer Spotify, distinto do
@@ -68,8 +120,6 @@ sua tradução anterior de falhas da API.
 
 ## Escopo definido para as próximas entregas
 
-- Disponibilizar capa, nome, artista, lançamento e quantidade oficial de faixas.
-- Expor média na escala 0–10 e total de avaliações; sem avaliações, média nula.
 - Listar avaliações, inclusive sem texto, com identidade pública do autor e data.
 - Ordenar por mais recentes, mais antigas, maior nota e menor nota, com paginação.
 - Considerar apenas autores ativos e verificados na lista e nos agregados.
@@ -77,7 +127,7 @@ sua tradução anterior de falhas da API.
 
 A tela representa notas como estrelas de 0–5, preservando o contrato 0–10.
 Busca por nome, likes, comentários e notificações não integram esta entrega.
-As rotas públicas e seus DTOs serão formalizados nas entregas correspondentes.
+A rota da lista da comunidade e seu DTO serão formalizados na próxima entrega.
 
 ## Validação reproduzível
 
@@ -155,3 +205,65 @@ dispensados pelo usuário. Após a implementação:
   e `target/catalog-simulation.ndjson`. Nenhuma alteração no banco pessoal ou
   no frontend. CI configurada para executar a classe PostgreSQL, ainda sem
   resultado remoto desta entrega.
+
+### Entrega 3 — validação local em 24/11/2026
+
+Sem testes iniciais na troca de branch, conforme solicitado pelo usuário.
+
+- Suíte focada: 61 executados, zero falhas/erros. Inclui os novos testes de
+  token da aplicação e servidor HTTP e as regressões de autenticação e catálogo.
+- Suíte completa: 884 reportados, 733 executados, 151 ignorados, zero falhas/erros
+  (`BUILD SUCCESS`). Flags: `-Dsonarfy.test.catalog-postgres=true`,
+  `-Dsonarfy.test.albums-postman=true`, `-Dsonarfy.test.spotify-api-sim=true` e
+  `-Dsonarfy.test.spotify-api-url=http://127.0.0.1:55468/spotify-api`.
+- PostgreSQL 17 descartável em `127.0.0.1:55467/sonarfy_catalog_validation`,
+  previamente preparado com o schema até 017 e migration 018. O teste HTTP
+  removeu somente o índice 018 nesse banco, reaplicou a migration duas vezes e
+  confirmou os agregados sobre as avaliações preservadas.
+- O servidor HTTP usa porta aleatória, segurança Bearer real e credenciais
+  sintéticas da aplicação para Feign real contra a simulação Postman. A conta
+  solicitante não tem conexão Spotify pessoal. Sem acesso ao Spotify real.
+- A [coleção versionada](sonarfy-albums.postman_collection.json) executou quatro
+  requisições e sete asserções, zero falhas, tanto na suíte focada quanto na completa.
+  A coleção temporária recebeu JWT de teste em arquivo, removido ao final, sem
+  publicar resultados. Execução opt-in com `-Dsonarfy.test.albums-postman=true`.
+- Casos adicionais HTTP: média nula e nota zero incluída no cálculo, elegibilidade de autores e solicitante,
+  edição/exclusão refletidas, cache local sem nova credencial, validação do ID,
+  401/403/404/429/503 do provedor, `Retry-After: 900`, rejeição/invalidade do token
+  da aplicação e invalidação após 401. A expiração antecipada do cache e a
+  invalidação condicional foram verificadas com relógio controlado.
+- Logs locais: `target/album-details-focused.log`, `target/album-details-full.log`,
+  `target/album-details-simulation.ndjson` e `target/albums-postman.log`.
+  A CI foi configurada para incluir os novos testes HTTP e a coleção. Resultado
+  remoto ainda não observado. Banco pessoal e frontend não foram alterados.
+
+### Migração autorizada e testes posteriores — 24/11/2026
+
+Após autorização, migrations 017 e 018 foram aplicadas ao banco local da aplicação,
+com backup restaurado e preservação das linhas anteriores, conforme o
+[registro de persistência](../persistence.md#aplicação-local-das-migrations-017-e-018-em-24112026).
+
+- Suíte completa pós-migração em banco descartável: 884 reportados, 733 executados,
+  151 ignorados e zero falhas/erros. Inclui servidor HTTP real, segurança Bearer,
+  PostgreSQL e coleção Postman (quatro requisições, sete asserções).
+- Validação com Spotify real: aplicação compilada da branch, iniciada temporariamente
+  em `127.0.0.1:18088`, usando banco vazio `sonarfy_album_live_validation`, com schema
+  consolidado. Uma conta sintética foi inserida nesse banco e autenticada pelo login
+  real com CSRF; nenhuma conexão Spotify pessoal foi criada.
+- A primeira consulta do álbum público de exemplo `4aawyAB9vmqN3uQ7FjRGTy`, mercado
+  `BR`, obteve token por Client Credentials e retornou 200 com metadados persistidos,
+  18 faixas, média nula e zero avaliações. A coleção Postman passou contra esse
+  servidor: quatro requisições, sete asserções, zero falhas.
+- O servidor foi reiniciado com ambas as URLs Spotify apontando para um endereço
+  local indisponível. A consulta do mesmo álbum retornou 200 e o mesmo JSON, sem
+  necessitar de credencial em memória ou acesso ao provedor.
+- Credenciais foram obtidas da configuração local do IntelliJ, sem impressão de
+  valores ou publicação no Postman. O arquivo temporário da coleção foi removido;
+  servidores temporários foram encerrados e o banco de validação real foi removido.
+- Após todos os testes, contagens e fingerprints das 19 tabelas da aplicação ainda
+  conferiam. Nenhum dado pessoal foi usado como fixture. Sem validação visual do
+  frontend ou evidência de disponibilidade de todos os álbuns/mercados do Spotify.
+- Evidências locais: `target/album-after-migration-tests.log`,
+  `target/album-after-migration-simulation.ndjson`, `target/album-live-result.json`
+  e `target/album-live-postman.log`. O funcionamento contra o provedor real foi
+  observado para o álbum e o mercado testados, separadamente dos cenários simulados.
