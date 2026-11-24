@@ -35,6 +35,11 @@ likes, comentários e respostas não serão implementados nesta versão: são
 funcionalidades futuras, sem prazo definido, e não são critérios de conclusão
 da entrega atual. A implementação do feed não depende dessas interações.
 
+O [feed único](docs/api/feed.md) reúne avaliações próprias e dos perfis
+seguidos, incluindo publicações anteriores ao seguimento, em ordem decrescente
+por ID. Não haverá abas Para você, Seguindo ou Seguidores. Editar não recoloca
+no topo; excluir remove a publicação. Consulte o [guia de integração](docs/integrations/feed.md).
+
 Essa decisão não altera os e-mails transacionais dos fluxos de conta e segurança.
 Os itens da visão geral abaixo não constituem uma lista de pendências da versão;
 disponibilidade e limitações devem ser conferidas nos contratos de cada funcionalidade.

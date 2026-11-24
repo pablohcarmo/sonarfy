@@ -28,10 +28,15 @@ Com base no diagrama de casos de uso do sistema **Sonarfy**, esta documentação
 * **3.10 Alterar capa:** O usuário troca a imagem de capa/fundo do perfil.
 
 ## 4. Sistema de Feed
-* **4.1 Visualizar feed:** O usuário acessa a tela principal para ver as publicações e atividades recentes.
-* **4.2 Visualizar feed pessoal:** O usuário visualiza apenas as publicações e atividades geradas por ele mesmo.
-* **4.3 Visualizar feed de usuários seguidos:** O usuário visualiza as publicações e avaliações postadas pelas pessoas que ele segue.
+* **4.1 Visualizar feed único:** O usuário visualiza avaliações próprias e dos perfis seguidos, com ou sem resenha, em ordem decrescente por ID; não há segregação por abas.
+* **4.2 Consultar histórico:** Avaliações anteriores ao seguimento também estão disponíveis; seguir alguém não gera uma publicação.
+* **4.3 Refletir alterações:** Edições atualizam o conteúdo sem reposicionar a publicação; exclusões a removem. Deixar de seguir remove o autor das próximas consultas.
 * **4.4 Atualizar feed:** O usuário solicita a atualização manual do feed para carregar novos conteúdos.
+
+Escopo implementado no backend e no consumidor frontend (`515aa1e`),
+com comunicação integrada real ainda não verificada: [contrato](../api/feed.md).
+Notificações, likes, comentários e respostas são funcionalidades futuras; comentários
+poderão gerar atividades em outra versão, mediante contrato próprio.
 
 ## 5. Sistema de Avaliação
 * **5.1 Pesquisar no catálogo:** O usuário busca por itens musicais (artistas ou álbuns) integrados via API externa.

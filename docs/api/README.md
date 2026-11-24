@@ -6,6 +6,9 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 
 ## Índice de Contratos por Domínio
 
+- **[Feed único de atividades](feed.md)** — `GET /api/feed`, avaliações próprias e de perfis seguidos,
+  histórico, cursor assinado e followingCount. [Guia de integração](../integrations/feed.md).
+
 - **[Avaliações e resenhas próprias](reviews.md)** — criação por `album.spotifyId`,
   consulta própria, substituição, exclusão e coleção paginada.
   [Integração com Avaliar](../integrations/reviews.md).

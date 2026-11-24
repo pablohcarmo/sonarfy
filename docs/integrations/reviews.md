@@ -5,8 +5,10 @@ Para a seção Coleção com ordenações globais, filtro e contagens, usar o
 abaixo continuam aplicáveis às rotas antigas `/reviews/me` e de avaliações por perfil.
 
 Contrato: [avaliações próprias](../api/reviews.md). Esta entrega modifica apenas o
-backend. Nenhum arquivo do frontend foi alterado. As telas atuais de perfil/feed
-ainda usam fixtures para avaliações; esta API não substitui um feed social.
+backend. Nenhum arquivo do frontend foi alterado nesta entrega. O feed possui
+agora um [contrato próprio](../api/feed.md); sua integração frontend foi conferida
+no commit `515aa1e`, conforme o [guia do feed](feed.md), sem teste integrado real
+executado nesta conferência.
 
 ## Fluxo por álbum
 
@@ -59,7 +61,7 @@ Após criar/editar/excluir:
 - Página do álbum: invalide a avaliação própria. Agregados e lista de outras pessoas
   ainda não têm endpoint nesta entrega; não fabrique esses valores no adapter.
 - Feed: qualquer estado local já carregado que represente essa avaliação deve ser
-  invalidado. Não há endpoint/evento novo de feed, likes ou comentários.
+  invalidado. Recarregar `GET /api/feed` desde o início; não há eventos sociais.
 
 `GET /api/reviews/me` retorna `items` e `nextBeforeId`; envie este último como
 `beforeId` com `limit` até 50. A ordem é ID decrescente; não reordene cada página
@@ -110,15 +112,21 @@ Não foram fornecidos cenários individuais, capturas, temas, resoluções ou re
 de testes do frontend. Este registro não atribui cobertura específica a esses itens
 nem aprovação de CI remota. Nenhum arquivo do frontend foi alterado por este agente.
 
-## Próxima entrega
+## Feed entregue e escopo futuro
+
+O backend implementa o [feed único de atividades](../api/feed.md), com avaliações próprias
+e dos perfis seguidos, incluindo histórico anterior ao seguimento. As decisões
+funcionais e a [integração frontend implementada](feed.md) estão documentadas.
+O aceite do backend pelo usuário foi registrado em 24/11/2026 no contrato do feed,
+separadamente das evidências automatizadas e sem confirmação da integração visual.
 
 Notificações da plataforma, likes, comentários e respostas são funcionalidades
-futuras, fora desta versão e dos seus critérios de conclusão. O feed pode ser
-implementado sem essas interações. Não criar contratos, eventos ou dependências
+futuras, fora desta versão e dos seus critérios de conclusão. O feed funciona
+sem essas interações. Não criar contratos, eventos ou dependências
 preventivas para elas. Essa definição não altera e-mails transacionais de conta
 e segurança. Consulte o [escopo da versão](../../README.md#escopo-desta-versão).
 
 Consultas de avaliações por álbum e seus agregados exigem definição de escopo
 própria; este documento não determina sua prioridade. A avaliação é persistida
-imediatamente, sem rascunho; eventual atividade social decorrente da publicação
-precisará de contrato próprio. Não existe outbox/evento preventivo nesta entrega.
+imediatamente, sem rascunho; o feed consulta as avaliações existentes,
+sem duplicar publicações. Não existe outbox/evento preventivo nesta entrega.
