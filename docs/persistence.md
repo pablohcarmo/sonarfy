@@ -6,6 +6,14 @@ consolidado já a inclui para bancos novos. Não há endpoints ou envio de e-mai
 nesta etapa; a aplicação da migration no banco da aplicação exige autorização
 específica. Consulte [persistência e validação da desativação](integrations/account-deactivation.md).
 
+O núcleo de solicitação adiciona `account_deactivation_mail_outbox` pela migration
+016, após as migrations anteriores (incluindo 010 e 015). O schema consolidado
+inclui a mesma tabela. Mantém uma intenção por usuário, destinatário verificado,
+UUID da solicitação e reserva temporária; não persiste token bruto. A reserva
+revalida a autorização vigente e rotaciona somente seu hash, sem ampliar o prazo.
+Ainda não há controller ou remetente de desativação. A migration 016 não foi
+aplicada ao banco da aplicação nesta entrega.
+
 ## Aplicação local da migration 010 em 21/11/2026
 
 Após autorização explícita, `010_create_account_deactivation_requests.sql` foi
