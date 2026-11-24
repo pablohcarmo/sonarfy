@@ -1,0 +1,564 @@
+{
+  "info": {
+    "name": "Sonarfy - Profile Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Read-only reusable collection contract. Use stable disposable fixtures, eligible profileHandle and accessToken from local environment. Traverses every sort/filter with limit=2. No credentials committed. Contract: docs/api/profile-collection.md."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8080"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "profileHandle",
+      "value": ""
+    },
+    {
+      "key": "collectionCursorQuery",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "recent writtenOnly=false",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/profile/by-handle/{{profileHandle}}/collection?limit=2&sort=recent&writtenOnly=false{{collectionCursorQuery}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200 and no-store', () => { pm.response.to.have.status(200); pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'); });",
+              "const b=pm.response.json(), previous=JSON.parse(pm.variables.get('collectionSeen')||'[]');",
+              "pm.test('Public contract and counts',()=>{",
+              " pm.expect(b).to.have.all.keys('author','items','totalReviews','matchingReviews','nextCursor');",
+              " pm.expect(b.author).to.have.all.keys('id','handle','displayName','avatarUrl');",
+              " pm.expect(b.items.length).to.be.at.most(2);",
+              " pm.expect(b.totalReviews).to.be.at.least(b.matchingReviews);",
+              " for(const r of b.items){",
+              "  pm.expect(r).to.have.all.keys('reviewId','album','rating','reviewText','createdAt','updatedAt');",
+              "  pm.expect(r.album).to.have.all.keys('spotifyId','name','coverUrl','artist');",
+              "  pm.expect(r.album.artist).to.have.all.keys('spotifyId','name');",
+              "  pm.expect(r.rating).to.be.within(0,10); pm.expect(r.rating*2).to.eql(Math.floor(r.rating*2));",
+              "  if(false) pm.expect(r.reviewText.trim().length).to.be.above(0);",
+              " }",
+              "});",
+              "const all=previous.concat(b.items);",
+              "pm.test('Global order and unique IDs across pages',()=>{",
+              " pm.expect(new Set(all.map(r=>r.reviewId)).size).to.eql(all.length);",
+              " for(let i=1;i<all.length;i++){",
+              "  const a=all[i-1],c=all[i],asc=\"recent\"==='oldest'||\"recent\"==='lowest';",
+              "  const byRating=\"recent\"==='highest'||\"recent\"==='lowest';",
+              "  const delta=byRating?(c.rating-a.rating||c.reviewId-a.reviewId):c.reviewId-a.reviewId;",
+              "  pm.expect(asc?delta:-delta).to.be.above(0);",
+              " }",
+              "});",
+              "if(b.nextCursor!==null){",
+              " pm.test('Opaque next cursor',()=>pm.expect(b.nextCursor).to.be.a('string').and.not.empty);",
+              " pm.variables.set('collectionSeen',JSON.stringify(all));",
+              " pm.variables.set('collectionCursorQuery','&cursor='+encodeURIComponent(b.nextCursor));",
+              " pm.execution.setNextRequest(pm.info.requestName);",
+              "}else{",
+              " pm.test('Complete filtered navigation',()=>pm.expect(all.length).to.eql(b.matchingReviews));",
+              " if(!false) pm.test('Unfiltered counts equal',()=>pm.expect(b.totalReviews).to.eql(b.matchingReviews));",
+              " pm.variables.set('collectionSeen','[]'); pm.variables.set('collectionCursorQuery','');",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "recent writtenOnly=true",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/profile/by-handle/{{profileHandle}}/collection?limit=2&sort=recent&writtenOnly=true{{collectionCursorQuery}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200 and no-store', () => { pm.response.to.have.status(200); pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'); });",
+              "const b=pm.response.json(), previous=JSON.parse(pm.variables.get('collectionSeen')||'[]');",
+              "pm.test('Public contract and counts',()=>{",
+              " pm.expect(b).to.have.all.keys('author','items','totalReviews','matchingReviews','nextCursor');",
+              " pm.expect(b.author).to.have.all.keys('id','handle','displayName','avatarUrl');",
+              " pm.expect(b.items.length).to.be.at.most(2);",
+              " pm.expect(b.totalReviews).to.be.at.least(b.matchingReviews);",
+              " for(const r of b.items){",
+              "  pm.expect(r).to.have.all.keys('reviewId','album','rating','reviewText','createdAt','updatedAt');",
+              "  pm.expect(r.album).to.have.all.keys('spotifyId','name','coverUrl','artist');",
+              "  pm.expect(r.album.artist).to.have.all.keys('spotifyId','name');",
+              "  pm.expect(r.rating).to.be.within(0,10); pm.expect(r.rating*2).to.eql(Math.floor(r.rating*2));",
+              "  if(true) pm.expect(r.reviewText.trim().length).to.be.above(0);",
+              " }",
+              "});",
+              "const all=previous.concat(b.items);",
+              "pm.test('Global order and unique IDs across pages',()=>{",
+              " pm.expect(new Set(all.map(r=>r.reviewId)).size).to.eql(all.length);",
+              " for(let i=1;i<all.length;i++){",
+              "  const a=all[i-1],c=all[i],asc=\"recent\"==='oldest'||\"recent\"==='lowest';",
+              "  const byRating=\"recent\"==='highest'||\"recent\"==='lowest';",
+              "  const delta=byRating?(c.rating-a.rating||c.reviewId-a.reviewId):c.reviewId-a.reviewId;",
+              "  pm.expect(asc?delta:-delta).to.be.above(0);",
+              " }",
+              "});",
+              "if(b.nextCursor!==null){",
+              " pm.test('Opaque next cursor',()=>pm.expect(b.nextCursor).to.be.a('string').and.not.empty);",
+              " pm.variables.set('collectionSeen',JSON.stringify(all));",
+              " pm.variables.set('collectionCursorQuery','&cursor='+encodeURIComponent(b.nextCursor));",
+              " pm.execution.setNextRequest(pm.info.requestName);",
+              "}else{",
+              " pm.test('Complete filtered navigation',()=>pm.expect(all.length).to.eql(b.matchingReviews));",
+              " if(!true) pm.test('Unfiltered counts equal',()=>pm.expect(b.totalReviews).to.eql(b.matchingReviews));",
+              " pm.variables.set('collectionSeen','[]'); pm.variables.set('collectionCursorQuery','');",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "oldest writtenOnly=false",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/profile/by-handle/{{profileHandle}}/collection?limit=2&sort=oldest&writtenOnly=false{{collectionCursorQuery}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200 and no-store', () => { pm.response.to.have.status(200); pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'); });",
+              "const b=pm.response.json(), previous=JSON.parse(pm.variables.get('collectionSeen')||'[]');",
+              "pm.test('Public contract and counts',()=>{",
+              " pm.expect(b).to.have.all.keys('author','items','totalReviews','matchingReviews','nextCursor');",
+              " pm.expect(b.author).to.have.all.keys('id','handle','displayName','avatarUrl');",
+              " pm.expect(b.items.length).to.be.at.most(2);",
+              " pm.expect(b.totalReviews).to.be.at.least(b.matchingReviews);",
+              " for(const r of b.items){",
+              "  pm.expect(r).to.have.all.keys('reviewId','album','rating','reviewText','createdAt','updatedAt');",
+              "  pm.expect(r.album).to.have.all.keys('spotifyId','name','coverUrl','artist');",
+              "  pm.expect(r.album.artist).to.have.all.keys('spotifyId','name');",
+              "  pm.expect(r.rating).to.be.within(0,10); pm.expect(r.rating*2).to.eql(Math.floor(r.rating*2));",
+              "  if(false) pm.expect(r.reviewText.trim().length).to.be.above(0);",
+              " }",
+              "});",
+              "const all=previous.concat(b.items);",
+              "pm.test('Global order and unique IDs across pages',()=>{",
+              " pm.expect(new Set(all.map(r=>r.reviewId)).size).to.eql(all.length);",
+              " for(let i=1;i<all.length;i++){",
+              "  const a=all[i-1],c=all[i],asc=\"oldest\"==='oldest'||\"oldest\"==='lowest';",
+              "  const byRating=\"oldest\"==='highest'||\"oldest\"==='lowest';",
+              "  const delta=byRating?(c.rating-a.rating||c.reviewId-a.reviewId):c.reviewId-a.reviewId;",
+              "  pm.expect(asc?delta:-delta).to.be.above(0);",
+              " }",
+              "});",
+              "if(b.nextCursor!==null){",
+              " pm.test('Opaque next cursor',()=>pm.expect(b.nextCursor).to.be.a('string').and.not.empty);",
+              " pm.variables.set('collectionSeen',JSON.stringify(all));",
+              " pm.variables.set('collectionCursorQuery','&cursor='+encodeURIComponent(b.nextCursor));",
+              " pm.execution.setNextRequest(pm.info.requestName);",
+              "}else{",
+              " pm.test('Complete filtered navigation',()=>pm.expect(all.length).to.eql(b.matchingReviews));",
+              " if(!false) pm.test('Unfiltered counts equal',()=>pm.expect(b.totalReviews).to.eql(b.matchingReviews));",
+              " pm.variables.set('collectionSeen','[]'); pm.variables.set('collectionCursorQuery','');",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "oldest writtenOnly=true",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/profile/by-handle/{{profileHandle}}/collection?limit=2&sort=oldest&writtenOnly=true{{collectionCursorQuery}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200 and no-store', () => { pm.response.to.have.status(200); pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'); });",
+              "const b=pm.response.json(), previous=JSON.parse(pm.variables.get('collectionSeen')||'[]');",
+              "pm.test('Public contract and counts',()=>{",
+              " pm.expect(b).to.have.all.keys('author','items','totalReviews','matchingReviews','nextCursor');",
+              " pm.expect(b.author).to.have.all.keys('id','handle','displayName','avatarUrl');",
+              " pm.expect(b.items.length).to.be.at.most(2);",
+              " pm.expect(b.totalReviews).to.be.at.least(b.matchingReviews);",
+              " for(const r of b.items){",
+              "  pm.expect(r).to.have.all.keys('reviewId','album','rating','reviewText','createdAt','updatedAt');",
+              "  pm.expect(r.album).to.have.all.keys('spotifyId','name','coverUrl','artist');",
+              "  pm.expect(r.album.artist).to.have.all.keys('spotifyId','name');",
+              "  pm.expect(r.rating).to.be.within(0,10); pm.expect(r.rating*2).to.eql(Math.floor(r.rating*2));",
+              "  if(true) pm.expect(r.reviewText.trim().length).to.be.above(0);",
+              " }",
+              "});",
+              "const all=previous.concat(b.items);",
+              "pm.test('Global order and unique IDs across pages',()=>{",
+              " pm.expect(new Set(all.map(r=>r.reviewId)).size).to.eql(all.length);",
+              " for(let i=1;i<all.length;i++){",
+              "  const a=all[i-1],c=all[i],asc=\"oldest\"==='oldest'||\"oldest\"==='lowest';",
+              "  const byRating=\"oldest\"==='highest'||\"oldest\"==='lowest';",
+              "  const delta=byRating?(c.rating-a.rating||c.reviewId-a.reviewId):c.reviewId-a.reviewId;",
+              "  pm.expect(asc?delta:-delta).to.be.above(0);",
+              " }",
+              "});",
+              "if(b.nextCursor!==null){",
+              " pm.test('Opaque next cursor',()=>pm.expect(b.nextCursor).to.be.a('string').and.not.empty);",
+              " pm.variables.set('collectionSeen',JSON.stringify(all));",
+              " pm.variables.set('collectionCursorQuery','&cursor='+encodeURIComponent(b.nextCursor));",
+              " pm.execution.setNextRequest(pm.info.requestName);",
+              "}else{",
+              " pm.test('Complete filtered navigation',()=>pm.expect(all.length).to.eql(b.matchingReviews));",
+              " if(!true) pm.test('Unfiltered counts equal',()=>pm.expect(b.totalReviews).to.eql(b.matchingReviews));",
+              " pm.variables.set('collectionSeen','[]'); pm.variables.set('collectionCursorQuery','');",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "highest writtenOnly=false",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/profile/by-handle/{{profileHandle}}/collection?limit=2&sort=highest&writtenOnly=false{{collectionCursorQuery}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200 and no-store', () => { pm.response.to.have.status(200); pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'); });",
+              "const b=pm.response.json(), previous=JSON.parse(pm.variables.get('collectionSeen')||'[]');",
+              "pm.test('Public contract and counts',()=>{",
+              " pm.expect(b).to.have.all.keys('author','items','totalReviews','matchingReviews','nextCursor');",
+              " pm.expect(b.author).to.have.all.keys('id','handle','displayName','avatarUrl');",
+              " pm.expect(b.items.length).to.be.at.most(2);",
+              " pm.expect(b.totalReviews).to.be.at.least(b.matchingReviews);",
+              " for(const r of b.items){",
+              "  pm.expect(r).to.have.all.keys('reviewId','album','rating','reviewText','createdAt','updatedAt');",
+              "  pm.expect(r.album).to.have.all.keys('spotifyId','name','coverUrl','artist');",
+              "  pm.expect(r.album.artist).to.have.all.keys('spotifyId','name');",
+              "  pm.expect(r.rating).to.be.within(0,10); pm.expect(r.rating*2).to.eql(Math.floor(r.rating*2));",
+              "  if(false) pm.expect(r.reviewText.trim().length).to.be.above(0);",
+              " }",
+              "});",
+              "const all=previous.concat(b.items);",
+              "pm.test('Global order and unique IDs across pages',()=>{",
+              " pm.expect(new Set(all.map(r=>r.reviewId)).size).to.eql(all.length);",
+              " for(let i=1;i<all.length;i++){",
+              "  const a=all[i-1],c=all[i],asc=\"highest\"==='oldest'||\"highest\"==='lowest';",
+              "  const byRating=\"highest\"==='highest'||\"highest\"==='lowest';",
+              "  const delta=byRating?(c.rating-a.rating||c.reviewId-a.reviewId):c.reviewId-a.reviewId;",
+              "  pm.expect(asc?delta:-delta).to.be.above(0);",
+              " }",
+              "});",
+              "if(b.nextCursor!==null){",
+              " pm.test('Opaque next cursor',()=>pm.expect(b.nextCursor).to.be.a('string').and.not.empty);",
+              " pm.variables.set('collectionSeen',JSON.stringify(all));",
+              " pm.variables.set('collectionCursorQuery','&cursor='+encodeURIComponent(b.nextCursor));",
+              " pm.execution.setNextRequest(pm.info.requestName);",
+              "}else{",
+              " pm.test('Complete filtered navigation',()=>pm.expect(all.length).to.eql(b.matchingReviews));",
+              " if(!false) pm.test('Unfiltered counts equal',()=>pm.expect(b.totalReviews).to.eql(b.matchingReviews));",
+              " pm.variables.set('collectionSeen','[]'); pm.variables.set('collectionCursorQuery','');",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "highest writtenOnly=true",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/profile/by-handle/{{profileHandle}}/collection?limit=2&sort=highest&writtenOnly=true{{collectionCursorQuery}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200 and no-store', () => { pm.response.to.have.status(200); pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'); });",
+              "const b=pm.response.json(), previous=JSON.parse(pm.variables.get('collectionSeen')||'[]');",
+              "pm.test('Public contract and counts',()=>{",
+              " pm.expect(b).to.have.all.keys('author','items','totalReviews','matchingReviews','nextCursor');",
+              " pm.expect(b.author).to.have.all.keys('id','handle','displayName','avatarUrl');",
+              " pm.expect(b.items.length).to.be.at.most(2);",
+              " pm.expect(b.totalReviews).to.be.at.least(b.matchingReviews);",
+              " for(const r of b.items){",
+              "  pm.expect(r).to.have.all.keys('reviewId','album','rating','reviewText','createdAt','updatedAt');",
+              "  pm.expect(r.album).to.have.all.keys('spotifyId','name','coverUrl','artist');",
+              "  pm.expect(r.album.artist).to.have.all.keys('spotifyId','name');",
+              "  pm.expect(r.rating).to.be.within(0,10); pm.expect(r.rating*2).to.eql(Math.floor(r.rating*2));",
+              "  if(true) pm.expect(r.reviewText.trim().length).to.be.above(0);",
+              " }",
+              "});",
+              "const all=previous.concat(b.items);",
+              "pm.test('Global order and unique IDs across pages',()=>{",
+              " pm.expect(new Set(all.map(r=>r.reviewId)).size).to.eql(all.length);",
+              " for(let i=1;i<all.length;i++){",
+              "  const a=all[i-1],c=all[i],asc=\"highest\"==='oldest'||\"highest\"==='lowest';",
+              "  const byRating=\"highest\"==='highest'||\"highest\"==='lowest';",
+              "  const delta=byRating?(c.rating-a.rating||c.reviewId-a.reviewId):c.reviewId-a.reviewId;",
+              "  pm.expect(asc?delta:-delta).to.be.above(0);",
+              " }",
+              "});",
+              "if(b.nextCursor!==null){",
+              " pm.test('Opaque next cursor',()=>pm.expect(b.nextCursor).to.be.a('string').and.not.empty);",
+              " pm.variables.set('collectionSeen',JSON.stringify(all));",
+              " pm.variables.set('collectionCursorQuery','&cursor='+encodeURIComponent(b.nextCursor));",
+              " pm.execution.setNextRequest(pm.info.requestName);",
+              "}else{",
+              " pm.test('Complete filtered navigation',()=>pm.expect(all.length).to.eql(b.matchingReviews));",
+              " if(!true) pm.test('Unfiltered counts equal',()=>pm.expect(b.totalReviews).to.eql(b.matchingReviews));",
+              " pm.variables.set('collectionSeen','[]'); pm.variables.set('collectionCursorQuery','');",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "lowest writtenOnly=false",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/profile/by-handle/{{profileHandle}}/collection?limit=2&sort=lowest&writtenOnly=false{{collectionCursorQuery}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200 and no-store', () => { pm.response.to.have.status(200); pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'); });",
+              "const b=pm.response.json(), previous=JSON.parse(pm.variables.get('collectionSeen')||'[]');",
+              "pm.test('Public contract and counts',()=>{",
+              " pm.expect(b).to.have.all.keys('author','items','totalReviews','matchingReviews','nextCursor');",
+              " pm.expect(b.author).to.have.all.keys('id','handle','displayName','avatarUrl');",
+              " pm.expect(b.items.length).to.be.at.most(2);",
+              " pm.expect(b.totalReviews).to.be.at.least(b.matchingReviews);",
+              " for(const r of b.items){",
+              "  pm.expect(r).to.have.all.keys('reviewId','album','rating','reviewText','createdAt','updatedAt');",
+              "  pm.expect(r.album).to.have.all.keys('spotifyId','name','coverUrl','artist');",
+              "  pm.expect(r.album.artist).to.have.all.keys('spotifyId','name');",
+              "  pm.expect(r.rating).to.be.within(0,10); pm.expect(r.rating*2).to.eql(Math.floor(r.rating*2));",
+              "  if(false) pm.expect(r.reviewText.trim().length).to.be.above(0);",
+              " }",
+              "});",
+              "const all=previous.concat(b.items);",
+              "pm.test('Global order and unique IDs across pages',()=>{",
+              " pm.expect(new Set(all.map(r=>r.reviewId)).size).to.eql(all.length);",
+              " for(let i=1;i<all.length;i++){",
+              "  const a=all[i-1],c=all[i],asc=\"lowest\"==='oldest'||\"lowest\"==='lowest';",
+              "  const byRating=\"lowest\"==='highest'||\"lowest\"==='lowest';",
+              "  const delta=byRating?(c.rating-a.rating||c.reviewId-a.reviewId):c.reviewId-a.reviewId;",
+              "  pm.expect(asc?delta:-delta).to.be.above(0);",
+              " }",
+              "});",
+              "if(b.nextCursor!==null){",
+              " pm.test('Opaque next cursor',()=>pm.expect(b.nextCursor).to.be.a('string').and.not.empty);",
+              " pm.variables.set('collectionSeen',JSON.stringify(all));",
+              " pm.variables.set('collectionCursorQuery','&cursor='+encodeURIComponent(b.nextCursor));",
+              " pm.execution.setNextRequest(pm.info.requestName);",
+              "}else{",
+              " pm.test('Complete filtered navigation',()=>pm.expect(all.length).to.eql(b.matchingReviews));",
+              " if(!false) pm.test('Unfiltered counts equal',()=>pm.expect(b.totalReviews).to.eql(b.matchingReviews));",
+              " pm.variables.set('collectionSeen','[]'); pm.variables.set('collectionCursorQuery','');",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "lowest writtenOnly=true",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/profile/by-handle/{{profileHandle}}/collection?limit=2&sort=lowest&writtenOnly=true{{collectionCursorQuery}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200 and no-store', () => { pm.response.to.have.status(200); pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'); });",
+              "const b=pm.response.json(), previous=JSON.parse(pm.variables.get('collectionSeen')||'[]');",
+              "pm.test('Public contract and counts',()=>{",
+              " pm.expect(b).to.have.all.keys('author','items','totalReviews','matchingReviews','nextCursor');",
+              " pm.expect(b.author).to.have.all.keys('id','handle','displayName','avatarUrl');",
+              " pm.expect(b.items.length).to.be.at.most(2);",
+              " pm.expect(b.totalReviews).to.be.at.least(b.matchingReviews);",
+              " for(const r of b.items){",
+              "  pm.expect(r).to.have.all.keys('reviewId','album','rating','reviewText','createdAt','updatedAt');",
+              "  pm.expect(r.album).to.have.all.keys('spotifyId','name','coverUrl','artist');",
+              "  pm.expect(r.album.artist).to.have.all.keys('spotifyId','name');",
+              "  pm.expect(r.rating).to.be.within(0,10); pm.expect(r.rating*2).to.eql(Math.floor(r.rating*2));",
+              "  if(true) pm.expect(r.reviewText.trim().length).to.be.above(0);",
+              " }",
+              "});",
+              "const all=previous.concat(b.items);",
+              "pm.test('Global order and unique IDs across pages',()=>{",
+              " pm.expect(new Set(all.map(r=>r.reviewId)).size).to.eql(all.length);",
+              " for(let i=1;i<all.length;i++){",
+              "  const a=all[i-1],c=all[i],asc=\"lowest\"==='oldest'||\"lowest\"==='lowest';",
+              "  const byRating=\"lowest\"==='highest'||\"lowest\"==='lowest';",
+              "  const delta=byRating?(c.rating-a.rating||c.reviewId-a.reviewId):c.reviewId-a.reviewId;",
+              "  pm.expect(asc?delta:-delta).to.be.above(0);",
+              " }",
+              "});",
+              "if(b.nextCursor!==null){",
+              " pm.test('Opaque next cursor',()=>pm.expect(b.nextCursor).to.be.a('string').and.not.empty);",
+              " pm.variables.set('collectionSeen',JSON.stringify(all));",
+              " pm.variables.set('collectionCursorQuery','&cursor='+encodeURIComponent(b.nextCursor));",
+              " pm.execution.setNextRequest(pm.info.requestName);",
+              "}else{",
+              " pm.test('Complete filtered navigation',()=>pm.expect(all.length).to.eql(b.matchingReviews));",
+              " if(!true) pm.test('Unfiltered counts equal',()=>pm.expect(b.totalReviews).to.eql(b.matchingReviews));",
+              " pm.variables.set('collectionSeen','[]'); pm.variables.set('collectionCursorQuery','');",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Requires Bearer",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/profile/by-handle/other/collection",
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 401',()=>pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Missing profile",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/profile/by-handle/collection-missing-test/collection"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 404',()=>pm.response.to.have.status(404));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Invalid sort",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/profile/by-handle/{{profileHandle}}/collection?sort=written"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 400',()=>pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Invalid filter",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/profile/by-handle/{{profileHandle}}/collection?writtenOnly=1"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 400',()=>pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Invalid cursor",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/profile/by-handle/{{profileHandle}}/collection?cursor=invalid"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 400',()=>pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Invalid limit",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/profile/by-handle/{{profileHandle}}/collection?limit=51"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 400',()=>pm.response.to.have.status(400));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

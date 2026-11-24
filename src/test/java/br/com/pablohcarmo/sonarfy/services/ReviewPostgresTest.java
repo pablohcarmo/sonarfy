@@ -32,7 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ReviewPostgresTest {
     @Configuration @EnableWebMvc
     @Import({SecurityConfig.class, ReviewController.class, ReviewService.class,
-            EchoesController.class, EchoQueryService.class, EchoCursorCodec.class})
+            EchoesController.class, EchoQueryService.class, EchoCursorCodec.class, CollectionCursorCodec.class})
     static class Config extends EmailReservationIntegrationTest.Config {
         @Bean @Override org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean entityManagerFactory(DataSource ds) {
             var factory = super.entityManagerFactory(ds);
@@ -158,7 +158,7 @@ class ReviewPostgresTest {
     // Filtro Bearer real rejeita token inválido, ausente e contas inativas ou não verificadas em todas as rotas.
     @Test void authentication() throws Exception {
         for (String route : List.of("GET " + album + "/me", "GET /api/reviews/me",
-                "GET /api/profile/by-handle/other/reviews", "POST " + album,
+                "GET /api/profile/by-handle/other/reviews", "GET /api/profile/by-handle/other/collection", "POST " + album,
                 "PUT /api/reviews/1", "DELETE /api/reviews/1")) {
             var parts = route.split(" ");
             var method = org.springframework.http.HttpMethod.valueOf(parts[0]);
@@ -325,6 +325,108 @@ class ReviewPostgresTest {
     }
 
     private String token(long id) { return "Bearer " + jwt.generateAccessToken(Long.toString(id)); }
+
+    // Todas as ordens são globais, com extremos, empates e filtro independente da paginação.
+    @Test void collectionOrdersCountsAndContexts() throws Exception {
+        var ids = new ArrayList<Long>();
+        for (int i = 0; i < 6; i++) {
+            db.update("INSERT INTO albums (artist_id, spotify_id, name) SELECT artist_id, ?, 'Album' FROM artists", "c" + i);
+            ids.add(reviews.create(other, "c" + i, new JsonMapper().readValue(
+                    "{\"rating\":" + List.of(0, 10, 5, 5, 10, 0).get(i)
+                            + ",\"reviewText\":" + (i % 2 == 0 ? "\"Texto\"" : "null") + "}", ReviewInputDto.class)).reviewId());
+        }
+        reviews.create(actor, "local-album", input);
+        db.update("UPDATE reviews SET created_at = '2026-01-01T00:00:00Z'");
+        var sorts = List.of("recent", "oldest", "highest", "lowest");
+        var orders = List.of(List.of(5,4,3,2,1,0), List.of(0,1,2,3,4,5), List.of(4,1,3,2,5,0), List.of(0,5,2,3,1,4));
+        for (int s = 0; s < sorts.size(); s++) for (boolean written : List.of(false, true)) {
+            var seen = new ArrayList<Long>(); String cursor = null;
+            do {
+                var page = reviews.collection(actor, "OTHER", 2, sorts.get(s), Boolean.toString(written), cursor);
+                assertEquals(6, page.totalReviews()); assertEquals(written ? 3 : 6, page.matchingReviews());
+                page.items().forEach(r -> seen.add(r.reviewId())); cursor = page.nextCursor();
+            } while (cursor != null);
+            assertEquals(orders.get(s).stream().filter(i -> !written || i % 2 == 0).map(ids::get).toList(), seen);
+        }
+        var first = reviews.collection(actor, "other", 1, "highest", "false", null);
+        String cursor = first.nextCursor();
+        for (String query : List.of("sort=lowest", "writtenOnly=true"))
+            mvc.perform(get("/api/profile/by-handle/other/collection?" + query).param("cursor", cursor)
+                    .header("Authorization", token(actor))).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/profile/by-handle/reviewer/collection?sort=highest").param("cursor", cursor)
+                .header("Authorization", token(actor))).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/profile/by-handle/other/collection?sort=highest").param("cursor", cursor)
+                .header("Authorization", token(other))).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/profile/by-handle/other/collection").header("Authorization", token(actor)))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.author.length()").value(4)).andExpect(jsonPath("$.items[0].length()").value(6))
+                .andExpect(jsonPath("$.items[0].album.artist.name").value("Artist"))
+                .andExpect(jsonPath("$.totalReviews").value(6)).andExpect(jsonPath("$.matchingReviews").value(6));
+        for (String query : List.of("sort=written", "sort=RECENT", "limit=0", "limit=51", "limit=x",
+                "writtenOnly=1", "writtenOnly=TRUE", "cursor=", "cursor=invalid", "cursor=" + cursor.substring(1)))
+            mvc.perform(get("/api/profile/by-handle/other/collection?" + query).header("Authorization", token(actor)))
+                    .andExpect(status().isBadRequest());
+    }
+
+    // Exclusão da fronteira não invalida o cursor; mudanças de nota podem omitir ou repetir itens.
+    @Test void collectionChangesBetweenPages() throws Exception {
+        var low = reviews.create(other, "local-album", new JsonMapper().readValue("{\"rating\":0}", ReviewInputDto.class));
+        db.update("INSERT INTO albums (artist_id, spotify_id, name) SELECT artist_id, 'new', 'New' FROM artists");
+        var high = reviews.create(other, "new", input);
+        var first = reviews.collection(actor, "other", 1, "highest", "false", null);
+        reviews.replace(other, low.reviewId(), new JsonMapper().readValue("{\"rating\":10}", ReviewInputDto.class));
+        assertTrue(reviews.collection(actor, "other", 1, "highest", "false", first.nextCursor()).items().isEmpty());
+        reviews.replace(other, high.reviewId(), new JsonMapper().readValue("{\"rating\":0}", ReviewInputDto.class));
+        assertEquals(high.reviewId(), reviews.collection(actor, "other", 1, "highest", "false", first.nextCursor()).items().getFirst().reviewId());
+        first = reviews.collection(actor, "other", 1, "recent", "false", null);
+        reviews.delete(other, high.reviewId());
+        reviews.create(other, "new", input);
+        var next = reviews.collection(actor, "other", 50, "recent", "false", first.nextCursor());
+        assertEquals(List.of(low.reviewId()), next.items().stream().map(r -> r.reviewId()).toList());
+        assertEquals(2, next.totalReviews());
+    }
+
+    // Estado vazio, autoria própria e ocultação de perfis usam as mesmas regras das avaliações.
+    @Test void collectionVisibility() throws Exception {
+        mvc.perform(get("/api/profile/by-handle/reviewer/collection").header("Authorization", token(actor)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalReviews").value(0))
+                .andExpect(jsonPath("$.matchingReviews").value(0)).andExpect(jsonPath("$.items").isEmpty())
+                .andExpect(jsonPath("$.nextCursor").isEmpty());
+        reviews.create(actor, "local-album", input);
+        assertEquals(1, reviews.collection(actor, "reviewer", 20, "recent", "true", null).totalReviews());
+        for (String column : List.of("active", "verified")) {
+            db.update("UPDATE users SET " + column + " = false WHERE user_id = ?", other);
+            mvc.perform(get("/api/profile/by-handle/other/collection").header("Authorization", token(actor))).andExpect(status().isNotFound());
+            db.update("UPDATE users SET " + column + " = true WHERE user_id = ?", other);
+        }
+        mvc.perform(get("/api/profile/by-handle/missing/collection").header("Authorization", token(actor))).andExpect(status().isNotFound());
+    }
+
+    // Bloqueia a leitura de álbuns após iniciar o snapshot e confirma uma desativação concorrente.
+    @Test void collectionSnapshotDuringDeactivation() throws Exception {
+        reviews.create(other, "local-album", input);
+        var pool = Executors.newSingleThreadExecutor();
+        try {
+            var pending = new ArrayList<Future<br.com.pablohcarmo.sonarfy.dto.ReviewDto.CollectionPage>>();
+            new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+                db.execute("LOCK TABLE albums IN ACCESS EXCLUSIVE MODE");
+                pending.add(pool.submit(() -> reviews.collection(actor, "other", 20, "recent", "false", null)));
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5); int waiting;
+                do {
+                    db.execute("SELECT pg_stat_clear_snapshot()");
+                    waiting = db.queryForObject("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'", Integer.class);
+                } while (waiting == 0 && System.nanoTime() < deadline);
+                assertTrue(waiting > 0);
+                db.update("UPDATE users SET active = false, display_name = 'Changed' WHERE user_id = ?", other);
+                db.update("DELETE FROM reviews WHERE user_id = ?", other);
+            });
+            var page = pending.getFirst().get(10, TimeUnit.SECONDS);
+            assertEquals("other", page.author().displayName()); assertEquals(1, page.items().size());
+            assertEquals(1, page.totalReviews()); assertEquals(1, page.matchingReviews());
+            assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                    () -> reviews.collection(actor, "other", 20, "recent", "false", null));
+        } finally { pool.shutdownNow(); }
+    }
     private long account(String handle) {
         return db.queryForObject("""
                 INSERT INTO users (permission_id, name, surname, display_name, handle, email, password_hash,

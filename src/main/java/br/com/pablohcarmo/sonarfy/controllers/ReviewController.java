@@ -14,6 +14,15 @@ public class ReviewController {
     private final ReviewService reviews;
     public ReviewController(ReviewService reviews) { this.reviews = reviews; }
 
+    // Coleção é uma leitura de avaliações existentes, sem ampliar permissões de escrita.
+    @GetMapping("/profile/by-handle/{handle}/collection")
+    public ResponseEntity<ReviewDto.CollectionPage> collection(@AuthenticationPrincipal User actor, @PathVariable String handle,
+            @RequestParam(defaultValue = "20") int limit, @RequestParam(defaultValue = "recent") String sort,
+            @RequestParam(defaultValue = "false") String writtenOnly, @RequestParam(required = false) String cursor) {
+        return ResponseEntity.ok().header("Cache-Control", "no-store")
+                .body(reviews.collection(actor.getId(), handle, limit, sort, writtenOnly, cursor));
+    }
+
     // O autor vem somente do Bearer, inclusive quando há IDs extras no corpo.
     @PostMapping("/albums/{spotifyId}/reviews")
     public ResponseEntity<ReviewDto> create(@AuthenticationPrincipal User actor, @PathVariable String spotifyId,

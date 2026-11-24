@@ -1,5 +1,8 @@
 # Avaliações e resenhas de álbuns — gerenciamento próprio
 
+Para a Coleção paginada com ordenações globais, filtro e totais, consulte o
+[contrato de Coleção](profile-collection.md). As rotas próprias abaixo permanecem compatíveis.
+
 Primeira entrega: criar, consultar, substituir, excluir e listar avaliações do usuário
 autenticado, somente para álbuns já persistidos. Não depende do agrupamento de Ecos
 do PR #84. Busca/importação de novos álbuns depende da issue #52.
