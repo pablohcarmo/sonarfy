@@ -320,7 +320,7 @@ public class EchoSyncService {
                 yield new RetryAfterException(HttpStatus.SERVICE_UNAVAILABLE,
                         "Spotify rate limit exceeded.", delay);
             }
-            case UNAVAILABLE -> new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Spotify is unavailable.");
+            case UNAVAILABLE, NOT_FOUND -> new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Spotify is unavailable.");
             case TIMEOUT -> new ResponseStatusException(HttpStatus.GATEWAY_TIMEOUT, "Spotify request timed out.");
         };
     }

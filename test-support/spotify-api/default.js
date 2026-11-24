@@ -65,6 +65,25 @@ http.createServer((req, res) => {
     res.end(typeof body === 'string' ? body : JSON.stringify(body));
   };
 
+  if (url.pathname.startsWith('/v1/albums/') && req.method === 'GET') {
+    const token = (req.headers.authorization || '').replace('Bearer ', '');
+    if (!token.startsWith('token-')) return reply(401, {});
+    const status = Number(token.slice(6));
+    if (status >= 400) return reply(status, { error: { message: 'sensitive-provider-body' } },
+      status === 429 ? { 'Retry-After': '900' } : {});
+    if (token === 'token-malformed') return reply(200, 'invalid-json');
+    const album = {
+      id: url.pathname.split('/').pop(), name: 'Album One', type: 'album', album_type: 'album',
+      total_tracks: 70, release_date: '2024-05', release_date_precision: 'month',
+      images: [], artists: [{ id: 'artist1', name: 'Artist One' }],
+      tracks: { items: [], total: 70, next: 'https://api.spotify.com/ignored' }
+    };
+    if (token === 'token-invalid') album.total_tracks = -1;
+    if (token === 'token-mismatch') album.id = 'wrong';
+    if (token === 'token-null') return reply(200, null);
+    if (token === 'token-timeout') return setTimeout(() => reply(200, album), 11500);
+    return reply(200, album);
+  }
   if (url.pathname !== '/v1/me/player/recently-played' || req.method !== 'GET') {
     return reply(501, { error: { status: 501, message: 'Not modeled' } });
   }

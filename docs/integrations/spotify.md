@@ -432,6 +432,14 @@ tentativas automaticamente por padrão, inclusive após timeout na troca do cód
 - `SpotifyRecentlyPlayedService` valida `limit` (`1..50`) e `before` positivo, e traduz falhas para `SpotifyApiException` (`UNAUTHORIZED`, `FORBIDDEN`, `RATE_LIMITED` preservando valores positivos de `Retry-After`, `UNAVAILABLE` e `TIMEOUT`), sem expor tokens, cursores ou corpo externo.
 - `SpotifyRecentlyPlayedSimulationTest` (opt-in via `-Dsonarfy.test.spotify-api-sim=true`, executado continuamente na CI) valida o cliente Feign real contra a simulação Postman `test-support/spotify-recently-played.sim.yaml`.
 
+### Consulta interna de álbum por ID
+
+`SpotifyAlbumService` usa o mesmo cliente Feign para `GET /v1/albums/{id}`,
+com Bearer fornecido pelo chamador e mercado opcional. Retorna metadados e total
+oficial de faixas, sem gravar catálogo nem renovar credenciais. Consulte o
+[contrato interno](../api/albums.md) e o [guia da página](album-page.md).
+Esta primeira entrega não disponibiliza um endpoint Sonarfy de álbum.
+
 ### Persistência interna de Ecos
 
 `EchoImportWriter` grava catálogo e escutas na mesma transação, sem chamadas
