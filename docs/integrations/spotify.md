@@ -1,5 +1,65 @@
 # Spotify — autorização, callback e troca de tokens
 
+## Restrições do provedor e publicação — 24/11/2026
+
+A publicação do Sonarfy não libera automaticamente o acesso às contas Spotify.
+Em Development Mode, cada conta Spotify precisa constar na allowlist do
+aplicativo. A documentação consultada informa até cinco usuários autenticados;
+o login OAuth pode concluir mesmo fora dessa lista, mas as chamadas da conta
+à Web API recebem 403. O proprietário do aplicativo precisa de Spotify Premium.
+Consulte os [modos de quota](https://developer.spotify.com/documentation/web-api/concepts/quota-modes).
+
+Na investigação do ambiente Azure, uma conta ativa e verificada no Sonarfy,
+com conexão `CONNECTED`, escopo `user-read-recently-played` e token não expirado,
+recebeu 403 diretamente em `GET /v1/me/player/recently-played?limit=1`.
+O provedor informou ausência de autorização da conta para o aplicativo.
+Nenhuma escuta foi importada para essa conta; a investigação não alterou dados
+ou renovou credenciais. O backend traduz essa recusa em 502 e o frontend atual
+exibe indisponibilidade temporária. Essa mensagem não distingue o bloqueio da
+allowlist de outras falhas; aguardar ou repetir não concede autorização.
+
+Para habilitar uma conta de teste, adicionar o nome e o e-mail da conta Spotify
+em Developer Dashboard → aplicativo → Settings → Users Management. Esse e-mail
+deve corresponder à conta Spotify efetivamente conectada.
+
+O acesso sem allowlist exige Extended Quota Mode. O processo publicado começa
+pela aprovação de parceria para organizações, com critérios que incluem
+serviço lançado e pelo menos 250 mil usuários ativos mensais. Depois dessa
+aprovação, a extensão é solicitada em Settings → Quota extension Request.
+O prazo informado de até seis semanas se refere à revisão da extensão; não foi
+encontrado prazo público para o formulário inicial de parceria nem procedimento
+que garanta exceção acadêmica. Esses critérios são externos e devem ser
+[reconsultados antes de solicitar](https://developer.spotify.com/documentation/web-api/concepts/quota-modes#quota-extension-request-for-new-potential-partners).
+
+### Busca de álbuns sem sincronização pessoal — proposta pendente
+
+A documentação permite usar Client Credentials no backend para consultar o
+catálogo sem autorização pessoal. O tutorial oficial inclui `/search` como
+extensão desse fluxo; a referência permite `type=album`, consulta por palavras
+e filtros de álbum/artista. Exemplo:
+
+```http
+GET /v1/search?q=nome-do-album-ou-artista&type=album&market=BR&limit=10
+Authorization: Bearer TOKEN_DA_APLICACAO
+```
+
+O token e o client secret ficam restritos ao backend. A referência atual limita
+a pesquisa a dez resultados por página e permite paginação por `offset`;
+o consumo permanece sujeito às quotas da aplicação. Fontes:
+[Client Credentials](https://developer.spotify.com/documentation/web-api/tutorials/client-credentials-flow),
+[tutorial](https://developer.spotify.com/documentation/web-api/tutorials/getting-started) e
+[Search](https://developer.spotify.com/documentation/web-api/reference/search).
+
+O fluxo discutido é clicar em Avaliar Álbum no Feed, pesquisar álbum ou artista,
+selecionar um álbum e avaliar. Isso não exige sincronizar o histórico pessoal.
+O backend de avaliações já exige conta ativa/verificada e álbum existente no
+catálogo compartilhado, sem exigir conexão Spotify pessoal. Entretanto, a busca
+por nome e a interface de seleção ainda não foram implementadas, e uma busca
+real com as credenciais atuais ainda não foi validada. A consulta existente de
+álbum por ID não equivale a esse novo recurso. Nenhuma alteração no frontend foi
+autorizada ou realizada neste trabalho. O Ecos continua dependendo de autorização
+pessoal e da allowlist enquanto o aplicativo estiver em Development Mode.
+
 ## Renovação sob demanda
 
 `SpotifyAccessTokenService.getValidAccessToken(userId)` é uma operação interna,

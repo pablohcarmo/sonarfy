@@ -8,11 +8,10 @@ Curtidas e comentários ficam fora do escopo.
 ## Situação da entrega
 
 O usuário aceitou o escopo backend em 24/11/2026, após a entrega de detalhes,
-agregados, catálogo e comunidade paginada. A implementação final segue para
-review, CI e merge da branch `feat/album-community-reviews`.
+agregados, catálogo e comunidade paginada. A implementação final foi integrada
+na branch `main` pelo PR #96 (`6a4edbb`).
 A migration 019 ainda precisa ser aplicada ao banco local; 017 e 018 já foram
-aplicadas. Esses estados não devem ser confundidos com disponibilidade da última
-alteração na `main` ou com integração visual concluída.
+aplicadas. A integração visual e validação do frontend continuam separadas.
 
 Testes automatizados: 736 executados, 151 ignorados, zero falhas. Postman contra
 servidor real e banco descartável: 23 requisições e 48 asserções, zero falhas,

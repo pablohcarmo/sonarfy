@@ -3,6 +3,18 @@
 Documenta a arquitetura da sincronização e consulta de escutas recentes do Spotify
 e o guia de integração para o frontend.
 
+## Restrição observada no ambiente publicado — 24/11/2026
+
+Uma conexão `CONNECTED` e o escopo de escutas recentes não garantem acesso à
+API do Spotify em Development Mode: a conta também precisa estar autorizada
+no Dashboard do provedor. Foi confirmada uma recusa 403 por ausência na
+allowlist, traduzida pelo backend em 502, sem importação de escutas.
+A mensagem atual de indisponibilidade temporária não identifica essa causa.
+Veja [diagnóstico, requisitos e procedimento](spotify.md#restrições-do-provedor-e-publicação--24112026).
+
+A proposta de busca de álbuns com Client Credentials é independente do Ecos
+e permanece não implementada. Ela não concede acesso ao histórico pessoal.
+
 ## Automação da consulta em 23/11/2026
 
 `EchoQueryPostgresTest` executa a cadeia real de segurança, controller e consulta
