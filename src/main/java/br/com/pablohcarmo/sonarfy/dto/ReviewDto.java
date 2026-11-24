@@ -9,4 +9,6 @@ public record ReviewDto(long reviewId, Album album, BigDecimal rating, String re
     public record Album(String spotifyId, String name, String coverUrl, Artist artist) {}
     public record Artist(String spotifyId, String name) {}
     public record Page(List<ReviewDto> items, Long nextBeforeId) {}
+    public record Author(long id, String handle, String displayName, String avatarUrl) {}
+    public record ProfilePage(Author author, List<ReviewDto> items, Long nextBeforeId) {}
 }

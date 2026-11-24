@@ -9,6 +9,8 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 - **[Avaliações e resenhas próprias](reviews.md)** — criação por `album.spotifyId`,
   consulta própria, substituição, exclusão e coleção paginada.
   [Integração com Avaliar](../integrations/reviews.md).
+- **[Avaliações por perfil](profile-reviews.md)** — consulta autenticada de perfis
+  elegíveis, identidade pública do autor e paginação por ID.
 
 - **[Reativação explícita de conta](account-reactivation.md)** — `POST /api/auth/reactivation`,
   credenciais atuais, novo login obrigatório e aviso transacional.
@@ -74,6 +76,7 @@ Este diretório concentra os contratos HTTP versionados da API do Sonarfy (Java 
 | `POST` | `/api/profile/me/avatar` | `AvatarController` | Bearer `access` | [profile-avatar.md](profile-avatar.md) |
 | `POST` | `/api/profile/me/wallpaper` | `WallpaperController` | Bearer `access` | [profile-wallpaper.md](profile-wallpaper.md) |
 | `GET` | `/api/profile/by-handle/{handle}` | `ProfileController` | Bearer `access` | [profiles.md](profiles.md) |
+| `GET` | `/api/profile/by-handle/{handle}/reviews` | `ReviewController` | Bearer `access` | [profile-reviews.md](profile-reviews.md) |
 | `PUT` | `/api/profile/me` | `ProfileController` | Bearer `access` | [users-and-profile.md](users-and-profile.md#3-atualizar-perfil-público-bio-avatar-e-capa) |
 | `POST` | `/api/spotify/authorization` | `SpotifyController` | Bearer `access` | [spotify.md](../integrations/spotify.md) |
 | `GET` | `/api/spotify/callback` | `SpotifyController` | Público + `state` OAuth | [spotify.md](../integrations/spotify.md) |

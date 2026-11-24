@@ -294,6 +294,41 @@ Não foi executada suíte com criação/remoção de tabelas nesse banco.
 
 Os relatórios locais ficam em `target/surefire-reports` e não são versionados.
 
+## Índice de avaliações por perfil
+
+A migration `014_add_profile_reviews_index.sql` cria
+`idx_reviews_user_review_desc` sobre `Reviews (user_id, review_id DESC)`.
+O índice atende a restrição por autor e a ordenação/fronteira da paginação
+de avaliações próprias e por perfil, sem alterar dados ou constraints.
+O índice de unicidade `(user_id, album_id)` continua garantindo uma avaliação
+por álbum e usuário, mas não fornece a ordenação por `review_id`.
+
+Aplicar a `014` após as migrações anteriores em bancos existentes antes de
+disponibilizar a consulta por perfil. O schema consolidado inclui o índice para
+bancos novos. `IF NOT EXISTS` permite reexecutar a migration. Em tabelas grandes,
+planejar janela de manutenção, pois `CREATE INDEX` pode bloquear gravações.
+Aplicada no banco local da aplicação conforme o registro abaixo.
+
+### Aplicação local da migration 014 em 23/11/2026
+
+Com autorização do usuário, a `014` foi aplicada em `localhost:5433/sonarfy`,
+no contêiner `sonarfy_test_db`, usando o volume persistente existente
+`infra_db_data` do Compose. Foi criado backup customizado em
+`target/db-backups/sonarfy-before-profile-reviews-014-20261123-212253.dump`.
+O inventário do arquivo foi conferido com `pg_restore --list`; não houve
+ensaio de restauração.
+
+A aplicação ocorreu em transação, com limites de espera e execução, conferência
+da definição do índice e comparação de contagens e fingerprints de todas as
+linhas das 18 tabelas antes/depois. Nenhum dado existente mudou; as cinco
+avaliações anteriores permaneceram preservadas.
+
+Os testes HTTP posteriores usaram contas, artista, álbuns e avaliações
+temporários nesse banco. Após encerrar o backend de teste e remover somente
+os registros criados para a validação, os fingerprints das 18 tabelas voltaram
+aos valores anteriores. As sequências de identidade avançaram normalmente;
+não foram retrocedidas. O banco do Compose permaneceu em execução.
+
 ## Reserva da sincronização de Ecos
 
 A migration `013_add_echo_sync_lease_id.sql` adiciona `echo_sync_state.lease_id`

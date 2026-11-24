@@ -2,7 +2,7 @@
   "info": {
     "name": "Sonarfy - Reviews",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Contract: docs/api/reviews.md. Manual destructive lifecycle for a dedicated test account with an initially empty reviews collection and an existing local album. Set albumSpotifyId and accessToken locally. Runs create, replace and delete; do not run against personal data. No Spotify calls. Examples in contract docs; errors use existing Spring handling."
+    "description": "Contracts: docs/api/reviews.md and docs/api/profile-reviews.md. Set profileHandle to an eligible profile (without @); the profile requests are read-only. Manual destructive lifecycle for a dedicated test account with an initially empty reviews collection and an existing local album. Set albumSpotifyId and accessToken locally. Runs create, replace and delete; do not run against personal data. No Spotify calls. Examples in contract docs; errors use existing Spring handling."
   },
   "variable": [
     {
@@ -15,6 +15,10 @@
     },
     {
       "key": "albumSpotifyId",
+      "value": ""
+    },
+    {
+      "key": "profileHandle",
       "value": ""
     },
     {
@@ -33,6 +37,37 @@
     ]
   },
   "item": [
+    {
+      "name": "List visible profile reviews",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/profile/by-handle/{{profileHandle}}/reviews?limit=20"
+      },
+      "event": [{
+        "listen": "test",
+        "script": {
+          "type": "text/javascript",
+          "exec": [
+            "pm.test('HTTP 200', () => pm.response.to.have.status(200));",
+            "pm.test('Profile page', () => { const b = pm.response.json(); pm.expect(b.author).to.have.all.keys('id', 'handle', 'displayName', 'avatarUrl'); pm.expect(b.items).to.be.an('array'); pm.expect(b.items.length).to.be.at.most(20); pm.expect(b).to.have.property('nextBeforeId'); for (const r of b.items) { pm.expect(r).to.have.all.keys('reviewId', 'album', 'rating', 'reviewText', 'createdAt', 'updatedAt'); } });",
+            "pm.test('No store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'));"
+          ]
+        }
+      }]
+    },
+    {
+      "name": "Reject invalid profile page limit",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/profile/by-handle/{{profileHandle}}/reviews?limit=51"
+      },
+      "event": [{
+        "listen": "test",
+        "script": {"type": "text/javascript", "exec": ["pm.test('HTTP 400', () => pm.response.to.have.status(400));"]}
+      }]
+    },
     {
       "name": "Own review initially absent",
       "request": {

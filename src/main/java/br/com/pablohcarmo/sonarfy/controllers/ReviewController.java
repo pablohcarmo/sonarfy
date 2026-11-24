@@ -46,4 +46,12 @@ public class ReviewController {
             @RequestParam(defaultValue = "20") int limit, @RequestParam(required = false) Long beforeId) {
         return ResponseEntity.ok().header("Cache-Control", "no-store").body(reviews.list(actor.getId(), limit, beforeId));
     }
+
+    // Consultar outro perfil não concede permissão para alterar suas avaliações.
+    @GetMapping("/profile/by-handle/{handle}/reviews")
+    public ResponseEntity<ReviewDto.ProfilePage> profile(@AuthenticationPrincipal User actor, @PathVariable String handle,
+            @RequestParam(defaultValue = "20") int limit, @RequestParam(required = false) Long beforeId) {
+        return ResponseEntity.ok().header("Cache-Control", "no-store")
+                .body(reviews.profile(actor.getId(), handle, limit, beforeId));
+    }
 }

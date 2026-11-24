@@ -59,8 +59,9 @@ Após criar/editar/excluir:
 
 `GET /api/reviews/me` retorna `items` e `nextBeforeId`; envie este último como
 `beforeId` com `limit` até 50. A ordem é ID decrescente; não reordene cada página
-isoladamente para simular ordenação global por nota. Filtros por resenha e consultas
-de terceiros não estão implementados. Não exponha a coleção própria no perfil de
+isoladamente para simular ordenação global por nota. Filtros por resenha não estão
+implementados. Consultas de terceiros usam a rota específica de perfil descrita
+abaixo. Não exponha a coleção própria no perfil de
 outro usuário. O DTO tem `album.name`, `album.coverUrl`, `album.artist.name`,
 `rating`, `reviewText`, `createdAt` e `updatedAt`; adapte esses nomes aos renderers
 atuais (`title`, `cover`, `review`) e não invente contadores sociais.
@@ -75,9 +76,38 @@ este agente apenas consultou os arquivos, sem alterá-los ou executar seus teste
 O usuário confirmou o funcionamento das avaliações na aplicação. Essa confirmação
 não substitui evidência individual de todos os cenários, temas e resoluções.
 
+## Avaliações por perfil
+
+Consuma `GET /api/profile/by-handle/{handle}/reviews` com Bearer para a seção de
+avaliações de perfis próprios ou de terceiros. O [contrato](../api/profile-reviews.md)
+retorna `author`, `items` e `nextBeforeId`. Use `author` como identidade pública
+comum aos cards e o ID imutável para comparar autoria com a conta autenticada.
+Disponibilizar leitura não autoriza editar ou excluir avaliações de terceiros.
+
+Ao mudar o perfil, limpar itens e cursor antes da nova consulta. Para carregar
+mais, enviar `beforeId=nextBeforeId` com o mesmo handle; null encerra a lista.
+Não ordenar páginas isoladas por nota ou data. Em `404`, tratar o perfil como
+indisponível; em falha de rede, oferecer nova tentativa sem mostrar lista vazia.
+Após publicar, editar ou excluir uma avaliação própria, invalidar a primeira
+página. Esta API não informa contagem total; não usar o tamanho da página como
+total de álbuns avaliados. Não preencher likes/comentários a partir de fixtures.
+Mapear nota 0–10, texto e álbum conforme as regras acima. O frontend foi apenas
+consultado pela entrega de backend. A integração foi encaminhada separadamente
+ao especialista em frontend, e sua validação foi confirmada pelo usuário abaixo.
+
+### Confirmação de integração pelo usuário
+
+Após encaminhar a integração da seção de avaliações ao especialista em frontend,
+o usuário informou: “Testes feitos, tudo conforme.” A confirmação registra o
+resultado dos testes da aplicação relatado pelo usuário, separadamente dos testes
+automatizados e do Postman executados no backend.
+
+Não foram fornecidos cenários individuais, capturas, temas, resoluções ou relatórios
+de testes do frontend. Este registro não atribui cobertura específica a esses itens
+nem aprovação de CI remota. Nenhum arquivo do frontend foi alterado por este agente.
+
 ## Próxima entrega
 
-Definir consultas paginadas de perfil e álbum, visibilidade para contas elegíveis,
-dados públicos do autor e índices adequados às consultas. A avaliação é persistida
+Definir consultas de avaliações por álbum e seus agregados. A avaliação é persistida
 imediatamente, sem rascunho; eventual atividade social decorrente da publicação
 precisará de contrato próprio. Não existe outbox/evento preventivo nesta entrega.
