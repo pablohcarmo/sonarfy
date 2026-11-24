@@ -2,6 +2,7 @@ package br.com.pablohcarmo.sonarfy.services;
 
 import br.com.pablohcarmo.sonarfy.dto.LoginDto;
 import br.com.pablohcarmo.sonarfy.repositories.UserRepository;
+import br.com.pablohcarmo.sonarfy.repositories.AccountDeactivationRequestRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import org.springframework.http.HttpStatus;
@@ -19,10 +20,12 @@ public class AccountReactivationService {
     private final ReactivationMailService mails;
     private final EntityManager entities;
     private final String dummyHash;
+    private final AccountDeactivationRequestRepository deactivations;
 
     public AccountReactivationService(UserRepository users, PasswordEncoder passwords, RefreshTokenService refresh,
-                                     ReactivationMailService mails, EntityManager entities) {
+                                     ReactivationMailService mails, EntityManager entities, AccountDeactivationRequestRepository deactivations) {
         this.users = users; this.passwords = passwords; this.refresh = refresh; this.mails = mails; this.entities = entities;
+        this.deactivations = deactivations;
         dummyHash = passwords.encode("dummy-reactivation-password");
     }
 
@@ -41,6 +44,7 @@ public class AccountReactivationService {
         if (user.isActive()) return;
         // revokeAll recarrega a entidade: deve preceder as alterações de estado.
         refresh.revokeAll(user.getId());
+        deactivations.invalidate(user.getId());
         user.invalidateAccessTokens();
         user.invalidateSpotifyAuthorizations();
         user.setActive(true);

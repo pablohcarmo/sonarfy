@@ -82,19 +82,55 @@ Esta entrega continua sem endpoint: não há uma requisição de desativação p
 executar no Postman. Os oito cenários funcionais já foram executados no banco
 descartável; nenhuma solicitação foi inserida na aplicação pelo agente.
 
-## Recupera??o validada em 24/11/2026
+## Recuperação validada em 24/11/2026
 
 O stash `eecd0f1647c8d8a6026f6391e7a9d3f4094e652a` foi recuperado
-sobre `98aaed1`, preservando sua refer?ncia e todas as migrations 011?015,
-tabelas e etapas de CI posteriores. N?o foi usado `stash pop`.
+sobre `98aaed1`, preservando sua referência e todas as migrations 011–015,
+tabelas e etapas de CI posteriores. Não foi usado `stash pop`.
 
-- Baseline ap?s criar a branch: `./mvnw.cmd test`, 841 reportados,
+- Baseline após criar a branch: `./mvnw.cmd test`, 841 reportados,
   719 executados, 122 ignorados, zero falhas/erros.
-- Oito cen?rios de `AccountDeactivationPersistencePostgresTest` aprovados no
-  schema consolidado atual e novamente ap?s remover somente a tabela de
-  solicita??es e aplicar 010 no banco descart?vel.
-- PostgreSQL 17.9 nativo, inst?ncia tempor?ria exclusiva em `127.0.0.1:55453`,
-  banco `sonarfy_deactivation_test`. Docker n?o estava dispon?vel.
-- Nenhuma consulta, migration ou altera??o no banco da aplica??o nesta retomada.
-  O registro de aplica??o local em 21/11 acima ? hist?rico, n?o uma nova inspe??o.
-- Sem push, PR ou execu??o de CI remota nesta retomada.
+- Oito cenários de `AccountDeactivationPersistencePostgresTest` aprovados no
+  schema consolidado atual e novamente após remover somente a tabela de
+  solicitações e aplicar 010 no banco descartável.
+- PostgreSQL 17.9 nativo, instância temporária exclusiva em `127.0.0.1:55453`,
+  banco `sonarfy_deactivation_test`. Docker não estava disponível.
+- Nenhuma consulta, migration ou alteração no banco da aplicação nesta retomada.
+  O registro de aplicação local em 21/11 acima é histórico, não uma nova inspeção.
+- Sem push, PR ou execução de CI remota nesta retomada.
+
+## Incremento 2a — integração com credenciais
+
+A preparação de solicitação HTTP foi dividida para fechar primeiro a invalidação
+obrigatória antes de expor tokens. `AccountDeactivationInvalidationPostgresTest`
+usa serviços de senha, e-mail e reativação reais, JWT assinado, JDBC/JPA e
+`JpaTransactionManager` sobre o mesmo PostgreSQL descartável da persistência.
+Renderização de e-mail e transporte são simulados; não há envio SMTP real.
+
+Os cenários cobrem as cinco transições, isolamento entre contas, rollback de
+credenciais/autorização/sessões, consumo aguardando bloqueio, credenciais
+recusadas e reativação idempotente de conta já ativa. A CI executa ambas as
+classes explicitamente nos dois caminhos de schema.
+
+O contrato da solicitação HTTP está definido em
+[desativação](../api/account-deactivation.md),
+mas continua indisponível. Próximos incrementos: outbox e reserva/rotação de
+entrega sem token bruto, solicitação autenticada com senha e cooldown, confirmação
+atômica com revogação de sessões e posterior integração frontend.
+
+Antes de publicar a nova versão, verificar a presença real da migration 010 em
+todos os bancos: alterações de senha/e-mail e reativação passam a depender da
+tabela para invalidar autorizações. Não presumir a aplicação pelo registro
+histórico local. Esta retomada não autoriza nem executa migration na aplicação.
+
+### Evidência atual do incremento 2a
+
+- `./mvnw.cmd test -Dtest=AccountDeactivationPersistencePostgresTest,AccountDeactivationInvalidationPostgresTest -Dsonarfy.test.deactivation-postgres=true`:
+  24 cenários executados no schema consolidado, zero falhas/erros/ignorados.
+- Após remover somente `account_deactivation_requests` e aplicar 010 no banco
+  descartável: `./mvnw.cmd test -Dsonarfy.test.deactivation-postgres=true`,
+  865 reportados, 743 executados, 122 ignorados, zero falhas/erros. Inclui os
+  mesmos 24 cenários com a migration incremental.
+- `git diff --check`: aprovado. CI configurada, sem execução remota.
+- Nenhuma validação HTTP da desativação, SMTP real ou integração visual:
+  não há endpoint de desativação. As evidências de 21/11 permanecem históricas.

@@ -35,9 +35,8 @@ ser escolhido pelo cliente como forma de autorizar a operação.
   autorização por uma atualização condicional. Retorna somente o ID autorizado;
   token malformado, adulterado, substituído, futuro, expirado ou consumido não
   retorna ID. A expiração é exclusiva: na igualdade o token já é inválido.
-- `invalidate(userId)` remove a solicitação somente dessa conta. Está preparado
-  para integração futura com alterações de senha/e-mail e outras transições,
-  mas esses fluxos ainda não chamam essa operação nesta entrega.
+- `invalidate(userId)` remove a solicitação somente dessa conta. Alterações de
+  senha/e-mail e reativação já chamam essa operação na transação da mudança.
 
 Emissão e expiração usam `statement_timestamp()` do PostgreSQL. A conferência
 após aguardar o bloqueio usa uma nova instrução e não o horário congelado no
@@ -65,10 +64,68 @@ solicitação e não deve ser usado como retentativa automática que renova o pr
 A reserva/rotação de entrega ainda não está implementada nesta etapa.
 
 A confirmação futura também deverá recusar autorizações anteriores a mudanças
-de senha/e-mail ou ciclos de desativação/reativação, integrando a invalidação sob
-o mesmo bloqueio. Não disponibilizar tokens externos antes dessa integração.
+de senha/e-mail ou ciclos de desativação/reativação, preservando a invalidação já
+integrada às credenciais e implementando-a na desativação sob o mesmo bloqueio.
+Não disponibilizar tokens externos antes de concluir essa integração.
 
 Não há mudança em autenticação, perfis, contadores, Spotify, arquivos ou política
 de retenção nesta etapa. Expurgo de solicitações expiradas não foi introduzido.
 
 Operação e validação: [integração de desativação](../integrations/account-deactivation.md).
+
+## Incremento 2a — invalidação antes de expor autorizações
+
+Troca autenticada e recuperação de senha, retificação do e-mail pendente,
+confirmação de troca do e-mail verificado e transição de reativação removem
+solicitações anteriores. A remoção usa a mesma transação e o mesmo bloqueio da
+conta: rollback restaura a autorização. Credenciais recusadas e reativação de
+conta já ativa não a invalidam. Uma confirmação que já aguardava o bloqueio
+precisa reler a autorização e será recusada após a mudança confirmar.
+
+Não se alteram códigos HTTP ou payloads das operações existentes. A futura
+confirmação de desativação deverá integrar a mesma invalidação/transição; ainda
+não existe um ciclo de desativação efetivo nesta entrega.
+
+## Contrato HTTP definido para o próximo incremento — ainda indisponível
+
+`POST /api/users/me/account-deactivation-request`, Bearer `access` de conta
+ativa e verificada, `Content-Type: application/json`, `Cache-Control: no-store`:
+
+```json
+{"currentPassword":"SUBSTITUA_LOCALMENTE"}
+```
+
+O ID e o endereço não vêm do cliente: a conta é a do principal e o destinatário
+é o e-mail verificado recarregado sob bloqueio. Campo obrigatório não vazio;
+mais de 72 bytes UTF-8 deve ser recusado sem truncamento. Revalidar elegibilidade
+e senha atual sob o mesmo bloqueio usado por sessões e alterações de credenciais.
+
+Resposta planejada `202 Accepted`:
+
+```json
+{"message":"Account deactivation request accepted for delivery.","expiresInSeconds":900}
+```
+
+`202` significará solicitação e intenção de envio confirmadas atomicamente,
+sem token/link no JSON, sem desativar a conta e sem revogar sessões. O remetente
+precisará reservar e rotacionar tokens sem persistir o segredo nem renovar o
+prazo em retentativas. O link deverá usar fragmento e abrir uma confirmação
+explícita; abrir o link nunca deverá alterar a conta.
+
+| Situação planejada | HTTP |
+| --- | --- |
+| Solicitação e intenção de envio confirmadas | 202 |
+| JSON ou campo obrigatório inválido | 400 |
+| Bearer inadequado, conta inelegível ou senha incorreta/acima de 72 bytes | 401 |
+| Cooldown compartilhado de e-mail vigente | 429 |
+
+Seguir a reserva de cooldown existente, anterior à transação de negócio:
+tentativas autenticadas com DTO válido reservam o intervalo mesmo se a senha
+for recusada. Cooldown ou falha de validação não substituem a solicitação
+vigente. Uma solicitação nova aceita poderá substituí-la com novo prazo;
+retentativa automática de entrega não é nova solicitação.
+
+Este é um contrato de implementação futura, sem controller, propriedade de
+ativação ou coleção executável nesta entrega. Não habilitar envios externos
+antes de concluir a confirmação, a outbox, as retentativas e a cobertura HTTP
+pela cadeia real de segurança.

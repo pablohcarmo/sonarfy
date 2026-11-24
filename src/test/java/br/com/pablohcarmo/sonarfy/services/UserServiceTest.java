@@ -111,6 +111,9 @@ class UserServiceTest {
     @Mock
     private br.com.pablohcarmo.sonarfy.client.GeoNamesClient cities;
 
+    @Mock
+    private br.com.pablohcarmo.sonarfy.repositories.AccountDeactivationRequestRepository deactivations;
+
     @InjectMocks
     private UserService userService;
 

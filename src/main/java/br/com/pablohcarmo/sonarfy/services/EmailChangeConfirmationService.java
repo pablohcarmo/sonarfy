@@ -23,10 +23,13 @@ public class EmailChangeConfirmationService {
     private final RefreshTokenService refresh;
     private final EntityManager entityManager;
     private final Validator validator;
+    private final AccountDeactivationRequestRepository deactivations;
 
     public EmailChangeConfirmationService(JwtService jwt, UserRepository users, EmailChangeRequestRepository requests,
-            EmailChangeMailRepository mails, RefreshTokenService refresh, EntityManager entityManager, Validator validator) {
+            EmailChangeMailRepository mails, RefreshTokenService refresh, EntityManager entityManager, Validator validator,
+            AccountDeactivationRequestRepository deactivations) {
         this.jwt = jwt; this.users = users; this.requests = requests; this.mails = mails; this.refresh = refresh;
+        this.deactivations = deactivations;
         this.entityManager = entityManager; this.validator = validator;
     }
 
@@ -49,6 +52,7 @@ public class EmailChangeConfirmationService {
         // revokeAll recarrega a entidade; executar antes de modificar o e-mail gerenciado pelo JPA.
         refresh.revokeAll(user.getId());
         if (!requests.consume(request.id(), now)) throw invalid();
+        deactivations.invalidate(user.getId());
         user.setEmail(target);
         try {
             users.saveAndFlush(user);

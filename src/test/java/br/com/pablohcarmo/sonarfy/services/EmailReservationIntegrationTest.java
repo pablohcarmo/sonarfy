@@ -91,6 +91,9 @@ class EmailReservationIntegrationTest {
                     call.getArgument(0), call.getArgument(0, Long.class) == 2L ? "Campinas" : "Brasilia", "", "Brasil"));
             return client;
         }
+        @Bean br.com.pablohcarmo.sonarfy.repositories.AccountDeactivationRequestRepository deactivations(DataSource ds) {
+            return mock(br.com.pablohcarmo.sonarfy.repositories.AccountDeactivationRequestRepository.class);
+        }
         @Bean EmailService emailService() { return mock(EmailService.class); }
         @Bean EmailTemplateService emailTemplateService() { return mock(EmailTemplateService.class); }
         @Bean JavaMailSender javaMailSender() { return mock(JavaMailSender.class); }
